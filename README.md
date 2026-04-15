@@ -44,22 +44,44 @@ Do not edit this artifact directly.
 ## Installation 
 
 ```bash
-pip install pfork    # or pipx
+pip install pkit    # or pipx
 ```
-
-See the User Guide for installation options and tradeoffs.
 
 ---
 
 ## Asset delivery (d2d) 
 
-{{ code.d2d.summary }}
+
+Some applications bundle non-Python artifacts such as command wrappers,
+man pages, examples, or templates. These artifacts are delivered to user
+directories using the **Distribution-to-Destination (d2d)** mechanism.
+
+Artifacts bundled inside a package are stored under:
+
+    <package>/_assets/
+
+and routed into user directories according to a personal policy defined in:
+
+    ~/.config/d2d/routes.toml
+
+Example configuration:
+
+```toml
+[routes]
+bin = "~/.local/bin"
+man = "~/.local/share/man"
+```
+
+On first run, the application will explain how to create this configuration
+file if it does not already exist.
+
+Once configured, artifact delivery happens automatically and silently.
 
 ---
 
 ## Quick start 
 
-This package is forked by pfork to bootstrap a new npkg powered package.
+pkit is a Python CLI utiity powered by npkg.
 
 ### First command
 
@@ -71,13 +93,15 @@ pkit --help
 
 ### Safe exploration
 
-{{ code.section.quickstart.safety }}
+Most pkit commands support --dry-run, which shows what would change without modifying your project.
+When exploring, it’s a good idea to start with --dry-run until you’re comfortable with the results.
 
 ### Sample workflow
 
 A typical workflow might look like this:
 
 ```bash
+pkit sub
 pkit help
 ```
 

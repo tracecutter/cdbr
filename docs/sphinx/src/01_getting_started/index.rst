@@ -1,21 +1,19 @@
 Getting Started
 ===============
 
-This package is forked by pfork to bootstrap a new npkg powered package.
+pkit is a Python CLI utiity powered by npkg.
 
 Installation
 ------------
 
 .. code:: bash
 
-   pip install pfork    # or pipx
-
-See the User Guide for installation options and tradeoffs.
+   pip install pkit    # or pipx
 
 Safe Exploration
 ----------------
 
-{{ code.section.quickstart.safety }}
+Most pkit commands support –dry-run, which shows what would change without modifying your project. When exploring, it’s a good idea to start with –dry-run until you’re comfortable with the results.
 
 First Command
 -------------
@@ -33,6 +31,7 @@ A typical workflow might look like this:
 
 .. code:: bash
 
+   pkit sub
    pkit help
 
 Next Steps
