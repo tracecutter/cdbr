@@ -26,12 +26,12 @@ classifiers = [
 dependencies = [
     "click>=8.3.1",
     "tomlkit>=0.14.0",
+	# project configuration, docs, and lint
+	"pfig>=1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-	# project configuration
-	"pfig>=1.0.0",
     # docs
     "sphinx<9.0,>=8.2.3",
     "myst-parser<5.0.0",
