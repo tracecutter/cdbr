@@ -78,5 +78,6 @@ PFIG_BACKEND = ManpageBackend(
     requests=["project", "fs", "dynamic"],
     code=[
         Path("main.py"),
+        Path("core/d2d.py"),
     ],
 )

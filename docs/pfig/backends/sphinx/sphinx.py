@@ -126,5 +126,6 @@ PFIG_BACKEND = SphinxBackend(
     requests=["project", "fs", "dynamic", "api"],
     code=[
         Path("main.py"),
+        Path("core/d2d.py"),
     ],
 )

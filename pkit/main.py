@@ -29,14 +29,16 @@ https://tracecutter.github.io/npkg/
 Built with Sphinx and hosted on GitHub Pages.
 
 [[section.quickstart.intro]]
-This package is forked by pfork to bootstrap a new npkg powered package.
+pkit is a Python CLI utiity powered by npkg.
 
 [[section.quickstart.install]]
 ```bash
-pip install pfork    # or pipx
+pip install pkit    # or pipx
 ```
 
-See the User Guide for installation options and tradeoffs.
+[[section.quickstart.safety]]
+Most pkit commands support --dry-run, which shows what would change without modifying your project.
+When exploring, it’s a good idea to start with --dry-run until you’re comfortable with the results.
 
 [[section.quickstart.first_command]]
 To start:
@@ -49,6 +51,7 @@ pkit --help
 A typical workflow might look like this:
 
 ```bash
+pkit sub
 pkit help
 ```
 

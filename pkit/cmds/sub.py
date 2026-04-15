@@ -1,9 +1,9 @@
 """
 pkit.cmds.sub
 
-A sub temlate with a kitchen sink of Click patterns
+A sub command template with a kitchen sink of Click patterns
 
-[[sub.description]]
+[[subcmd.description]]
 
 Minimal kitchen sink demonstrating core Click patterns.
 
@@ -21,7 +21,7 @@ Shows:
     - renamed destination
     - context passing
 
-[[sub.examples]]
+[[subcmd.examples]]
 
 Typical Workflow:
 

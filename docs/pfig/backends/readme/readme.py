@@ -56,5 +56,8 @@ class ReadmeBackend(Backend):
 # Announcement
 PFIG_BACKEND = ReadmeBackend(
     requests=["project", "fs", "dynamic", "api"],
-    code=[Path("main.py")],
+    code=[
+        Path("main.py"),
+        Path("core/d2d.py"),
+    ],
 )
