@@ -169,7 +169,22 @@ init-gh:
 	fi
 	@echo "🔼 Pushing local history to GitHub…"
 	@git push -u origin main
+	@echo "🌐 Ensuring gh-pages branch exists…"
+	@if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then \
+		echo "⚠️ gh-pages already exists; skipping creation."; \
+	else \
+		CUR_BRANCH=$$(git branch --show-current); \
+		git checkout --orphan gh-pages >/dev/null 2>&1; \
+		git rm -rf . >/dev/null 2>&1 || true; \
+		printf "<!doctype html><meta charset=\"utf-8\"><title>$(PROJECT_NAME)</title><h1>$(PROJECT_NAME)</h1><p>GitHub Pages branch initialized.</p>\n" > index.html; \
+		touch .nojekyll; \
+		git add index.html .nojekyll; \
+		git commit -m "Initialize gh-pages" >/dev/null; \
+		git push -u origin gh-pages; \
+		git checkout $$CUR_BRANCH >/dev/null 2>&1; \
+	fi
 	@echo "✅ GitHub project ready."
+	@echo "ℹ️  To enable Pages, go to: Settings → Pages → set source to gh-pages branch."
 
 # ------------------------------------------------------------
 #  🟩 Rules for development workflow support
