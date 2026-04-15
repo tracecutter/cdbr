@@ -1,5 +1,5 @@
 <!--
-pkit :: documentation rendered from source.
+pfig :: documentation rendered from source.
 Do not edit this artifact directly.
 -->
 # pkit
@@ -122,6 +122,10 @@ Options:
   --diff {2up|lines}    Diff output format.  [default: 2up]
   -V, --version         Show the version and exit.
   --help                Show this message and exit.
+
+Commands:
+  help  Display help for pkit or a named subcommand.
+  sub   Minimal kitchen sink demonstrating core Click patterns.
 ```
 
 

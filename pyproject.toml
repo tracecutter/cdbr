@@ -96,4 +96,4 @@ sysdeps = [
 label = "manpage"
 share = "man"
 section = "man1"
-src = "docs/pkit/_build/manpage/man1"
+src = "docs/pfig/_build/manpage/man1"

@@ -1,4 +1,4 @@
-.\" pkit :: documentation rendered from source.
+.\" pfig :: documentation rendered from source.
 .\" Do not edit this artifact directly.
 
 .TH PKIT 1 "{{ dynamic.meta.date }}" "pkit {{ project.version }}" "General Commands Manual"

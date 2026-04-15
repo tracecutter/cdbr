@@ -28,4 +28,8 @@ Command and option reference.
      -V, --version         Show the version and exit.
      --help                Show this message and exit.
 
+   Commands:
+     help  Display help for pkit or a named subcommand.
+     sub   Minimal kitchen sink demonstrating core Click patterns.
+
 

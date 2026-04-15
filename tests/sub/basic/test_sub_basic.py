@@ -24,9 +24,12 @@ def test_sub_basic(tmp_path):
         [
             "sub",
             "--dry-run",
-            "--name", "alice",
-            "--pattern", "foo",
-            "--output", "out.txt",
+            "--name",
+            "alice",
+            "--pattern",
+            "foo",
+            "--output",
+            "out.txt",
         ],
         cwd=tmp_path,
     )
