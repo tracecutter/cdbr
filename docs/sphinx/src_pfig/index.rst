@@ -1,0 +1,22 @@
+..
+   pfig :: documentation rendered from source.
+   Do not edit this artifact directly.
+
+pfig
+====
+
+A Python project CLI for inspecting, validating, and updating configuration.
+
+.. image:: ../_static/pfig.png
+   :align: center
+   :width: 200px
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents:
+
+   01_getting_started/index
+   02_user_guide/index
+   03_reference/index
+   04_dev_guide/index
+   05_about/index

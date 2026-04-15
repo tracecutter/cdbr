@@ -1,0 +1,36 @@
+/* assets/custom.css */
+
+/* Make content slightly wider for code-heavy projects */
+@media (min-width: 768px) {
+  .content {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+}
+
+/* Slightly smaller font for code blocks */
+.highlight pre {
+  font-size: 0.9em;
+}
+
+/* Link color tweaks */
+a {
+  color: #0066cc;
+}
+
+a:hover {
+  color: #004999;
+  text-decoration: underline;
+}
+
+/* Announcement bar customization */
+.announcement {
+  background-color: #004999;
+  color: white;
+}
+
+/* Footer GitHub icon a little larger */
+footer .footer-icons svg {
+  width: 1.5em;
+  height: 1.5em;
+}

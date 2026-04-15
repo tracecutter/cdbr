@@ -1,0 +1,98 @@
+<!--
+pkit :: documentation rendered from source.
+Do not edit this artifact directly.
+-->
+# {{ code.meta.title }}
+
+**{{ code.meta.tagline }}**
+
+<p align="center">
+  <img src="docs/pkit/assets/pkit.png" width="180" alt="pkit logo">
+</p>
+
+<p align="center">
+{{ fs.meta.badges }}
+</p>
+
+---
+
+<details>
+<summary><strong>Table of Contents</strong></summary>
+
+{{ dynamic.toc }}
+
+</details>
+
+---
+
+## Installation {{#toc.installation}}
+
+{{ code.section.quickstart.install }}
+
+---
+
+## Asset delivery (d2d) {{#toc.d2d}}
+
+{{ code.d2d.summary }}
+
+---
+
+## Quick start {{#toc.quick-start}}
+
+{{ code.section.quickstart.intro }}
+
+### First command
+
+{{ code.section.quickstart.first_command }}
+
+### Safe exploration
+
+{{ code.section.quickstart.safety }}
+
+### Sample workflow
+
+{{ code.section.quickstart.workflow }}
+
+### Next steps
+
+{{ code.section.quickstart.next }}
+
+---
+
+## Overview {{#toc.overview}}
+
+{{ code.section.overview }}
+
+---
+
+## Usage {{#toc.usage}}
+
+{{ dynamic.cli.help.root }}
+
+### Writing custom documentation renderers {{#toc.renderer-usage}}
+
+{{ fs.section.renderer.development }}
+
+---
+
+## Project status {{#toc.project-status}}
+
+{{ code.section.status }}
+
+---
+
+## Development {{#toc.development}}
+
+{{ fs.parts.development }}
+
+---
+
+## Changelog {{#toc.changelog}}
+
+{{ fs.parts.changelog }}
+
+---
+
+## Links {{#toc.links}}
+
+{{ code.section.links }}

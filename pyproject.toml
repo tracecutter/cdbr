@@ -1,0 +1,99 @@
+[project]
+name = "pkit"
+version = "0.1.0"
+description = "pkit utility"
+authors = [
+  { name = "Bindar Dundat" }
+]
+readme = { file = "README.md", content-type = "text/markdown" }
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Topic :: Utilities"
+]
+
+# NOTE:
+# Dependency versions in the sections below may be updated by `pfig restate`.
+# Upper bounds are conservative and should be reviewed periodically.
+
+dependencies = [
+    "click>=8.3.1",
+    "tomlkit>=0.14.0",
+]
+
+[project.optional-dependencies]
+dev = [
+	# project configuration
+	"pfig>=1.0.0",
+    # docs
+    "sphinx<9.0,>=8.2.3",
+    "myst-parser<5.0.0",
+    "furo>=2025.12.19",
+    # test
+    "pytest>=9.0.2",
+    # lint/style
+    "ruff>=0.15.5",
+    "black<26.0,>=25.12.0",
+    # typing
+    "mypy>=1.19.1",
+    # distribution
+    "build>=1.4.0",
+    # For versioned documentation on GitHub Pages, consider:
+    # mike >= 2.0,
+]
+
+[project.scripts]
+pkit = "pkit.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pkit*"]
+
+[tool.setuptools.package-data]
+pkit = [
+    "_assets/**/*",
+    "_assets/**/.*",
+]
+
+[tool.ruff]
+target-version = "py311"
+lint.select = ["E", "F", "W", "B", "UP"]
+lint.ignore = ["E501"]  # ← line length is a human concern
+
+[tool.black]
+line-length = 120 
+target-version = ["py311"]
+skip-string-normalization = true
+
+[tool.mypy]
+disable_error_code = ["annotation-unchecked"]
+python_version = "3.11"
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = false
+ignore_missing_imports = true
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pfig]
+docs-dir = "docs"
+
+sysdeps = [
+  "git>=2.0",
+  "make>=4.0"
+]
+
+[[tool.pkit.assets]]
+label = "manpage"
+share = "man"
+section = "man1"
+src = "docs/pkit/_build/manpage/man1"
