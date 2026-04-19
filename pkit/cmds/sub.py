@@ -40,11 +40,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from pbox import mark
 
 import pkit.ui as click
 from pkit.context import PkitContext
 from pkit.core import sub_options
-from pkit.utils import mark
 
 # ---------------------------------------------------------------------------
 # Help text

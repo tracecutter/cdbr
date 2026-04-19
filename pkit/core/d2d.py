@@ -135,13 +135,14 @@ import importlib
 import datetime
 import site
 
+from pbox import mark
+from pbox.mark import Marks, MarkContext
+
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
 from typing import Protocol
 from collections.abc import Mapping
-from pkit.utils import mark
-from pkit.utils.mark import Marks, MarkContext
 from textwrap import dedent
 
 D2D_INTRO = dedent(

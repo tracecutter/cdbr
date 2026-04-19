@@ -1,12 +1,12 @@
 .PHONY: all help init init-git init-gh \
-		refresh reinstate reincarinate \
+		refresh reinstate reincarnate \
 		clean clean-pyc clean-build clean-docs clean-gen clean-bak \
-		check check-sys check-readme check-lint check-style reformat \
+		check check-sys check-types check-readme check-lint check-style reformat \
 		test test-coverage test-all \
 		docs docs-% docs-%-% \
 		dist release unrelease publish unpublish \
 		pub-docs pub-gh pub-pypi pub-brew \
-		corpus
+		status corpus
 
 
 .DEFAULT_GOAL := refresh
@@ -21,6 +21,10 @@ endif
 export VERSION		:= $(shell pfig get -k project.version 2>/dev/null)
 export PROJECT_NAME	:= $(shell pfig get -k project.name 2>/dev/null)
 
+# git tag state
+BRANCH				:= $(shell git rev-parse --abbrev-ref HEAD)
+TAG					:= $(if $(filter main,$(BRANCH)),v$(VERSION),$(BRANCH)/v$(VERSION))
+
 # Project metadata
 DOCS_ROOT			:= $(shell pfig get -k tool.pfig.docs-dir 2>/dev/null)
 DOCS_ROOT			?= docs
@@ -32,7 +36,13 @@ README_ROOT			:= README.md
 BREWREPO			:= homebrew-$(PROJECT_NAME)
 
 # Does this project need to be executed in-situ within target project?
-IN_SITU				:= $(if $(filter in-situ,$(shell pfig get -k tool.npkg.type 2>/dev/null)),1,0)
+NPKG_TYPE			:= $(or $(shell pfig get -k tool.npkg.type 2>/dev/null),external)
+NPKG_ROLE			:= $(or $(shell pfig get -k tool.npkg.role 2>/dev/null),tool)
+
+IS_IN_SITU			:= $(if $(filter in-situ,$(NPKG_TYPE)),1,0)
+IS_EXTERNAL			:= $(if $(filter external,$(NPKG_TYPE)),1,0)
+IS_TOOL				:= $(if $(filter tool,$(NPKG_ROLE)),1,0)
+IS_PACKAGE			:= $(if $(filter package,$(NPKG_ROLE)),1,0)
 
 INIT_STAMP			= .init_stamp
 
@@ -40,16 +50,21 @@ INIT_STAMP			= .init_stamp
 # 🔒 Development safety checks
 # ------------------------------------------------------------
 
+# expected venv = current directory name
+EXPECTED_VENV := $(notdir $(CURDIR))
+
 define ensure-venv-active
 	@if [ -z "$${VIRTUAL_ENV}" ]; then \
 		echo "❌ ERROR: No virtualenv active."; \
+		echo "   Expected: $(EXPECTED_VENV)"; \
 		exit 1; \
 	fi
 endef
 
 define ensure-correct-venv
-	@if [ "$(PROJECT_NAME)" != "$$(basename $$VIRTUAL_ENV)" ]; then \
-		echo "❌ ERROR: Wrong virtualenv active: $$(basename $$VIRTUAL_ENV). Expected: $(PROJECT_NAME)"; \
+	@if [ "$(EXPECTED_VENV)" != "$$(basename $$VIRTUAL_ENV)" ]; then \
+		echo "❌ ERROR: Wrong virtualenv active: $$(basename $$VIRTUAL_ENV)"; \
+		echo "   Expected: $(EXPECTED_VENV)"; \
 		exit 1; \
 	fi
 endef
@@ -88,7 +103,7 @@ help:
 	@echo "docs-<tool>-clean - remove documentation build artifacts"
 	@echo "preflight - check everything is ready for release"
 	@echo "dist - generate full distribution and stage package for release."
-	@echo "release - release current version for local use outside virtual environent (via pipx)"
+	@echo "release - tag, build, push, and perform local post-release install if applicable"
 	@echo "unrelease - remove local release from current environment and local installation (pipx)"
 	@echo "publish -  publish current release and documentation to GitHub for pip and brew install"
 	@echo "pub-docs - publish documents on GitHub.io"
@@ -107,33 +122,41 @@ $(INIT_STAMP):
 
 	@echo "🔧 Initializing development environment for $(PROJECT_NAME)…"
 
-	@echo "📦 Installing development tools…"
+	@echo "📦 Installing base development tools…"
 	pip install --upgrade pip wheel build twine
 
-	@echo "📦 Installing project in editable mode…"
-	pip install -e ".[dev]"
-
-	@echo "📚 Installing MANPATH in venv activation hook…"
-	@HOOKDIR="$${VIRTUAL_ENV}/bin/postactivate.d"; \
-	HOOK="$$HOOKDIR/$(PROJECT_NAME)-manpath.sh"; \
-	MANDEV="$(CURDIR)/docs/pfig/_build/manpage"; \
-	mkdir -p "$$HOOKDIR"; \
-	echo "# $(PROJECT_NAME) dev manpages" > "$$HOOK"; \
-	echo "DEV_MANPATH=\"$$MANDEV\"" >> "$$HOOK"; \
-	echo "case \":\$$MANPATH:\" in" >> "$$HOOK"; \
-	echo "  *:\$$DEV_MANPATH:*) ;;" >> "$$HOOK"; \
-	echo "  *) export MANPATH=\"\$$DEV_MANPATH:\$$(manpath)\" ;; " >> "$$HOOK"; \
-	echo "esac" >> "$$HOOK"; \
-	echo "✔ MANPATH hook installed"; \
-	echo ""; \
-	echo "ℹ Reactivate the venv to apply:"; \
-	echo "  deactivate && source $${VIRTUAL_ENV}/bin/activate"
-
-	@echo "🔍 Running pfig lint (if available)…"
-	@if command -v pfig >/dev/null 2>&1; then \
-		pfig lint; \
+	@echo "📦 Installing project in editable mode (dev)…"
+	@if pip install -e ".[dev]"; then \
+		echo "✔ Editable install complete"; \
 	else \
-		echo "⚠️ pfig not found"; \
+		echo "⚠️ Dev install incomplete (likely missing local deps such as pfig)"; \
+	fi
+
+	@echo "📚 Configuring MANPATH (if applicable)…"
+	@if [ "$(IS_TOOL)" = "1" ] && [ "$(IS_EXTERNAL)" = "1" ] && [ -d docs/pfig/_build/manpage ]; then \
+		HOOKDIR="$${VIRTUAL_ENV}/bin/postactivate.d"; \
+		HOOK="$$HOOKDIR/$(PROJECT_NAME)-manpath.sh"; \
+		MANDEV="$(CURDIR)/docs/pfig/_build/manpage"; \
+		mkdir -p "$$HOOKDIR"; \
+		echo "# $(PROJECT_NAME) dev manpages" > "$$HOOK"; \
+		echo "DEV_MANPATH=\"$$MANDEV\"" >> "$$HOOK"; \
+		echo "case \":\$$MANPATH:\" in" >> "$$HOOK"; \
+		echo "  *:\$$DEV_MANPATH:*) ;;" >> "$$HOOK"; \
+		echo "  *) export MANPATH=\"\$$DEV_MANPATH:\$$(manpath)\" ;; " >> "$$HOOK"; \
+		echo "esac" >> "$$HOOK"; \
+		echo "✔ MANPATH hook installed"; \
+		echo ""; \
+		echo "ℹ Reactivate the venv to apply:"; \
+		echo "  deactivate && source $${VIRTUAL_ENV}/bin/activate"; \
+	else \
+		echo "ℹ️ Skipping MANPATH hook"; \
+	fi
+
+	@echo "🔍 Running initial lint (if applicable)…"
+	@if [ "$(IS_TOOL)" = "1" ] && command -v pfig >/dev/null 2>&1; then \
+		pfig lint || echo "⚠️ pfig lint reported issues"; \
+	else \
+		echo "ℹ️ Skipping system lint"; \
 	fi
 
 	@touch $(INIT_STAMP)
@@ -275,21 +298,25 @@ clean-bak:
 #  🟩 Rules to check for lint, style, formatting
 # ------------------------------------------------------------
 
-check: check-sys check-readme check-lint check-style check-types
+check: check-sys check-readme check-lint check-style check-types check-version
 
 check-sys:
-	@echo "🔍 Running system/environment validation via pfig lint…"
-	@if ! command -v pfig >/dev/null 2>&1; then \
-		echo "❌ pfig not found in PATH — install with: pipx install pfig"; \
-		exit 1; \
+	@if [ "$(IS_TOOL)" = "1" ]; then \
+		echo "🔍 Running system/environment validation via pfig lint…" \
+		pfig lint; \
+	else \
+		echo "ℹ️ Skipping system lint (package project)"; \
 	fi
-	pfig lint
-	@echo "✅ System checks passed."
 
 check-readme:
 	@echo "🔍 Checking README.md is current…"
+	@if [ ! -f "$(README_BUILD)" ]; then \
+		echo "❌ Generated README missing: $(README_BUILD)"; \
+		echo "   Run: make docs"; \
+		exit 1; \
+	fi
 	@diff -u $(README_BUILD) $(README_ROOT) >/dev/null || \
-		( echo "❌ README.md is out of date. Run: make readme" && exit 1 )
+		( echo "❌ README.md is out of date. Run: make docs-sync" && exit 1 )
 	@echo "✅ README.md is up to date."
 
 check-style:
@@ -300,6 +327,32 @@ check-lint:
 
 check-types:
 	mypy $(PROJECT_NAME)
+
+check-version:
+	@echo "🔢 Checking version lineage…"; \
+	branch=$$(git rev-parse --abbrev-ref HEAD); \
+	version="$(VERSION)"; \
+	\
+	if [ "$$branch" = "main" ]; then \
+		pattern="^v[0-9]"; \
+	else \
+		pattern="^$$branch/v[0-9]"; \
+	fi; \
+	\
+	latest=$$(git tag -l | grep -E "$$pattern" | sed -E 's|.*/v||; s|^v||' | sort -V | tail -n1); \
+	\
+	if [ -n "$$latest" ]; then \
+		printf "   latest: %s\n" "$$latest"; \
+		printf "   current: %s\n" "$$version"; \
+		\
+		if [ "$$latest" = "$$version" ] || \
+		   [ "$$(printf "%s\n%s\n" "$$latest" "$$version" | sort -V | head -n1)" = "$$version" ]; then \
+			echo "❌ Version $$version is not a valid successor of $$latest"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "   (no prior tags in this lineage)"; \
+	fi
 
 reformat:
 	black .
@@ -357,7 +410,7 @@ docs-%:
 
 # MANPATH modification if venv hook not added by init (not run)
 manpath:
-	@echo "export MANPATH=\"$(CURDIR)/docs/pfig/_build/manpage:$$(manpath)\""
+	@echo "export MANPATH=\"$(CURDIR)/docs/pfig/_build/manpage:$$HOME/.local/share/man:$$(manpath)\""
 
 # ------------------------------------------------------------
 #  📦 Build Python distribution
@@ -366,7 +419,7 @@ manpath:
 dist:
 	@echo "📦 Building distribution artifacts…"
 
-	rm -rf $(PROJECT_NAME)/_assets
+	[ -n "$(PROJECT_NAME)" ] && rm -rf "$(PROJECT_NAME)/_assets"
 	rm -rf dist/
 
 	@echo "📜 Writing asset manifest…"
@@ -379,9 +432,6 @@ dist:
 		mkdir -p "$$(dirname "$$dst")"; \
 		cp "$$src" "$$dst"; \
 	done
-
-	@echo "🔍 Previewing asset delivery (d2d dry-run)…"
-	D2D_DRYRUN=1 D2D_VERBOSITY=verbose pfig -V
 
 	@echo "🐍 Building Python distribution…"
 	@python -m build 2>&1 | \
@@ -396,23 +446,42 @@ dist:
 #  🚀 RELEASE / PUBLISH PIPELINE
 # ------------------------------------------------------------
 
-preflight: clean refresh docs docs-sync test check dist
+preflight: validate-npkg clean refresh docs docs-sync test check dist
 	@echo "🔍 Preflight: validating release readiness…"
-	@pfig lint release
-	@echo "✅ Takeoff clearance granted for $(PROJECT_NAME) $(VERSION)" 
+	@if [ "$(IS_TOOL)" = "1" ]; then \
+		pfig lint release; \
+	else \
+		echo "ℹ️ Skipping release-mode system lint (package project)"; \
+	fi
+	@echo "✅ Takeoff clearance granted for $(PROJECT_NAME) $(VERSION)"
 
 release-guard:
 	$(call ensure-venv-active)
 	$(call ensure-correct-venv)
-	@if [ "$$(git branch --show-current)" != "main" ]; then \
-		echo "❌ Release must be from main branch."; exit 1; \
-	fi
-	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "❌ Working tree is dirty. Commit or stash before tagging."; \
+	@{ \
+		branch=$$(git rev-parse --abbrev-ref HEAD); \
+		[ -n "$$branch" ] && [ "$$branch" != "HEAD" ] || { \
+			echo "❌ Cannot release from detached HEAD"; exit 1; }; \
+		[ -z "$$(git status --porcelain)" ] || { \
+			echo "❌ Working tree is dirty. Commit or stash before tagging."; \
+			exit 1; }; \
+	}
+
+validate-npkg:
+	@if [ "$(IS_PACKAGE)" = "1" ] && [ "$(IS_EXTERNAL)" = "1" ]; then \
+		echo "❌ Invalid config: package cannot be external"; \
 		exit 1; \
 	fi
-	@echo "🔎 Verifying pfig install enforcement..."
-	@env -u D2D_DEV pfig get -k project.version > /dev/null
+
+status:
+	@echo "BRANCH=$(BRANCH)"
+	@echo "TAG=$(TAG)"
+	@echo "NPKG_ROLE=$(NPKG_ROLE)"
+	@echo "NPKG_TYPE=$(NPKG_TYPE)"
+	@echo "IS_TOOL=$(IS_TOOL)"
+	@echo "IS_PACKAGE=$(IS_PACKAGE)"
+	@echo "IS_EXTERNAL=$(IS_EXTERNAL)"
+	@echo "IS_IN_SITU=$(IS_IN_SITU)"
 
 # ------------------------------------------------------------
 #  🚀 Local release
@@ -420,35 +489,41 @@ release-guard:
 
 release: release-guard preflight
 	@echo "🚀 Releasing $(PROJECT_NAME) $(VERSION)…"
+	@echo "🌿 $(BRANCH) → 🏷️ $(TAG)"
 
 	@# --------------------------------------------------------
-	@# Ensure tag matches HEAD (idempotent but safe)
+	@# Ensure branch is not a namespace parent
 	@# --------------------------------------------------------
-	@if git tag --list "v$(VERSION)" | grep -q .; then \
-		TAG_COMMIT=$$(git rev-list -n 1 v$(VERSION)); \
-		HEAD_COMMIT=$$(git rev-parse HEAD); \
-		if [ "$$TAG_COMMIT" != "$$HEAD_COMMIT" ]; then \
-			echo "❌ Tag v$(VERSION) already exists and points to a different commit"; \
-			echo "   Tag:  $$TAG_COMMIT"; \
-			echo "   HEAD: $$HEAD_COMMIT"; \
-			echo ""; \
-			echo "💡 You probably want to bump the version:"; \
-			echo "   pfig bump patch|minor|major"; \
-			exit 1; \
-		else \
-			echo "ℹ️ Tag v$(VERSION) matches HEAD"; \
-		fi; \
-	else \
-		echo "🏷️ Creating tag v$(VERSION)…"; \
-		git tag -a v$(VERSION) -m "Release v$(VERSION)"; \
+	@if git for-each-ref --format='%(refname:short)' refs/heads | grep -q "^$(BRANCH)/"; then \
+		echo "❌ Branch '$(BRANCH)' has children; cannot release from namespace"; \
+		exit 1; \
 	fi
 
 	@# --------------------------------------------------------
-	@# Push code + tags (safe to repeat)
+	@# Ensure tag does NOT already exist
 	@# --------------------------------------------------------
-	@echo "📤 Pushing main + v$(VERSION)…"
-	@git push origin main
-	@git push origin v$(VERSION)
+	@if git rev-parse "$(TAG)" >/dev/null 2>&1; then \
+		echo "❌ Tag $(TAG) already exists"; \
+		echo ""; \
+		echo "💡 You probably want to bump the version:"; \
+		echo "   pfig bump patch|minor|major"; \
+		exit 1; \
+	fi
+
+	@# --------------------------------------------------------
+	@# Push branch first (must succeed before tagging)
+	@# --------------------------------------------------------
+	@echo "📤 Pushing $(BRANCH)…"
+	@git push origin "$(BRANCH)"
+
+	@# --------------------------------------------------------
+	@# Create and push tag
+	@# --------------------------------------------------------
+	@echo "🏷️ Creating $(TAG)…"
+	@git tag -a "$(TAG)" -m "Release $(TAG)"
+
+	@echo "📤 Pushing tag…"
+	@git push origin "$(TAG)"
 
 	@# --------------------------------------------------------
 	@# Warn if GitHub Pages not configured (non-fatal)
@@ -459,9 +534,9 @@ release: release-guard preflight
 	}
 
 	@# --------------------------------------------------------
-	@# Local install via pipx (skip silently if in-situ)
+	@# Local install via pipx (external tools only)
 	@# --------------------------------------------------------
-	@if [ "$(IN_SITU)" != "1" ]; then \
+	@if [ "$(IS_TOOL)" = "1" ] && [ "$(IS_EXTERNAL)" = "1" ]; then \
 		WHEEL=$$(printf "%s\n" dist/*$(VERSION)*.whl 2>/dev/null | head -n 1); \
 		if [ -z "$$WHEEL" ]; then \
 			echo "❌ No wheel found in dist/"; \
@@ -471,6 +546,8 @@ release: release-guard preflight
 		pipx install --force "$$WHEEL" >/dev/null || { \
 			echo "❌ pipx install failed"; exit 1; \
 		}; \
+	else \
+		echo "ℹ️ Skipping pipx install"; \
 	fi
 
 	@echo "🎉 Local release complete for $(PROJECT_NAME) $(VERSION)"
@@ -480,6 +557,8 @@ release: release-guard preflight
 # ------------------------------------------------------------
 
 pub-docs:
+	$(call ensure-venv-active)
+	$(call ensure-correct-venv)
 	@echo "🌐 Publishing documentation tools..."
 	@for tool in $(DOCS_TOOLS); do \
 		$(MAKE) docs-$$tool-publish; \
@@ -504,7 +583,7 @@ pub-pfix: release
 
 pub-pypi: release
 	@echo "🚀 Uploading $(PROJECT_NAME) $(VERSION) to PyPI…"
-	. .venv/bin/activate && twine upload dist/*
+	twine upload dist/*
 	@echo "📦 Uploaded to PyPI."
 
 # ------------------------------------------------------------
