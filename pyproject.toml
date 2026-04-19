@@ -28,6 +28,7 @@ dependencies = [
     "tomlkit>=0.14.0",
 	# project configuration, docs, and lint
 	"pfig>=1.0.0",
+	"pbox",
 ]
 
 [project.optional-dependencies]
