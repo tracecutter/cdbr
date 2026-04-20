@@ -1,5 +1,5 @@
 """
-docs.pfig.backends.sphinx
+docs.psym.backends.sphinx
 
 Render the Sphinx documentation set.
 
@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pfig import Backend, BackendContext, RenderJob, Template
-from pfig import symbol_add
+from psym import Backend, BackendContext, RenderJob, Template
+from psym import symbol_add
 
 
 # ---------------------------------------------------------------------------

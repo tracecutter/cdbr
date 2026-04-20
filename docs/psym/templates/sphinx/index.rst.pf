@@ -1,5 +1,5 @@
 ..
-   pfig :: documentation rendered from source.
+   psym :: documentation rendered from source.
    Do not edit this artifact directly.
 
 pkit

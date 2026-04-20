@@ -1,11 +1,11 @@
-# docs/pfig/Makefile
+# docs/psym/Makefile
 
 PROJECT_ROOT        := $(abspath ../..)
 DOCS_ROOT           := $(CURDIR)
 BUILD_ROOT          := $(DOCS_ROOT)/_build
 MANPAGE_BUILD_DIR   := $(BUILD_ROOT)/manpage
-DIST_ROOT           := $(PROJECT_ROOT)/pfig_dist
-SENTINEL            := pfig :: documentation rendered from source.
+DIST_ROOT           := $(PROJECT_ROOT)/psym_dist
+SENTINEL            := psym :: documentation rendered from source.
 
 .PHONY: all readme manpage sphinx sync publish publish-readme clean dist
 
@@ -24,17 +24,17 @@ all: readme manpage
 readme:
 	@echo "📘 Building README documentation..."
 	@cd $(PROJECT_ROOT) && \
-		pfig docs --force readme
+		psym docs --force readme
 
 manpage:
 	@echo "📘 Building manpage documentation..."
 	@cd $(PROJECT_ROOT) && \
-		pfig docs --force manpage
+		psym docs --force manpage
 
 sphinx:
-	@echo "📘 Building Sphinx documentation (pfig projection)..."
+	@echo "📘 Building Sphinx documentation (psym projection)..."
 	@cd $(PROJECT_ROOT) && \
-		pfig docs --force sphinx
+		psym docs --force sphinx
 
 
 # ------------------------------------------------------------
@@ -52,7 +52,7 @@ sync:
 	@if [ -f "$(PROJECT_ROOT)/README.md" ]; then \
 		if ! grep -q "$(SENTINEL)" "$(PROJECT_ROOT)/README.md"; then \
 			echo "❌ Refusing to overwrite handwritten README.md"; \
-			echo "   This file was not rendered by pfig."; \
+			echo "   This file was not rendered by psym."; \
 			echo "   Remove it manually or use FORCE_README=1."; \
 			exit 1; \
 		fi \
@@ -60,14 +60,14 @@ sync:
 
 	@cp -f $(BUILD_ROOT)/readme/README.md $(PROJECT_ROOT)/README.md
 	@echo "✔ README.md updated."
-	@echo "ℹ️  Repo in sync for pfig docs."
+	@echo "ℹ️  Repo in sync for psym docs."
 
 # ------------------------------------------------------------
 # Publish (external promotion)
 # ------------------------------------------------------------
 
 publish:
-	@echo "ℹ️  No external publish step for pfig docs."
+	@echo "ℹ️  No external publish step for psym docs."
 
 
 # ------------------------------------------------------------
@@ -75,6 +75,6 @@ publish:
 # ------------------------------------------------------------
 
 clean:
-	@echo "🧹 Cleaning pfig documentation build artifacts..."
+	@echo "🧹 Cleaning psym documentation build artifacts..."
 	rm -rf $(BUILD_ROOT)
 

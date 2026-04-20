@@ -11,4 +11,4 @@ PEP 621
 : Standard project metadata in `pyproject.toml`.
 
 Project documentation
-: https://tracecutter.github.io/pfig/
+: https://tracecutter.github.io/psym/

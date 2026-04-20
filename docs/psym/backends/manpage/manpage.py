@@ -1,5 +1,5 @@
 """
-docs.pfig.backends.manpage.manpage
+docs.psym.backends.manpage.manpage
 
 Render manpage documentation artifacts.
 
@@ -17,7 +17,7 @@ INTERNAL
 from __future__ import annotations
 
 from pathlib import Path
-from pfig import Backend, BackendContext, RenderJob, Template
+from psym import Backend, BackendContext, RenderJob, Template
 from .symtab import ManpageSymtab
 
 

@@ -1,5 +1,5 @@
 """
-docs.pfig.backends.readme
+docs.psym.backends.readme
 
 Render the README.md documentation artifact.
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pfig import Backend, BackendContext, RenderJob, Template
+from psym import Backend, BackendContext, RenderJob, Template
 
 
 class ReadmeBackend(Backend):

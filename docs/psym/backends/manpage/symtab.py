@@ -1,5 +1,5 @@
 """
-docs.pfig.backends.manpage.symbols
+docs.psym.backends.manpage.symbols
 
 Manpage symbol table administration
 
@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-from pfig import SymbolTable, CLISpec, ArgSpec, PfigDocsBackendError
-from pfig import symbol_add, symbols_code_extract
+from psym import SymbolTable, CLISpec, ArgSpec, PfigDocsBackendError
+from psym import symbol_add, symbols_code_extract
 
 # ---------------------------------------------------------------------------
 # ManpageSymtab Class
