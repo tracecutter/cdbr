@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-from psym import SymbolTable, CLISpec, ArgSpec, PfigDocsBackendError
+from psym import SymbolTable, CLISpec, ArgSpec, PsymDocsBackendError
 from psym import symbol_add, symbols_code_extract
 
 # ---------------------------------------------------------------------------
@@ -82,7 +82,7 @@ class ManpageSymtab:
         subcmd_path = (source_root / "cmds" / cmd.name).with_suffix(".py")
 
         if not subcmd_path.exists():
-            raise PfigDocsBackendError(f"{cmd.name}: source file not found: {subcmd_path}")
+            raise PsymDocsBackendError(f"{cmd.name}: source file not found: {subcmd_path}")
 
         symbols_code_extract(symtab, [subcmd_path])
 

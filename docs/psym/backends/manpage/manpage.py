@@ -74,7 +74,7 @@ class ManpageBackend(Backend):
 
 
 # Announcement
-PFIG_BACKEND = ManpageBackend(
+PSYM_BACKEND = ManpageBackend(
     requests=["project", "fs", "dynamic"],
     code=[
         Path("main.py"),

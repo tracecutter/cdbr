@@ -12,8 +12,8 @@
 .DEFAULT_GOAL := refresh
 
 # Require pfig
-PFIG := $(shell command -v pfig 2>/dev/null)
-ifeq ($(PFIG),)
+PSYM := $(shell command -v pfig 2>/dev/null)
+ifeq ($(PSYM),)
 $(error ❌ pfig is required. Install via: pipx install pfig)
 endif
 

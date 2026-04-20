@@ -54,7 +54,7 @@ class ReadmeBackend(Backend):
 
 
 # Announcement
-PFIG_BACKEND = ReadmeBackend(
+PSYM_BACKEND = ReadmeBackend(
     requests=["project", "fs", "dynamic", "api"],
     code=[
         Path("main.py"),

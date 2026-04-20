@@ -122,7 +122,7 @@ class SphinxBackend(Backend):
 # Announcement
 # ---------------------------------------------------------------------------
 
-PFIG_BACKEND = SphinxBackend(
+PSYM_BACKEND = SphinxBackend(
     requests=["project", "fs", "dynamic", "api"],
     code=[
         Path("main.py"),
