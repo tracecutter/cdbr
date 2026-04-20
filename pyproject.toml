@@ -27,6 +27,7 @@ dependencies = [
     "click>=8.3.1",
 	# project configuration, docs, and lint
 	"pbox>=0.1.0",
+	"psym>=0.1.0",
 ]
 
 [project.optional-dependencies]
