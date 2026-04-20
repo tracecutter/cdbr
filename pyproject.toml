@@ -25,15 +25,15 @@ classifiers = [
 
 dependencies = [
     "click>=8.3.1",
-    "tomlkit>=0.14.0",
 	# project configuration, docs, and lint
-	"pfig>=1.0.0",
-	"pbox",
+	"pbox>=0.1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     # docs
+	"pfig>=0.1.0",
+	"psym>=0.1.0",
     "sphinx<9.0,>=8.2.3",
     "myst-parser<5.0.0",
     "furo>=2025.12.19",
@@ -100,4 +100,4 @@ sysdeps = [
 label = "manpage"
 share = "man"
 section = "man1"
-src = "docs/pfig/_build/manpage/man1"
+src = "docs/psym/_build/manpage/man1"

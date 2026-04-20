@@ -31,7 +31,7 @@ DOCS_ROOT			?= docs
 
 DOCS_TOOLS			:= $(filter-out __%,$(notdir $(patsubst %/,%,$(wildcard docs/*/))))
 ASSETS_DIR			:= $(PROJECT_NAME)/_assets
-README_BUILD		:= $(DOCS_ROOT)/pfig/_build/readme/README.md
+README_BUILD		:= $(DOCS_ROOT)/psym/_build/readme/README.md
 README_ROOT			:= README.md
 BREWREPO			:= homebrew-$(PROJECT_NAME)
 
@@ -96,9 +96,9 @@ help:
 	@echo "test-all - run tests on every Python version with nox"
 	@echo "readme - generate README.md from usage information"
 	@echo "docs - generate standard documentation (readme, manpages, ...)"
-	@echo "docs-sync - publish pfig artifacts and then generate standard documentation (sphinx, ...)"
+	@echo "docs-sync - publish psym artifacts and then generate standard documentation (sphinx, ...)"
 	@echo "docs-all - generate additional documentation (e.g. PDF, EPUB, ...)"
-	@echo "docs-<tool>-all - generate standard documentation from tool (pfig, sphinx)"
+	@echo "docs-<tool>-all - generate standard documentation from tool (psym, sphinx)"
 	@echo "docs-<tool>-publish - publish documentation from tool build (README.md)"
 	@echo "docs-<tool>-clean - remove documentation build artifacts"
 	@echo "preflight - check everything is ready for release"
@@ -133,10 +133,10 @@ $(INIT_STAMP):
 	fi
 
 	@echo "📚 Configuring MANPATH (if applicable)…"
-	@if [ "$(IS_TOOL)" = "1" ] && [ "$(IS_EXTERNAL)" = "1" ] && [ -d docs/pfig/_build/manpage ]; then \
+	@if [ "$(IS_TOOL)" = "1" ] && [ "$(IS_EXTERNAL)" = "1" ] && [ -d docs/psym/_build/manpage ]; then \
 		HOOKDIR="$${VIRTUAL_ENV}/bin/postactivate.d"; \
 		HOOK="$$HOOKDIR/$(PROJECT_NAME)-manpath.sh"; \
-		MANDEV="$(CURDIR)/docs/pfig/_build/manpage"; \
+		MANDEV="$(CURDIR)/docs/psym/_build/manpage"; \
 		mkdir -p "$$HOOKDIR"; \
 		echo "# $(PROJECT_NAME) dev manpages" > "$$HOOK"; \
 		echo "DEV_MANPATH=\"$$MANDEV\"" >> "$$HOOK"; \
@@ -410,7 +410,7 @@ docs-%:
 
 # MANPATH modification if venv hook not added by init (not run)
 manpath:
-	@echo "export MANPATH=\"$(CURDIR)/docs/pfig/_build/manpage:$$HOME/.local/share/man:$$(manpath)\""
+	@echo "export MANPATH=\"$(CURDIR)/docs/psym/_build/manpage:$$HOME/.local/share/man:$$(manpath)\""
 
 # ------------------------------------------------------------
 #  📦 Build Python distribution
@@ -559,6 +559,10 @@ release: release-guard preflight
 pub-docs:
 	$(call ensure-venv-active)
 	$(call ensure-correct-venv)
+	@if [ "$(BRANCH)" != "main" ]; then \
+		echo "❌ pub-docs only allowed from canonical branch (main)"; \
+		exit 1; \
+	fi
 	@echo "🌐 Publishing documentation tools..."
 	@for tool in $(DOCS_TOOLS); do \
 		$(MAKE) docs-$$tool-publish; \
