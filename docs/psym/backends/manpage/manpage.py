@@ -1,5 +1,5 @@
 """
-docs.psym.backends.manpage.manpage
+docs.pkit.backends.manpage.manpage
 
 Render manpage documentation artifacts.
 
@@ -78,6 +78,5 @@ PSYM_BACKEND = ManpageBackend(
     requests=["project", "fs", "dynamic"],
     code=[
         Path("main.py"),
-        Path("core/d2d.py"),
     ],
 )

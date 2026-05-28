@@ -134,9 +134,8 @@ import tomllib
 import importlib
 import datetime
 import site
-
-from pbox import mark
-from pbox.mark import Marks, MarkContext
+from npkglib import mark
+from npkglib.mark import Marks, MarkContext
 
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -298,7 +297,6 @@ class _BaseEmitter:
 
 
 class RealEmitter(_BaseEmitter):
-
     def mkdir(self, path: Path) -> None:
         path.mkdir(parents=True, exist_ok=True)
 
@@ -311,7 +309,6 @@ class RealEmitter(_BaseEmitter):
 
 
 class DryRunEmitter(_BaseEmitter):
-
     def mkdir(self, path: Path) -> None:
         self.marks.infos.append(f"[dry-run] mkdir -p {path}")
 

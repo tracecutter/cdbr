@@ -1,7 +1,7 @@
 [project]
 name = "pkit"
 version = "0.2.1"
-description = "pkit utility"
+description = "Canonical reference project for the npkg ecosystem."
 authors = [
   { name = "Bindar Dundat" }
 ]
@@ -9,46 +9,49 @@ readme = { file = "README.md", content-type = "text/markdown" }
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
-
 classifiers = [
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
   "Operating System :: OS Independent",
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Natural Language :: English",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Configuration",
   "Topic :: Utilities"
 ]
 
-# NOTE:
-# Dependency versions in the sections below may be updated by `pfig restate`.
-# Upper bounds are conservative and should be reviewed periodically.
-
 dependencies = [
     "click>=8.3.1",
-	# project configuration, docs, and lint
-	"pbox>=0.1.0",
-	"psym>=0.1.0",
+    "packaging>=26.0",
+    "npkglib>=1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    # configuration
+	"npkg-pfig>=1.4.0",
+
     # docs
-	"pfig>=0.1.0",
-	"psym>=0.1.0",
+	"npkg-psym>=0.1.0",
     "sphinx<9.0,>=8.2.3",
     "myst-parser<5.0.0",
     "furo>=2025.12.19",
+
     # test
     "pytest>=9.0.2",
+
     # lint/style
     "ruff>=0.15.5",
     "black<26.0,>=25.12.0",
+
     # typing
-    "mypy>=1.19.1",
+    "mypy<2.0,>=1.19.1",
+
     # distribution
     "build>=1.4.0",
-    # For versioned documentation on GitHub Pages, consider:
-    # mike >= 2.0,
+    "twine>=6.2",
 ]
 
 [project.scripts]
@@ -90,7 +93,7 @@ build-backend = "setuptools.build_meta"
 role = "tool"
 type = "external"
 
-[tool.pfig]
+[tool.psym]
 docs-dir = "docs"
 
 sysdeps = [

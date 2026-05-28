@@ -15,7 +15,9 @@ See Also
 --------
 
 - npkg — execution model and lifecycle framework
+- psym - symbol based package documentation utility
 - pdep — dependency analysis and reasoning
 - d2d — distribution-to-destination artifact delivery
-- pfix — installation and release orchestration
+- p5ix — installation and release orchestration
+- npkglib - npkg utility functions
 

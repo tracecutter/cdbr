@@ -40,7 +40,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from pbox import mark
+from npkglib import mark
 
 import pkit.ui as click
 from pkit.context import PkitContext

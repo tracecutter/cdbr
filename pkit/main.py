@@ -76,9 +76,9 @@ INTERNAL
 
 import pkit.ui as click
 from pathlib import Path
-from pbox import mark, signal, guppy
-from pbox.mark import MarkContext
-from pbox.guppy import Sink, FlatRenderer, ColumnRenderer
+from npkglib import mark, signal, guppy
+from npkglib.mark import MarkContext
+from npkglib.guppy import Sink, FlatRenderer, ColumnRenderer
 
 from pkit.cmds import discover
 from pkit import __version__
@@ -207,7 +207,7 @@ def pkit_main(click_ctx, *, file, quiet, verbose, emoji, diff, trace, telemetry,
     except KeyError:
         raise click.UsageError(f"Invalid diff mode: {diff}") from None
 
-    # Build context with selecte mode
+    # Build context with selected mode
     mode = PkitMode(quiet=quiet, verbose=verbose, emoji=emoji, diff=diff_mode)
     pkit_ctx = PkitContext(mode=mode)
 
@@ -215,10 +215,15 @@ def pkit_main(click_ctx, *, file, quiet, verbose, emoji, diff, trace, telemetry,
     click_ctx.obj = pkit_ctx
 
 
-# The main function that happens before click_root invocation.
+# The main function that happens before pkit_main.
 def main() -> None:
     try:
-        click_root()
+        # ---- register commands
+        for name, command in discover().items():
+            pkit_main.add_command(command, name=name)
+
+        # ---- invoke CLI
+        pkit_main()
 
     except PkitCoreError as e:
         mark.error(str(e))
@@ -249,4 +254,4 @@ def _wire_click_root():
     return pkit_main
 
 
-click_root = _wire_click_root()  # Used by pfig for Click usage extraction
+click_root = _wire_click_root()  # Used by psym for Click usage extraction

@@ -1,33 +1,33 @@
-.PHONY: all help init init-git init-gh \
+.PHONY: all help init init-git init-git-sanitize init-gh \
 		refresh reinstate reincarnate \
 		clean clean-pyc clean-build clean-docs clean-gen clean-bak \
 		check check-sys check-types check-readme check-lint check-style reformat \
 		test test-coverage test-all \
 		docs docs-% docs-%-% \
-		dist release unrelease publish unpublish \
-		pub-docs pub-gh pub-pypi pub-brew \
+		dist release unrelease publish \
+		pub-docs pub-pypi pub-brew \
 		status corpus
 
 
 .DEFAULT_GOAL := refresh
 
 # Require pfig
-PSYM := $(shell command -v pfig 2>/dev/null)
-ifeq ($(PSYM),)
+PFIG := $(shell command -v pfig 2>/dev/null)
+ifeq ($(PFIG),)
 $(error ❌ pfig is required. Install via: pipx install pfig)
 endif
 
 # exported variables
-export VERSION		:= $(shell pfig get -k project.version 2>/dev/null)
-export PROJECT_NAME	:= $(shell pfig get -k project.name 2>/dev/null)
+export PROJECT_NAME	:= $(shell pfig get -N 2>/dev/null)
+export VERSION		:= $(shell pfig get -V 2>/dev/null)
+export DIST_NAME	:= $(shell pfig get -D 2>/dev/null)
 
 # git tag state
 BRANCH				:= $(shell git rev-parse --abbrev-ref HEAD)
 TAG					:= $(if $(filter main,$(BRANCH)),v$(VERSION),$(BRANCH)/v$(VERSION))
 
 # Project metadata
-DOCS_ROOT			:= $(shell pfig get -k tool.pfig.docs-dir 2>/dev/null)
-DOCS_ROOT			?= docs
+DOCS_ROOT			:= $(or $(shell pfig get key tool.psym.docs-dir 2>/dev/null),docs)
 
 DOCS_TOOLS			:= $(filter-out __%,$(notdir $(patsubst %/,%,$(wildcard docs/*/))))
 ASSETS_DIR			:= $(PROJECT_NAME)/_assets
@@ -36,8 +36,8 @@ README_ROOT			:= README.md
 BREWREPO			:= homebrew-$(PROJECT_NAME)
 
 # Does this project need to be executed in-situ within target project?
-NPKG_TYPE			:= $(or $(shell pfig get -k tool.npkg.type 2>/dev/null),external)
-NPKG_ROLE			:= $(or $(shell pfig get -k tool.npkg.role 2>/dev/null),tool)
+NPKG_TYPE			:= $(or $(shell pfig get key tool.npkg.type 2>/dev/null),external)
+NPKG_ROLE			:= $(or $(shell pfig get key tool.npkg.role 2>/dev/null),tool)
 
 IS_IN_SITU			:= $(if $(filter in-situ,$(NPKG_TYPE)),1,0)
 IS_EXTERNAL			:= $(if $(filter external,$(NPKG_TYPE)),1,0)
@@ -74,6 +74,7 @@ all: clean check refresh docs test
 help:
 	@echo "init - populate a virtual env project with required dependencies"
 	@echo "init-git - create, initilize, and commit initial local git repo"
+	@echo "init-git-sanitize - sanitize (reset) an existing git repo"
 	@echo "init-gh - create github remote and push project to GitHub"
 	@echo "refresh - refresh $(PROJECT_NAME) into active venv (editable)"
 	@echo "reinstate - reinstantiate $(PROJECT_NAME) with latest dependencies."
@@ -107,11 +108,8 @@ help:
 	@echo "unrelease - remove local release from current environment and local installation (pipx)"
 	@echo "publish -  publish current release and documentation to GitHub for pip and brew install"
 	@echo "pub-docs - publish documents on GitHub.io"
-	@echo "pub-pfix - publish release to pfix static pip index"
-	@echo "pub-gh - publish release on GitHub"
 	@echo "pub-pypi - publish release on PyPi"
 	@echo "pub-brew - publish release on GitHub as homebrew tap"
-	@echo "unpublish -  remove named release from all published sites"
 
 init: $(INIT_STAMP)
 	@echo "✅ Project initialization complete."
@@ -162,15 +160,33 @@ $(INIT_STAMP):
 	@touch $(INIT_STAMP)
 
 init-git:
-	@if [ -d .git ]; then \
-		echo "⚠️ Git repo already exists. Skipping init."; \
-		exit 0; \
+	@if git rev-parse --git-dir >/dev/null 2>&1; then \
+		echo "❌ git repo exists, use make init-git-sanitize to sanitize repo."; \
+		echo "⚠️  Branches, tags, and remotes will be removed."; \
+	else \
+		echo "🔧 Initializing local git repo…"; \
+		git init; \
+		git checkout -b main; \
+		git add .; \
+		git commit -m 'Initial commit'; \
+		echo "✅ Local git repo ready."; \
 	fi
-	@echo "🔧 Initializing local git repo…"
-	@git init
-	@git add .
-	@git commit -m 'Initial commit'
-	@echo "✅ Local git repo ready."
+
+init-git-sanitize:
+	@if git rev-parse --git-dir >/dev/null 2>&1; then \
+		echo "🧹 Sanitizing existing git repository…"; \
+		echo "🔀 Ensuring main branch…"; \
+		git checkout main 2>/dev/null || git checkout -b main; \
+		echo "🗑️ Removing extraneous branches…"; \
+		git branch | grep -v "main" | xargs -r git branch -D || true; \
+		echo "🏷️ Removing inherited tags…"; \
+		git tag -l | xargs -r git tag -d || true; \
+		echo "🔗 Removing origin…"; \
+		git remote remove origin 2>/dev/null || true; \
+		echo "✅ Git repository sanitized."; \
+	else \
+		echo "❌ Not a git repo, use make init-git."; \
+	fi
 
 GH_VISIBILITY ?= private   # or override with: make init-gh GH_VISIBILITY=public
 
@@ -188,7 +204,7 @@ init-gh:
 		echo "⚠️ GitHub repo already exists; skipping creation."; \
 	else \
 		echo "📦 Creating GitHub repo: $(PROJECT_NAME) ($(GH_VISIBILITY))"; \
-		gh repo create $(PROJECT_NAME) --source=. --$(GH_VISIBILITY) --push; \
+		gh repo create $(PROJECT_NAME) --source=. --$(GH_VISIBILITY); \
 	fi
 	@echo "🔼 Pushing local history to GitHub…"
 	@git push -u origin main
@@ -417,17 +433,17 @@ manpath:
 # ------------------------------------------------------------
 
 dist:
-	@echo "📦 Building distribution artifacts…"
+	@echo "📦 Building distribution artifacts for $(DIST_NAME)…"
 
-	[ -n "$(PROJECT_NAME)" ] && rm -rf "$(PROJECT_NAME)/_assets"
+	rm -rf "$(PROJECT_NAME)/_assets"
 	rm -rf dist/
 
 	@echo "📜 Writing asset manifest…"
-	mkdir -p $(PROJECT_NAME)/_assets
-	pfig get -m > $(PROJECT_NAME)/_assets/manifest.toml
+	mkdir -p "$(PROJECT_NAME)/_assets"
+	pfig get -M > "$(PROJECT_NAME)/_assets/manifest.toml"
 
 	@echo "📦 Staging assets…"
-	pfig get -l | while IFS=$$'\t' read -r src dst; do \
+	pfig get -L | while IFS=$$'\t' read -r src dst; do \
 		dst="$(PROJECT_NAME)/$$dst"; \
 		mkdir -p "$$(dirname "$$dst")"; \
 		cp "$$src" "$$dst"; \
@@ -537,7 +553,7 @@ release: release-guard preflight
 	@# Local install via pipx (external tools only)
 	@# --------------------------------------------------------
 	@if [ "$(IS_TOOL)" = "1" ] && [ "$(IS_EXTERNAL)" = "1" ]; then \
-		WHEEL=$$(printf "%s\n" dist/*$(VERSION)*.whl 2>/dev/null | head -n 1); \
+		WHEEL=$$(ls dist/*.whl 2>/dev/null | head -n 1); \
 		if [ -z "$$WHEEL" ]; then \
 			echo "❌ No wheel found in dist/"; \
 			exit 1; \
@@ -569,24 +585,11 @@ pub-docs:
 	done
 
 # ------------------------------------------------------------
-#  Publish to private package index (pfix)
-# ------------------------------------------------------------
-
-pub-pfix: release
-	@echo "📦 Publishing to private index (pfix)…"
-	@if command -v pfix >/dev/null 2>&1; then \
-		pfix publish .; \
-	else \
-		echo "❌ pfix not available"; \
-		exit 1; \
-	fi
-
-# ------------------------------------------------------------
 #  🐍 Publish to PyPI
 # ------------------------------------------------------------
 
 pub-pypi: release
-	@echo "🚀 Uploading $(PROJECT_NAME) $(VERSION) to PyPI…"
+	@echo "🚀 Uploading $(DIST_NAME) $(VERSION) to PyPI…"
 	twine upload dist/*
 	@echo "📦 Uploaded to PyPI."
 
@@ -598,13 +601,6 @@ pub-brew: release
 	@echo "🍺 Updating Homebrew tap for $(PROJECT_NAME)…"
 	@echo "TODO: Implement formula generation + commit/push to $(BREWREPO)"
 	@echo "✔️ Brew publishing stub"
-
-# ------------------------------------------------------------
-#  🌍 Aggregate publish (outside this machine)
-# ------------------------------------------------------------
-
-publish: pub-pfix pub-pypi pub-brew
-	@echo "🌍 Publish complete for $(PROJECT_NAME) $(VERSION)"
 
 # ------------------------------------------------------------
 #  Generate complete pdf of source code for physical backup
