@@ -79,13 +79,13 @@ from pathlib import Path
 from npkglib import mark, signal, guppy
 from npkglib.mark import MarkContext
 from npkglib.guppy import Sink, FlatRenderer, ColumnRenderer
+from npkglib.api_gen import api
 
 from pkit.cmds import discover
 from pkit import __version__
 from pkit.context import PkitContext, PkitMode
 from pkit.core.exceptions import PkitCoreError
 import pkit.core.d2d as d2d
-from pkit.api import api
 
 # ---------------------------------------------------------------------------
 # Core runtime initialization

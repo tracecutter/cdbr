@@ -1,5 +1,5 @@
 """
-docs.pkit.backends.manpage.manpage
+docs.psym.backends.manpage.manpage
 
 Render manpage documentation artifacts.
 

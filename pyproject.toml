@@ -1,6 +1,6 @@
 [project]
 name = "pkit"
-version = "0.2.1"
+version = "0.2.2"
 description = "Canonical reference project for the npkg ecosystem."
 authors = [
   { name = "Bindar Dundat" }
@@ -8,7 +8,7 @@ authors = [
 readme = { file = "README.md", content-type = "text/markdown" }
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
@@ -23,35 +23,31 @@ classifiers = [
 ]
 
 dependencies = [
-    "click>=8.3.1",
-    "packaging>=26.0",
-    "npkglib>=1.0.0",
+    "click>=8.4.1",
+    "packaging>=26.2",
+    "npkglib>=1.1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     # configuration
-	"npkg-pfig>=1.4.0",
+	"npkg-pfig>=2.0.0",
 
     # docs
-	"npkg-psym>=0.1.0",
+    "npkg-psym>=0.1.0",
     "sphinx<9.0,>=8.2.3",
     "myst-parser<5.0.0",
     "furo>=2025.12.19",
-
     # test
-    "pytest>=9.0.2",
-
+    "pytest>=9.0.3",
     # lint/style
-    "ruff>=0.15.5",
+    "ruff>=0.15.15",
     "black<26.0,>=25.12.0",
-
     # typing
-    "mypy<2.0,>=1.19.1",
-
+    "mypy<3,>=2.1.0",
     # distribution
-    "build>=1.4.0",
-    "twine>=6.2",
+    "build>=1.5.0",
+    "twine>=6.2.0",
 ]
 
 [project.scripts]

@@ -7,7 +7,7 @@ Do not edit this artifact directly.
 **A Python project CLI utility base project powered by npkg.**
 
 <p align="center">
-  <img src="docs/pkit/assets/pkit.png" width="180" alt="pkit logo">
+  <img src="docs/psym/assets/pkit.png" width="180" alt="pkit logo">
 </p>
 
 <p align="center">

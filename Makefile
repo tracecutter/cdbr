@@ -4,7 +4,7 @@
 		check check-sys check-types check-readme check-lint check-style reformat \
 		test test-coverage test-all \
 		docs docs-% docs-%-% \
-		dist release unrelease publish \
+		dist release \
 		pub-docs pub-pypi pub-brew \
 		status corpus
 
@@ -105,8 +105,6 @@ help:
 	@echo "preflight - check everything is ready for release"
 	@echo "dist - generate full distribution and stage package for release."
 	@echo "release - tag, build, push, and perform local post-release install if applicable"
-	@echo "unrelease - remove local release from current environment and local installation (pipx)"
-	@echo "publish -  publish current release and documentation to GitHub for pip and brew install"
 	@echo "pub-docs - publish documents on GitHub.io"
 	@echo "pub-pypi - publish release on PyPi"
 	@echo "pub-brew - publish release on GitHub as homebrew tap"
@@ -215,7 +213,11 @@ init-gh:
 		CUR_BRANCH=$$(git branch --show-current); \
 		git checkout --orphan gh-pages >/dev/null 2>&1; \
 		git rm -rf . >/dev/null 2>&1 || true; \
-		printf "<!doctype html><meta charset=\"utf-8\"><title>$(PROJECT_NAME)</title><h1>$(PROJECT_NAME)</h1><p>GitHub Pages branch initialized.</p>\n" > index.html; \
+		@printf "<!doctype html>\n" > index.html; \
+		printf "<meta charset=\"utf-8\">\n" >> index.html; \
+		printf "<title>$(PROJECT_NAME)</title>\n" >> index.html; \
+		printf "<h1>$(PROJECT_NAME)</h1>\n" >> index.html; \
+		printf "<p>GitHub Pages branch initialized.</p>\n" >> index.html; \
 		touch .nojekyll; \
 		git add index.html .nojekyll; \
 		git commit -m "Initialize gh-pages" >/dev/null; \
@@ -251,7 +253,7 @@ reinstate:
 	$(call ensure-venv-active)
 	$(call ensure-correct-venv)
 	@echo "🔎 Validating declared intent…"
-	@pfig lint || (echo "❌ Package dependency version problem; fix with 'pfig restate' or edit pyproject.toml" && exit 1)
+	@pfig lint || (echo "❌ Package dependency version problem; fix: 'pfig restate' or edit pyproject.toml" && exit 1)
 	@echo "♻️  Reinstating environment to declared intent (eager)…"
 	python -m pip install -U pip setuptools wheel
 	python -m pip install --upgrade-strategy eager --editable .[dev]
@@ -464,11 +466,7 @@ dist:
 
 preflight: validate-npkg clean refresh docs docs-sync test check dist
 	@echo "🔍 Preflight: validating release readiness…"
-	@if [ "$(IS_TOOL)" = "1" ]; then \
-		pfig lint release; \
-	else \
-		echo "ℹ️ Skipping release-mode system lint (package project)"; \
-	fi
+	@pfig lint release
 	@echo "✅ Takeoff clearance granted for $(PROJECT_NAME) $(VERSION)"
 
 release-guard:
@@ -548,23 +546,6 @@ release: release-guard preflight
 		echo "⚠️  GitHub Pages not configured."; \
 		echo "   Go to: Settings → Pages → set source to gh-pages branch."; \
 	}
-
-	@# --------------------------------------------------------
-	@# Local install via pipx (external tools only)
-	@# --------------------------------------------------------
-	@if [ "$(IS_TOOL)" = "1" ] && [ "$(IS_EXTERNAL)" = "1" ]; then \
-		WHEEL=$$(ls dist/*.whl 2>/dev/null | head -n 1); \
-		if [ -z "$$WHEEL" ]; then \
-			echo "❌ No wheel found in dist/"; \
-			exit 1; \
-		fi; \
-		echo "📦 Installing via pipx…"; \
-		pipx install --force "$$WHEEL" >/dev/null || { \
-			echo "❌ pipx install failed"; exit 1; \
-		}; \
-	else \
-		echo "ℹ️ Skipping pipx install"; \
-	fi
 
 	@echo "🎉 Local release complete for $(PROJECT_NAME) $(VERSION)"
 
