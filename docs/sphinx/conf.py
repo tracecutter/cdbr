@@ -52,6 +52,7 @@ html_theme = "furo"
 
 html_static_path = ["_static"]
 html_logo = "_static/pkit.png"
+html_favicon = "_static/favicon.ico"
 html_title = f"{project} {release}"
 
 html_theme_options = {
