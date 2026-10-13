@@ -1,13 +1,13 @@
 """
 pkit.main
 
-A npkg utility.
+A single-command npkg utility template.
 
 [[meta.title]]
 pkit
 
 [[meta.tagline]]
-A Python project CLI utility base project powered by npkg.
+A Python single-command CLI utility base project powered by npkg.
 
 [[meta.brief]]
 This package is forked by pfork to bootstrap a new npkg powered package.
@@ -29,16 +29,12 @@ https://tracecutter.github.io/npkg/
 Built with Sphinx and hosted on GitHub Pages.
 
 [[section.quickstart.intro]]
-pkit is a Python CLI utiity powered by npkg.
+pkit is a Python single-command CLI utility powered by npkg.
 
 [[section.quickstart.install]]
 ```bash
 pip install pkit    # or pipx
 ```
-
-[[section.quickstart.safety]]
-Most pkit commands support --dry-run, which shows what would change without modifying your project.
-When exploring, it’s a good idea to start with --dry-run until you’re comfortable with the results.
 
 [[section.quickstart.first_command]]
 To start:
@@ -47,20 +43,10 @@ To start:
 pkit --help
 ```
 
-[[section.quickstart.workflow]]
-A typical workflow might look like this:
-
-```bash
-pkit sub
-pkit help
-```
-
-[[section.quickstart.next]]
-See the User Guide for more detailed workflows.
-
 [[section.status]]
 - Python 3.11+
 - Click-based CLI
+- Single-command interface
 - Proprietary license
 
 [[section.links]]
@@ -70,60 +56,94 @@ See the User Guide for more detailed workflows.
 
 INTERNAL
 
-:copyright: Copyright (c) 2025 John Fogelin. All rights reserved. See AUTHORS.
+:copyright: Copyright (c) 2026 John Fogelin. All rights reserved. See AUTHORS.
 :license: PROPRIETARY, see LICENSE for details.
 """
 
-import pkit.ui as click
-from pathlib import Path
-from npkglib import mark, signal, guppy
-from npkglib.mark import MarkContext
-from npkglib.guppy import Sink, FlatRenderer, ColumnRenderer
-from npkglib.api_gen import api
+from __future__ import annotations
 
-from pkit.cmds import discover
+from dataclasses import dataclass
+from pathlib import Path
+
+import pkit.ui as click
+from npkglib import guppy, mark, signal
+from npkglib.api_gen import api
+from npkglib.guppy import ColumnRenderer, FlatRenderer, Sink
+from npkglib.mark import MarkContext
+
 from pkit import __version__
 from pkit.context import PkitContext, PkitMode
+from pkit.core import cmd_options
 from pkit.core.exceptions import PkitCoreError
 import pkit.core.d2d as d2d
+
 
 # ---------------------------------------------------------------------------
 # Core runtime initialization
 # ---------------------------------------------------------------------------
 
-# Populate API registry by importing package modules.
-# In pkit, API declaration via @api is a core feature.
 api.discover("pkit")
-
-# Initialize d2d asset routing (manpages, examples, etc.).
 d2d.ready("pkit")
 
-# ------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------
 
-ArgPath = click.Path(path_type=Path)
-
-SYSTEM_COMMANDS = {"help"}
+# ---------------------------------------------------------------------------
+# Help text
+# ---------------------------------------------------------------------------
 
 HELP_FILE = "Project configuration file."
 HELP_DIFF = "Diff output format."
-HELP_SIGNAL = "Enable signalling (e.g. trace,telemetry), comma-separated selection."
+HELP_DRY_RUN = "No mutations."
+HELP_PATH = "O'er there."
+HELP_NAME = "A rose by any other name."
+HELP_LIST = "A list."
+HELP_PATTERN = "Pattern like a regex or glob."
+HELP_LUCK = "No, no."
+HELP_MODE = "Modality."
+HELP_VERBOSE = "Engage gabby gossip."
+HELP_OUTPUT = "Output format."
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+ArgPath = click.Path(path_type=Path)
 
 DIFF_CANONICAL = ("2up", "lines")
 DIFF_ALIASES = {
-    # canonical
     "2up": "2up",
     "lines": "lines",
-    # side-by-side aliases
     "side-by-side": "2up",
     "side_by_side": "2up",
     "sbs": "2up",
-    # line-based aliases
     "1up": "lines",
     "plain": "lines",
     "classic": "lines",
 }
+
+
+# ---------------------------------------------------------------------------
+# Command context
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, kw_only=True)
+class PkitCmdContext(PkitContext):
+    args: tuple[str, ...]
+    dry_run: bool
+    path: Path | None
+    name: str | None
+    list_: bool
+    patterns: tuple[str, ...]
+    luck: bool
+    cmdmode: str | None
+    verbosity: int
+    output: str
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _diff_pick(ctx, param, value):
@@ -145,91 +165,161 @@ def _make_renderer(layout: str) -> Sink:
     return FlatRenderer()
 
 
-# ------------------------------------------------------------------
-# Click Main Function: The entry point you are looking for
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Worker
+# ---------------------------------------------------------------------------
 
 
-@click.group(
+def pkit(ctx: PkitCmdContext) -> None:
+    """Worker demonstrating simple normalization + reporting."""
+
+    selected_mode = cmd_options.mode_derive(ctx)
+
+    mark.info("pkit invocation")
+
+    if ctx.args:
+        mark.info(f"args        : {ctx.args}")
+
+    if ctx.patterns:
+        mark.info(f"patterns    : {ctx.patterns}")
+
+    if ctx.path:
+        mark.info(f"path        : {ctx.path}")
+
+    if ctx.name:
+        mark.info(f"name        : {ctx.name}")
+
+    if ctx.list_:
+        mark.info("list        : enabled")
+
+    mark.info(f"dry_run     : {ctx.dry_run}")
+    mark.info(f"luck        : {ctx.luck}")
+    mark.info(f"cmdmode     : {selected_mode.name.lower()}")
+    mark.info(f"verbose     : {ctx.verbosity}")
+    mark.info(f"output      : {ctx.output}")
+
+    if ctx.dry_run:
+        mark.warn("dry-run enabled — no actions will be taken")
+
+    if ctx.luck:
+        mark.warn("luck flag enabled — proceeding aggressively")
+
+
+# ---------------------------------------------------------------------------
+# Click entry point
+# ---------------------------------------------------------------------------
+
+
+@click.command(
     name="pkit",
-    invoke_without_command=True,
     context_settings={
         "help_option_names": ["-h", "--help"],
         "max_content_width": 100,
         "color": True,
     },
 )
-@click.option("-f", "--file", "file", default="pyproject.toml", show_default=True, type=ArgPath, help=HELP_FILE)
+@click.argument("args", nargs=-1)
+@click.option("-f", "--file", default="pyproject.toml", show_default=True, type=ArgPath, help=HELP_FILE)
 @click.option("-q", "--quiet", is_flag=True, help="Suppress output.")
-@click.option("-v", "--verbose", is_flag=True, help="Verbose output.")
 @click.option("--trace", is_flag=True, help="Enable trace instrumentation.")
 @click.option("--telemetry", is_flag=True, help="Enable telemetry instrumentation.")
 @click.option("--layout", type=click.Choice(["1up", "nup"]), default="1up", show_default=True, help="Output layout.")
 @click.option("--emoji/--no-emoji", default=True, help="Enable emoji prefixes in output. [default: true]")
 @click.option("--diff", callback=_diff_pick, metavar="{2up|lines}", default="2up", show_default=True, help=HELP_DIFF)
+@click.option("-d", "--dry-run", is_flag=True, help=HELP_DRY_RUN)
+@click.option("--path", type=click.Path(file_okay=False, path_type=Path), help=HELP_PATH)
+@click.option("-n", "--name", help=HELP_NAME)
+@click.option("-l", "--list", "list_", is_flag=True, help=HELP_LIST)
+@click.option("-p", "--pattern", "patterns", multiple=True, metavar="TEXT", help=HELP_PATTERN)
+@click.option("--luck/--no-luck", default=False, help=HELP_LUCK)
+@click.option("--mode", "cmdmode", type=click.Choice(["nup", "2up", "upyours"]), help=HELP_MODE)
+@click.option("-v", "--verbose", count=True, help=HELP_VERBOSE)
+@click.option("--output", required=True, help=HELP_OUTPUT)
 @click.version_option(__version__, "-V", "--version", prog_name="pkit")
 @click.pass_context
-def pkit_main(click_ctx, *, file, quiet, verbose, emoji, diff, trace, telemetry, layout):
+def pkit_main(
+    click_ctx,
+    args,
+    file,
+    quiet,
+    trace,
+    telemetry,
+    layout,
+    emoji,
+    diff,
+    dry_run,
+    path,
+    name,
+    list_,
+    patterns,
+    luck,
+    cmdmode,
+    verbose,
+    output,
+):
     """
-    This package is forked by pfork to bootstrap a new npkg powered package.
-
-    Run `pkit <command> --help` for command-specific help.
+    Minimal single-command kitchen sink demonstrating core Click patterns.
 
     See `man pkit` or the user guide for full documentation.
-
-    Full documentation: https://tracecutter.github.io/pkit/
     """
 
-    # Configure narration policy
-    mark.configure(MarkContext(quiet=quiet, verbose=verbose, emoji=emoji))
+    mark.configure(MarkContext(quiet=quiet, verbose=bool(verbose), emoji=emoji))
 
-    # Signal configuration
-    signalers = tuple(name for name, enabled in (("trace", trace), ("telemetry", telemetry)) if enabled)
-    signal.configure(tuple(signalers))
+    signalers = tuple(
+        name
+        for name, enabled in (
+            ("trace", trace),
+            ("telemetry", telemetry),
+        )
+        if enabled
+    )
+    signal.configure(signalers)
 
-    # Guppy bootstrap
     if signalers or layout != "1up":
         guppy.bootstrap()
         guppy.event_bus().sink_add(_make_renderer(layout))
 
-    # No subcommand → show help
-    if click_ctx.invoked_subcommand is None:
-        click.echo(pkit_main.get_help(click_ctx))
-        click_ctx.exit(0)
-
-    # bail out before context constructed for SYSTEM_COMMANDS
-    if click_ctx.invoked_subcommand in SYSTEM_COMMANDS:
-        return
-
-    # Normalize CLI options
     try:
         diff_mode = DIFF_ALIASES[diff.lower()]
     except KeyError:
         raise click.UsageError(f"Invalid diff mode: {diff}") from None
 
-    # Build context with selected mode
-    mode = PkitMode(quiet=quiet, verbose=verbose, emoji=emoji, diff=diff_mode)
-    pkit_ctx = PkitContext(mode=mode)
+    mode = PkitMode(quiet=quiet, verbose=bool(verbose), emoji=emoji, diff=diff_mode)
+    root = PkitContext(mode=mode)
 
-    # Attach pkit context to Click root
-    click_ctx.obj = pkit_ctx
+    ctx = root.extend(
+        PkitCmdContext,
+        args=tuple(args),
+        dry_run=dry_run,
+        path=path,
+        name=name,
+        list_=list_,
+        patterns=tuple(patterns),
+        luck=luck,
+        cmdmode=cmdmode,
+        verbosity=verbose,
+        output=output,
+    )
+
+    click_ctx.obj = ctx
+
+    pkit(ctx)
 
 
-# The main function that happens before pkit_main.
+# ---------------------------------------------------------------------------
+# Process entry point
+# ---------------------------------------------------------------------------
+
+
 def main() -> None:
     try:
-        # ---- register commands
-        for name, command in discover().items():
-            pkit_main.add_command(command, name=name)
-
-        # ---- invoke CLI
         pkit_main()
 
     except PkitCoreError as e:
         mark.error(str(e))
         raise SystemExit(2) from None
 
-    except ValueError as e:  # For now... we need better exception raising
+    except ValueError as e:
         mark.error(str(e))
         raise SystemExit(2) from None
 
@@ -238,20 +328,9 @@ def main() -> None:
         raise SystemExit(130) from None
 
 
-# The entry point
 if __name__ == "__main__":
     main()
 
 
-def _wire_click_root():
-    """
-    Ensure the root Click command has all discovered subcommands attached.
-    Safe to call multiple times.
-    """
-    if not pkit_main.commands:
-        for name, command in discover().items():
-            pkit_main.add_command(command, name=name)
-    return pkit_main
-
-
-click_root = _wire_click_root()  # Used by psym for Click usage extraction
+# Used by psym for Click usage extraction.
+click_root = pkit_main

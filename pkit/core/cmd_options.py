@@ -1,5 +1,5 @@
 """
-pkit.core.sub_options
+pkit.core.cmd_options
 
 Option combinatorial hygiene checking (mock)
 
@@ -15,7 +15,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Protocol
 
-from pkit.core.exceptions import InvalidSubOption
+from pkit.core.exceptions import InvalidCmdOption
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +23,7 @@ from pkit.core.exceptions import InvalidSubOption
 # ---------------------------------------------------------------------------
 
 
-class _SubCtx(Protocol):
+class _CmdCtx(Protocol):
 
     @property
     def args(self) -> tuple[str, ...]: ...
@@ -47,10 +47,7 @@ class _SubCtx(Protocol):
     def luck(self) -> bool: ...
 
     @property
-    def submode(self) -> str | None: ...
-
-    @property
-    def verbose(self) -> int: ...
+    def verbosity(self) -> int: ...
 
     @property
     def output(self) -> str: ...
@@ -61,7 +58,7 @@ class _SubCtx(Protocol):
 # ---------------------------------------------------------------------------
 
 
-class SubMode(Enum):
+class CmdMode(Enum):
     LIST = auto()
     FILTER = auto()
     LUCK = auto()
@@ -82,21 +79,21 @@ def _flag_enabled(value) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def mode_derive(ctx: _SubCtx) -> SubMode:
+def mode_derive(ctx: _CmdCtx) -> CmdMode:
     """
     Derive a crude operational mode from CLI flags.
     """
 
     if ctx.list_:
-        return SubMode.LIST
+        return CmdMode.LIST
 
     if ctx.patterns:
-        return SubMode.FILTER
+        return CmdMode.FILTER
 
     if ctx.luck:
-        return SubMode.LUCK
+        return CmdMode.LUCK
 
-    return SubMode.RENDER
+    return CmdMode.RENDER
 
 
 # ---------------------------------------------------------------------------
@@ -104,39 +101,39 @@ def mode_derive(ctx: _SubCtx) -> SubMode:
 # ---------------------------------------------------------------------------
 
 
-def mode_validate(ctx: _SubCtx, mode: SubMode) -> None:
+def mode_validate(ctx: _CmdCtx, mode: CmdMode) -> None:
     """
     Very loose / illustrative validation rules.
     """
 
     # ---- list mode should be "pure"
-    if mode == SubMode.LIST:
+    if mode == CmdMode.LIST:
         if ctx.patterns:
-            raise InvalidSubOption("--list cannot be combined with --pattern")
+            raise InvalidCmdOption("--list cannot be combined with --pattern")
         if ctx.luck:
-            raise InvalidSubOption("--list cannot be combined with --luck")
+            raise InvalidCmdOption("--list cannot be combined with --luck")
 
     # ---- filter mode needs something to filter
-    if mode == SubMode.FILTER:
+    if mode == CmdMode.FILTER:
         if not ctx.patterns:
-            raise InvalidSubOption("filter mode requires at least one --pattern")
+            raise InvalidCmdOption("filter mode requires at least one --pattern")
 
     # ---- luck mode is exclusive (because why not)
     if ctx.luck:
         if ctx.patterns:
-            raise InvalidSubOption("--luck cannot be combined with --pattern")
+            raise InvalidCmdOption("--luck cannot be combined with --pattern")
         if ctx.list_:
-            raise InvalidSubOption("--luck cannot be combined with --list")
+            raise InvalidCmdOption("--luck cannot be combined with --list")
 
     # ---- render mode sanity
-    if mode == SubMode.RENDER:
+    if mode == CmdMode.RENDER:
         if not ctx.output:
-            raise InvalidSubOption("render mode requires --output")
+            raise InvalidCmdOption("render mode requires --output")
 
     # ---- path sanity (generic)
     if _flag_enabled(ctx.path) and not isinstance(ctx.path, Path):
-        raise InvalidSubOption("--path must be a directory path")
+        raise InvalidCmdOption("--path must be a directory path")
 
     # ---- verbosity sanity (just illustrative)
-    if ctx.verbose < 0:
-        raise InvalidSubOption("--verbose cannot be negative")
+    if ctx.verbosity < 0:
+        raise InvalidCmdOption("--verbose cannot be negative")

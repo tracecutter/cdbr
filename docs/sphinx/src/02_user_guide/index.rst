@@ -14,6 +14,7 @@ Status
 
 - Python 3.11+
 - Click-based CLI
+- Single-command interface
 - Proprietary license
 
 Links

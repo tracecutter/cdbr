@@ -4,7 +4,7 @@ Do not edit this artifact directly.
 -->
 # pkit
 
-**A Python project CLI utility base project powered by npkg.**
+**A Python single-command CLI utility base project powered by npkg.**
 
 <p align="center">
   <img src="docs/psym/assets/pkit.png" width="180" alt="pkit logo">
@@ -81,7 +81,7 @@ Once configured, artifact delivery happens automatically and silently.
 
 ## Quick start 
 
-pkit is a Python CLI utiity powered by npkg.
+pkit is a Python single-command CLI utility powered by npkg.
 
 ### First command
 
@@ -93,21 +93,15 @@ pkit --help
 
 ### Safe exploration
 
-Most pkit commands support --dry-run, which shows what would change without modifying your project.
-When exploring, it’s a good idea to start with --dry-run until you’re comfortable with the results.
+{{ code.section.quickstart.safety }}
 
 ### Sample workflow
 
-A typical workflow might look like this:
-
-```bash
-pkit sub
-pkit help
-```
+{{ code.section.quickstart.workflow }}
 
 ### Next steps
 
-See the User Guide for more detailed workflows.
+{{ code.section.quickstart.next }}
 
 ---
 
@@ -125,31 +119,32 @@ Built with Sphinx and hosted on GitHub Pages.
 
 
 ```text
-Usage:  [OPTIONS] COMMAND [ARGS]...
+Usage:  [OPTIONS] [ARGS]...
 
-  This package is forked by pfork to bootstrap a new npkg powered package.
-
-  Run `pkit <command> --help` for command-specific help.
+  Minimal single-command kitchen sink demonstrating core Click patterns.
 
   See `man pkit` or the user guide for full documentation.
 
-  Full documentation: https://tracecutter.github.io/pkit/
-
 Options:
-  -f, --file PATH       Project configuration file.  [default: pyproject.toml]
-  -q, --quiet           Suppress output.
-  -v, --verbose         Verbose output.
-  --trace               Enable trace instrumentation.
-  --telemetry           Enable telemetry instrumentation.
-  --layout [1up|nup]    Output layout.  [default: 1up]
-  --emoji / --no-emoji  Enable emoji prefixes in output. [default: true]
-  --diff {2up|lines}    Diff output format.  [default: 2up]
-  -V, --version         Show the version and exit.
-  --help                Show this message and exit.
-
-Commands:
-  help  Display help for pkit or a named subcommand.
-  sub   Minimal kitchen sink demonstrating core Click patterns.
+  -f, --file PATH           Project configuration file.  [default:
+                            pyproject.toml]
+  -q, --quiet               Suppress output.
+  --trace                   Enable trace instrumentation.
+  --telemetry               Enable telemetry instrumentation.
+  --layout [1up|nup]        Output layout.  [default: 1up]
+  --emoji / --no-emoji      Enable emoji prefixes in output. [default: true]
+  --diff {2up|lines}        Diff output format.  [default: 2up]
+  -d, --dry-run             No mutations.
+  --path DIRECTORY          O'er there.
+  -n, --name TEXT           A rose by any other name.
+  -l, --list                A list.
+  -p, --pattern TEXT        Pattern like a regex or glob.
+  --luck / --no-luck        No, no.
+  --mode [nup|2up|upyours]  Modality.
+  -v, --verbose             Engage gabby gossip.
+  --output TEXT             Output format.  [required]
+  -V, --version             Show the version and exit.
+  --help                    Show this message and exit.
 ```
 
 
@@ -225,6 +220,7 @@ the caller and written by the compiler.
 
 - Python 3.11+
 - Click-based CLI
+- Single-command interface
 - Proprietary license
 
 ---

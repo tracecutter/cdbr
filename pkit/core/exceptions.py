@@ -13,13 +13,13 @@ class PkitCoreError(Exception):
 
 
 # ---------------------------------------------------------------------------
-# Example subcmd errors
+# Example cmd errors
 # ---------------------------------------------------------------------------
 
 
-class PkitSubError(PkitCoreError):
+class PkitCmdError(PkitCoreError):
     """Base class for documentation-related errors."""
 
 
-class InvalidSubOption(PkitSubError):
-    """Invalid subcmd command option combination."""
+class InvalidCmdOption(PkitCmdError):
+    """Invalid command option combination."""

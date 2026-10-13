@@ -13,8 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-from psym import SymbolTable, CLISpec, ArgSpec, PsymDocsBackendError
-from psym import symbol_add, symbols_code_extract
+
+from psym import ArgSpec, CLISpec, SymbolTable
+from psym import symbol_add
+
 
 # ---------------------------------------------------------------------------
 # ManpageSymtab Class
@@ -25,13 +27,11 @@ from psym import symbol_add, symbols_code_extract
 class ManpageSymtab:
     symbols: SymbolTable
     cli: Any
-    command: Any  # always set (None only if you explicitly pass it)
 
     prog: str
     section: int
     meta: dict[str, Any]
 
-    # ---- Root
     def root(self) -> dict:
         symtab = self.symbols.clone()
 
@@ -39,52 +39,15 @@ class ManpageSymtab:
         _add(symtab, "dynamic.manpage.prog", self.prog, fmt="text")
         _add(symtab, "dynamic.manpage.section", self.section, fmt="text")
 
-        # ---- dynamic root sections
+        # ---- dynamic sections
         _add(symtab, "dynamic.manpage.cli.synopsis", _value_synopsis(self.cli))
         _add(symtab, "dynamic.manpage.section.options", _value_options(self.cli.options))
-        _add(symtab, "dynamic.manpage.section.commands", _value_commands(self.cli.commands))
         _add(symtab, "dynamic.manpage.section.exit_status", _value_exit_status(self.prog))
-        _add(symtab, "dynamic.manpage.section.see_also", _value_see_also(self.cli.commands))
+        _add(symtab, "dynamic.manpage.section.see_also", _value_see_also())
 
         # ---- meta symbols
         for name, value in self.meta.items():
             _add(symtab, name, value)
-
-        return symtab
-
-    # ---- Subcommand
-    def subcmd(self) -> dict:
-        symtab = self.symbols.clone()
-
-        cmd = self.command
-
-        sub_spec = CLISpec(
-            prog=f"{self.prog} {cmd.name}",
-            help=cmd.help,
-            tagline=cmd.tagline,
-            options=cmd.options,
-            args=getattr(cmd, "args", []),
-            commands=[],
-        )
-
-        # ---- Subcommand dynamic symbols
-        _add(symtab, "dynamic.subcmd.name", cmd.name, fmt="text")
-        _add(symtab, "dynamic.subcmd.name.upper", cmd.name.upper(), fmt="text")
-        _add(symtab, "dynamic.subcmd.name.title", cmd.name.title(), fmt="text")
-        _add(symtab, "dynamic.subcmd.name.lower", cmd.name.lower(), fmt="text")
-        _add(symtab, "dynamic.subcmd.tagline", cmd.tagline, fmt="text")
-
-        _add(symtab, "dynamic.subcmd.synopsis", _value_synopsis(sub_spec))
-        _add(symtab, "dynamic.subcmd.options", _value_options(sub_spec.options))
-
-        # ---- Source extraction
-        source_root = self.meta["source_root"]
-        subcmd_path = (source_root / "cmds" / cmd.name).with_suffix(".py")
-
-        if not subcmd_path.exists():
-            raise PsymDocsBackendError(f"{cmd.name}: source file not found: {subcmd_path}")
-
-        symbols_code_extract(symtab, [subcmd_path])
 
         return symtab
 
@@ -135,17 +98,6 @@ def _synopsis_token(opt) -> str:
     if len(forms) == 1:
         return f"[{forms[0]}]"
     return "[{}]".format(" | ".join(forms))
-
-
-def _short_description(help_text: str) -> str:
-    for line in help_text.splitlines():
-        s = line.strip()
-        if not s:
-            continue
-        if s.startswith("Usage:"):
-            continue
-        return s
-    return ""
 
 
 def _value_synopsis(spec: CLISpec) -> str:
@@ -253,10 +205,6 @@ def _value_synopsis(spec: CLISpec) -> str:
                 # single option line → inline
                 out[-1] += " " + positional
 
-    # Root-only
-    if spec.commands:
-        out.append(" " * indent + "<command> [args...]")
-
     return "\n".join(out)
 
 
@@ -294,41 +242,15 @@ def _render_arg(a: ArgSpec) -> str:
     return token
 
 
-def _value_commands(commands) -> str:
+def _value_see_also() -> str:
+    refs = [
+        ".BR pip (1)",
+        ".BR pipx (1)",
+        ".BR build (1)",
+    ]
+
     lines: list[str] = []
 
-    # Tighten spacing between .TP items
-    lines.append(".PD 0")
-
-    for cmd in commands:
-        lines.append(".TP")
-        lines.append(".B " + cmd.name)
-        lines.append(_short_description(cmd.help))
-
-    # Restore default paragraph distance (tweak if you prefer)
-    lines.append(".PD 1v")
-
-    return "\n".join(lines)
-
-
-def _value_see_also(commands) -> str:
-    lines: list[str] = []
-
-    # Generate subcommand manpage references
-    refs: list[str] = []
-    for cmd in commands:
-        refs.append(f".BR pkit-{cmd.name} (1)")
-
-    # Optional: external tools
-    refs.extend(
-        [
-            ".BR pip (1)",
-            ".BR pipx (1)",
-            ".BR build (1)",
-        ]
-    )
-
-    # Add commas except for last entry
     for i, ref in enumerate(refs):
         if i < len(refs) - 1:
             lines.append(ref + ",")
@@ -339,4 +261,4 @@ def _value_see_also(commands) -> str:
 
 
 def _value_exit_status(prog: str) -> str:
-    return f"The \\fB{prog}\\fR command exits with status 0 on success and a non-zero value if an error occurs."
+    return f"The \\fB{prog}\\fR command exits with status 0 on success " "and a non-zero value if an error occurs."

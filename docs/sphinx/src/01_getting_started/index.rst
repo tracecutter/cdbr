@@ -1,7 +1,7 @@
 Getting Started
 ===============
 
-pkit is a Python CLI utiity powered by npkg.
+pkit is a Python single-command CLI utility powered by npkg.
 
 Installation
 ------------
@@ -13,7 +13,7 @@ Installation
 Safe Exploration
 ----------------
 
-Most pkit commands support –dry-run, which shows what would change without modifying your project. When exploring, it’s a good idea to start with –dry-run until you’re comfortable with the results.
+{{ code.section.quickstart.safety }}
 
 First Command
 -------------
@@ -27,14 +27,9 @@ To start:
 Sample Workflow
 ---------------
 
-A typical workflow might look like this:
-
-.. code:: bash
-
-   pkit sub
-   pkit help
+{{ code.section.quickstart.workflow }}
 
 Next Steps
 ----------
 
-See the User Guide for more detailed workflows.
+{{ code.section.quickstart.next }}

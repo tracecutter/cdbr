@@ -5,7 +5,7 @@
 pkit
 ====
 
-A Python project CLI utility base project powered by npkg.
+A Python single-command CLI utility base project powered by npkg.
 
 .. image:: ../_static/pkit.png
    :align: center

@@ -15,9 +15,6 @@
 .SH OPTIONS
 {{ dynamic.manpage.section.options }}
 
-.SH COMMANDS
-{{ dynamic.manpage.section.commands }}
-
 .SH ENVIRONMENT
 .TP
 .B PKIT_CONFIG
