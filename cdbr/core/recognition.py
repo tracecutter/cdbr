@@ -41,19 +41,14 @@ def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
         raise ValueError(f"{command[0]} failed: {detail}") from None
 
 
-def normalize_photo(source: Path, destination: Path) -> None:
+def normalize_photo(source: Path, destination: Path, *, maximum_size: int | None = 1600) -> None:
     """Decode a photograph into an orientation-corrected working PNG."""
 
-    _run(
-        [
-            "magick",
-            str(source),
-            "-auto-orient",
-            "-resize",
-            "1600x1600>",
-            str(destination),
-        ]
-    )
+    command = ["magick", str(source), "-auto-orient"]
+    if maximum_size is not None:
+        command.extend(["-resize", f"{maximum_size}x{maximum_size}>"])
+    command.append(str(destination))
+    _run(command)
 
 
 def _ordered_corners(points: np.ndarray) -> np.ndarray:
@@ -71,9 +66,8 @@ def _ordered_corners(points: np.ndarray) -> np.ndarray:
     )
 
 
-def extract_grid(image: np.ndarray) -> np.ndarray:
-    """Locate the near-square puzzle grid and rectify its perspective."""
-
+def find_grid_corners(image: np.ndarray) -> np.ndarray:
+    """Locate and order the four outer puzzle-grid corners."""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     binary = cv2.adaptiveThreshold(
         gray,
@@ -105,7 +99,13 @@ def extract_grid(image: np.ndarray) -> np.ndarray:
     if not candidates:
         raise ValueError("Could not locate a square puzzle grid in the photograph")
 
-    corners = _ordered_corners(max(candidates, key=lambda candidate: candidate[0])[1])
+    return _ordered_corners(max(candidates, key=lambda candidate: candidate[0])[1])
+
+
+def extract_grid(image: np.ndarray) -> np.ndarray:
+    """Locate the near-square puzzle grid and rectify its perspective."""
+
+    corners = find_grid_corners(image)
     destination = np.array(
         [[0, 0], [WARP_SIZE - 1, 0], [WARP_SIZE - 1, WARP_SIZE - 1], [0, WARP_SIZE - 1]],
         dtype=np.float32,
@@ -252,8 +252,8 @@ def _retry_cell(reading: CellReading, work_dir: Path, template_value: int | None
     return max(attempts, key=lambda attempt: attempt.confidence)
 
 
-def extract_reference_grid(image: np.ndarray) -> np.ndarray:
-    """Locate and rectify the two-row 1–26 reference strip."""
+def find_reference_corners(image: np.ndarray) -> np.ndarray:
+    """Return the ordered corners of the two-row 1–26 reference strip."""
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 51, 9)
@@ -278,7 +278,13 @@ def extract_reference_grid(image: np.ndarray) -> np.ndarray:
             candidates.append((area_fraction, points))
     if not candidates:
         raise ValueError("Could not locate the numbered reference grid")
-    corners = _ordered_corners(max(candidates, key=lambda candidate: candidate[0])[1])
+    return _ordered_corners(max(candidates, key=lambda candidate: candidate[0])[1])
+
+
+def extract_reference_grid(image: np.ndarray) -> np.ndarray:
+    """Locate and rectify the two-row 1–26 reference strip."""
+
+    corners = find_reference_corners(image)
     destination = np.array([[0, 0], [1299, 0], [1299, 199], [0, 199]], dtype=np.float32)
     transform = cv2.getPerspectiveTransform(corners, destination)
     return cv2.warpPerspective(image, transform, (1300, 200))
@@ -369,6 +375,55 @@ def _digit_templates(reference_grid: np.ndarray) -> dict[str, list[np.ndarray]]:
     if any(not samples for samples in templates.values()):
         raise ValueError("Reference grid did not provide templates for every digit")
     return templates
+
+
+def extract_clues(reference_grid: np.ndarray, work_dir: Path) -> dict[int, str]:
+    """Read the large handwritten letters from the numbered reference cells."""
+
+    clues: dict[int, str] = {}
+    for value in range(1, 27):
+        row = 0 if value <= 13 else 1
+        column = (value - 1) % 13
+        cell = reference_grid[
+            row * 100 : (row + 1) * 100,
+            column * 100 : (column + 1) * 100,
+        ]
+        region = cell[35:95, 10:90]
+        gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
+        binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        count, labels, statistics, _ = cv2.connectedComponentsWithStats(binary)
+        cleaned = np.full_like(binary, 255)
+        found = False
+        for index in range(1, count):
+            _, _, width, height, area = statistics[index]
+            if height >= 25 and 8 <= width < 60 and area >= 100:
+                cleaned[labels == index] = 0
+                found = True
+        if not found:
+            continue
+        cleaned = cv2.copyMakeBorder(cleaned, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
+        cleaned = cv2.resize(cleaned, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST)
+        image_path = work_dir / f"clue-{value}.png"
+        cv2.imwrite(str(image_path), cleaned)
+        result = _run(
+            [
+                "tesseract",
+                str(image_path),
+                "stdout",
+                "--psm",
+                "10",
+                "-l",
+                "eng",
+                "-c",
+                "tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            ]
+        )
+        letter = result.stdout.strip().upper()
+        if len(letter) == 1 and letter.isalpha():
+            clues[value] = letter
+    if len(set(clues.values())) != len(clues):
+        raise ValueError("Recognised reference clues violate the letter bijection")
+    return clues
 
 
 def _classify_from_reference(
@@ -462,10 +517,12 @@ def recognize_photo(source: Path, work_dir: Path) -> PuzzleObservation:
     except ValueError:
         templates = None
         digit_templates = None
+        clues: dict[int, str] = {}
     else:
         cv2.imwrite(str(work_dir / "reference-grid.png"), reference_grid)
         templates = _reference_templates(reference_grid)
         digit_templates = _digit_templates(reference_grid)
+        clues = extract_clues(reference_grid, work_dir)
 
     cells = _cell_images(grid_image)
     blocks = _block_mask(cells)
@@ -604,6 +661,6 @@ def recognize_photo(source: Path, work_dir: Path) -> PuzzleObservation:
         source=source,
         source_format=photo_format.display_name,
         grid=tuple(rows),
-        clues={},
+        clues=clues,
         uncertainties=tuple(uncertainties),
     )

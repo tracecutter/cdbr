@@ -8,12 +8,16 @@ INTERNAL
 """
 
 from pathlib import Path
+import importlib
 
 import cv2
+from click.testing import CliRunner
 import numpy as np
 
 from cdbr.test.fs import populate_fs
 from cdbr.test.harness import run_cdbr
+
+main_module = importlib.import_module("cdbr.main")
 
 
 def test_cmd_basic(tmp_path):
@@ -47,7 +51,7 @@ def test_cmd_basic(tmp_path):
     cv2.imwrite(str(photo), image)
 
     # Act: run cdbr with a puzzle photograph.
-    result = run_cdbr([str(photo)], cwd=tmp_path)
+    result = run_cdbr(["--orig", str(photo)], cwd=tmp_path)
 
     # Assert: command succeeds
     assert result.exitcode == 0
@@ -65,3 +69,37 @@ def test_cmd_rejects_unknown_file_format(tmp_path):
 
     assert result.exitcode == 2
     assert "Unsupported or unrecognised image format" in result.stderr
+
+
+def test_image_option_derives_output_name(tmp_path, monkeypatch):
+    photo = tmp_path / "puzzle.HEIC"
+    photo.touch()
+    captured = []
+    monkeypatch.setattr(main_module, "cdbr", captured.append)
+
+    result = CliRunner().invoke(main_module.cdbr_main, ["--image", str(photo)])
+
+    assert result.exit_code == 0
+    assert captured[0].solution_image == tmp_path / "puzzle_solved.HEIC"
+    assert captured[0].orig is False
+
+
+def test_image_option_accepts_explicit_output_and_protects_it(tmp_path, monkeypatch):
+    photo = tmp_path / "puzzle.png"
+    photo.touch()
+    destination = tmp_path / "answer.png"
+    captured = []
+    monkeypatch.setattr(main_module, "cdbr", captured.append)
+
+    result = CliRunner().invoke(main_module.cdbr_main, [str(photo), "--image", str(destination)])
+
+    assert result.exit_code == 0
+    assert captured[0].solution_image == destination
+
+    destination.touch()
+    result = CliRunner().invoke(main_module.cdbr_main, [str(photo), f"--image={destination}"])
+    assert result.exit_code == 1
+    assert "use --force to overwrite" in str(result.exception)
+
+    result = CliRunner().invoke(main_module.cdbr_main, ["--force", str(photo), "-i", str(destination)])
+    assert result.exit_code == 0
