@@ -11,6 +11,7 @@ The test framework harnass
 from dataclasses import dataclass
 from pathlib import Path
 import subprocess
+import sys
 
 
 @dataclass
@@ -25,8 +26,9 @@ def run_cdbr(
     cwd: Path,
     env: dict | None = None,
 ) -> RunResult:
+    executable = Path(sys.executable).with_name("cdbr")
     proc = subprocess.run(
-        ["cdbr", *args],
+        [executable, *args],
         cwd=cwd,
         capture_output=True,
         text=True,

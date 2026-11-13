@@ -1,14 +1,12 @@
 Getting Started
 ===============
 
-pkit is a Python single-command CLI utility powered by npkg.
+Pass a photograph of a Code Break puzzle to cdbr:
 
 Installation
 ------------
 
-.. code:: bash
-
-   pip install pkit    # or pipx
+{{ code.section.quickstart.install }}
 
 Safe Exploration
 ----------------
@@ -18,11 +16,9 @@ Safe Exploration
 First Command
 -------------
 
-To start:
-
 .. code:: bash
 
-   pkit --help
+   cdbr puzzle.jpg
 
 Sample Workflow
 ---------------

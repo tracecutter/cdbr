@@ -50,7 +50,6 @@ class CdbrMode:
     quiet: bool = False
     emoji: bool = False
     verbose: bool = False
-    diff: str = "2up"
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -4,7 +4,7 @@ Do not edit this artifact directly.
 -->
 # cdbr
 
-**A Python single-command CLI utility base project powered by npkg.**
+**Solve Code Break puzzles from photographs.**
 
 <p align="center">
   <img src="docs/psym/assets/cdbr.png" width="180" alt="cdbr logo">
@@ -43,9 +43,7 @@ Do not edit this artifact directly.
 
 ## Installation 
 
-```bash
-pip install cdbr    # or pipx
-```
+{{ code.section.quickstart.install }}
 
 ---
 
@@ -81,14 +79,12 @@ Once configured, artifact delivery happens automatically and silently.
 
 ## Quick start 
 
-cdbr is a Python single-command CLI utility powered by npkg.
+Pass a photograph of a Code Break puzzle to cdbr:
 
 ### First command
 
-To start:
-
 ```bash
-cdbr --help
+cdbr puzzle.jpg
 ```
 
 ### Safe exploration
@@ -107,11 +103,7 @@ cdbr --help
 
 ## Overview 
 
-For the full user guide, design notes, and rationale, see:
-
-https://tracecutter.github.io/npkg/
-
-Built with Sphinx and hosted on GitHub Pages.
+{{ code.section.overview }}
 
 ---
 
@@ -119,32 +111,18 @@ Built with Sphinx and hosted on GitHub Pages.
 
 
 ```text
-Usage:  [OPTIONS] [ARGS]...
+Usage:  [OPTIONS] PHOTO
 
-  Minimal single-command kitchen sink demonstrating core Click patterns.
-
-  See `man cdbr` or the user guide for full documentation.
+  Read a Code Break puzzle from PHOTO.
 
 Options:
-  -f, --file PATH           Project configuration file.  [default:
-                            pyproject.toml]
-  -q, --quiet               Suppress output.
-  --trace                   Enable trace instrumentation.
-  --telemetry               Enable telemetry instrumentation.
-  --layout [1up|nup]        Output layout.  [default: 1up]
-  --emoji / --no-emoji      Enable emoji prefixes in output. [default: true]
-  --diff {2up|lines}        Diff output format.  [default: 2up]
-  -d, --dry-run             No mutations.
-  --path DIRECTORY          O'er there.
-  -n, --name TEXT           A rose by any other name.
-  -l, --list                A list.
-  -p, --pattern TEXT        Pattern like a regex or glob.
-  --luck / --no-luck        No, no.
-  --mode [nup|2up|upyours]  Modality.
-  -v, --verbose             Engage gabby gossip.
-  --output TEXT             Output format.  [required]
-  -V, --version             Show the version and exit.
-  --help                    Show this message and exit.
+  -q, --quiet           Suppress non-error output.
+  -v, --verbose         Increase diagnostic output.
+  --trace               Enable trace instrumentation.
+  --telemetry           Enable telemetry instrumentation.
+  --emoji / --no-emoji  Enable emoji prefixes in output.
+  -V, --version         Show the version and exit.
+  --help                Show this message and exit.
 ```
 
 
@@ -218,10 +196,7 @@ the caller and written by the compiler.
 
 ## Project status 
 
-- Python 3.11+
-- Click-based CLI
-- Single-command interface
-- Proprietary license
+{{ code.section.status }}
 
 ---
 
@@ -273,6 +248,4 @@ make readme
 
 ## Links 
 
-- Docs: https://tracecutter.github.io/cdbr/
-- GitHub: https://github.com/tracecutter/cdbr
-- Author: https://github.com/tracecutter
+{{ code.section.links }}

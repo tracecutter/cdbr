@@ -2,12 +2,12 @@
    psym :: documentation rendered from source.
    Do not edit this artifact directly.
 
-pkit
+cdbr
 ====
 
-A Python single-command CLI utility base project powered by npkg.
+Solve Code Break puzzles from photographs.
 
-.. image:: ../_static/pkit.png
+.. image:: ../_static/cdbr.png
    :align: center
    :width: 200px
 

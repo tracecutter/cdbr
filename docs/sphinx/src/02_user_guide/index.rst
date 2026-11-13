@@ -1,25 +1,16 @@
 User Guide
 ==========
 
-Using pkit effectively.
+Using cdbr effectively.
 
-For the full user guide, design notes, and rationale, see:
-
-https://tracecutter.github.io/npkg/
-
-Built with Sphinx and hosted on GitHub Pages.
+{{ code.section.overview }}
 
 Status
 ------
 
-- Python 3.11+
-- Click-based CLI
-- Single-command interface
-- Proprietary license
+{{ code.section.status }}
 
 Links
 -----
 
-- Docs: https://tracecutter.github.io/pkit/
-- GitHub: https://github.com/tracecutter/pkit
-- Author: https://github.com/tracecutter
+{{ code.section.links }}

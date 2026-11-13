@@ -4,7 +4,7 @@ About
 Context
 -------
 
-pkit is part of the **npkg toolchain**, a collection of small,
+cdbr is part of the **npkg toolchain**, a collection of small,
 composable utilities that define a shared practice for Python project
 lifecycle management.
 

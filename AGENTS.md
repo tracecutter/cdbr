@@ -38,6 +38,10 @@ Before proposing structural changes, examine the existing implementation and its
 
 AI agents must not install, upgrade, uninstall, relink, or otherwise modify Homebrew packages, system interpreters, global Python packages, or shell configuration without explicit user authorization. All dependency installation and environment changes must be confined to explicitly approved project-local virtual environments.
 
+The canonical development environment for this repository is `/Users/john/.virtualenvs/cdbr`. Non-interactive shells may not activate it automatically, so invoke its tools explicitly or prepend its `bin` directory to `PATH`.
+
+Treat `pyproject.toml` as authoritative for Black, Ruff, mypy, pytest, and related tool configuration. Use the existing Make targets and leave `make check` passing after changes.
+
 ### Infrastructure
 
 Reusable mechanisms inherited from npkg, including:

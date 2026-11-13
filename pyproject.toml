@@ -24,6 +24,7 @@ dependencies = [
     "click>=8.4.1",
     "packaging>=26.2",
     "npkglib>=1.1.0",
+    "opencv-python-headless>=5.0.0.93",
 ]
 
 [project.optional-dependencies]
@@ -90,9 +91,12 @@ type = "external"
 [tool.psym]
 docs-dir = "docs"
 
+[tool.cdbr]
 sysdeps = [
   "git>=2.0",
-  "make>=4.0"
+  "imagemagick>=7.0",
+  "make>=4.0",
+  "tesseract>=5.0",
 ]
 
 [[tool.cdbr.assets]]
