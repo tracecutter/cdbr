@@ -1,5 +1,5 @@
 """
-pkit._api
+cdbr._api
 
 Bootstrap API decorator registry.
 
@@ -12,15 +12,15 @@ Design rule
 -----------
 
 This module must remain dependency-free with respect to the rest of
-``pkit``.  In particular it must **not** import:
+``cdbr``.  In particular it must **not** import:
 
-    pkit.core.*
-    pkit.api
-    pkit.docs_*
+    cdbr.core.*
+    cdbr.api
+    cdbr.docs_*
 
 Only standard-library modules may be imported here.
 
-Higher layers (for example ``pkit.api``) extend the registry with
+Higher layers (for example ``cdbr.api``) extend the registry with
 utilities for extracting documentation symbols from decorated objects.
 
 Typical usage
@@ -28,7 +28,7 @@ Typical usage
 
 Project code declares public API elements using the decorator:
 
-    from pkit import api
+    from cdbr import api
 
     @api(group="backend")
     class Backend:

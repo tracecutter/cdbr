@@ -1,10 +1,10 @@
 """
-pkit.main
+cdbr.main
 
 A single-command npkg utility template.
 
 [[meta.title]]
-pkit
+cdbr
 
 [[meta.tagline]]
 A Python single-command CLI utility base project powered by npkg.
@@ -29,18 +29,18 @@ https://tracecutter.github.io/npkg/
 Built with Sphinx and hosted on GitHub Pages.
 
 [[section.quickstart.intro]]
-pkit is a Python single-command CLI utility powered by npkg.
+cdbr is a Python single-command CLI utility powered by npkg.
 
 [[section.quickstart.install]]
 ```bash
-pip install pkit    # or pipx
+pip install cdbr    # or pipx
 ```
 
 [[section.quickstart.first_command]]
 To start:
 
 ```bash
-pkit --help
+cdbr --help
 ```
 
 [[section.status]]
@@ -50,8 +50,8 @@ pkit --help
 - Proprietary license
 
 [[section.links]]
-- Docs: https://tracecutter.github.io/pkit/
-- GitHub: https://github.com/tracecutter/pkit
+- Docs: https://tracecutter.github.io/cdbr/
+- GitHub: https://github.com/tracecutter/cdbr
 - Author: https://github.com/tracecutter
 
 INTERNAL
@@ -65,25 +65,25 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import pkit.ui as click
+import cdbr.ui as click
 from npkglib import guppy, mark, signal
 from npkglib.api_gen import api
 from npkglib.guppy import ColumnRenderer, FlatRenderer, Sink
 from npkglib.mark import MarkContext
 
-from pkit import __version__
-from pkit.context import PkitContext, PkitMode
-from pkit.core import cmd_options
-from pkit.core.exceptions import PkitCoreError
-import pkit.core.d2d as d2d
+from cdbr import __version__
+from cdbr.context import CdbrContext, CdbrMode
+from cdbr.core import cmd_options
+from cdbr.core.exceptions import CdbrCoreError
+import cdbr.core.d2d as d2d
 
 
 # ---------------------------------------------------------------------------
 # Core runtime initialization
 # ---------------------------------------------------------------------------
 
-api.discover("pkit")
-d2d.ready("pkit")
+api.discover("cdbr")
+d2d.ready("cdbr")
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ DIFF_ALIASES = {
 
 
 @dataclass(frozen=True, kw_only=True)
-class PkitCmdContext(PkitContext):
+class CdbrCmdContext(CdbrContext):
     args: tuple[str, ...]
     dry_run: bool
     path: Path | None
@@ -170,12 +170,12 @@ def _make_renderer(layout: str) -> Sink:
 # ---------------------------------------------------------------------------
 
 
-def pkit(ctx: PkitCmdContext) -> None:
+def cdbr(ctx: CdbrCmdContext) -> None:
     """Worker demonstrating simple normalization + reporting."""
 
     selected_mode = cmd_options.mode_derive(ctx)
 
-    mark.info("pkit invocation")
+    mark.info("cdbr invocation")
 
     if ctx.args:
         mark.info(f"args        : {ctx.args}")
@@ -211,7 +211,7 @@ def pkit(ctx: PkitCmdContext) -> None:
 
 
 @click.command(
-    name="pkit",
+    name="cdbr",
     context_settings={
         "help_option_names": ["-h", "--help"],
         "max_content_width": 100,
@@ -235,9 +235,9 @@ def pkit(ctx: PkitCmdContext) -> None:
 @click.option("--mode", "cmdmode", type=click.Choice(["nup", "2up", "upyours"]), help=HELP_MODE)
 @click.option("-v", "--verbose", count=True, help=HELP_VERBOSE)
 @click.option("--output", required=True, help=HELP_OUTPUT)
-@click.version_option(__version__, "-V", "--version", prog_name="pkit")
+@click.version_option(__version__, "-V", "--version", prog_name="cdbr")
 @click.pass_context
-def pkit_main(
+def cdbr_main(
     click_ctx,
     args,
     file,
@@ -260,7 +260,7 @@ def pkit_main(
     """
     Minimal single-command kitchen sink demonstrating core Click patterns.
 
-    See `man pkit` or the user guide for full documentation.
+    See `man cdbr` or the user guide for full documentation.
     """
 
     mark.configure(MarkContext(quiet=quiet, verbose=bool(verbose), emoji=emoji))
@@ -284,11 +284,11 @@ def pkit_main(
     except KeyError:
         raise click.UsageError(f"Invalid diff mode: {diff}") from None
 
-    mode = PkitMode(quiet=quiet, verbose=bool(verbose), emoji=emoji, diff=diff_mode)
-    root = PkitContext(mode=mode)
+    mode = CdbrMode(quiet=quiet, verbose=bool(verbose), emoji=emoji, diff=diff_mode)
+    root = CdbrContext(mode=mode)
 
     ctx = root.extend(
-        PkitCmdContext,
+        CdbrCmdContext,
         args=tuple(args),
         dry_run=dry_run,
         path=path,
@@ -303,7 +303,7 @@ def pkit_main(
 
     click_ctx.obj = ctx
 
-    pkit(ctx)
+    cdbr(ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -313,9 +313,9 @@ def pkit_main(
 
 def main() -> None:
     try:
-        pkit_main()
+        cdbr_main()
 
-    except PkitCoreError as e:
+    except CdbrCoreError as e:
         mark.error(str(e))
         raise SystemExit(2) from None
 
@@ -333,4 +333,4 @@ if __name__ == "__main__":
 
 
 # Used by psym for Click usage extraction.
-click_root = pkit_main
+click_root = cdbr_main

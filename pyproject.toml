@@ -1,9 +1,9 @@
 [project]
-name = "pkit"
+name = "cdbr"
 version = "0.1.0"
-description = "Canonical reference utility command project for the npkg ecosystem."
+description = "Code Break Puzzle Solver."
 authors = [
-  { name = "Bindar Dundat" }
+  { name = "John Fogelin" }
 ]
 readme = { file = "README.md", content-type = "text/markdown" }
 license = "MIT"
@@ -16,9 +16,7 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Natural Language :: English",
-  "Topic :: Software Development :: Build Tools",
-  "Topic :: Software Development :: Quality Assurance",
-  "Topic :: Software Development :: Configuration",
+  "Topic :: Software Development :: Wordgame Solver",
   "Topic :: Utilities"
 ]
 
@@ -51,14 +49,14 @@ dev = [
 ]
 
 [project.scripts]
-pkit = "pkit.main:main"
+cdbr = "cdbr.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["pkit*"]
+include = ["cdbr*"]
 
 [tool.setuptools.package-data]
-pkit = [
+cdbr = [
     "_assets/**/*",
     "_assets/**/.*",
 ]
@@ -97,7 +95,7 @@ sysdeps = [
   "make>=4.0"
 ]
 
-[[tool.pkit.assets]]
+[[tool.cdbr.assets]]
 label = "manpage"
 share = "man"
 section = "man1"

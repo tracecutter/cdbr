@@ -1,5 +1,5 @@
 """
-pkit.core.cmd_options
+cdbr.core.cmd_options
 
 Option combinatorial hygiene checking (mock)
 
@@ -15,7 +15,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Protocol
 
-from pkit.core.exceptions import InvalidCmdOption
+from cdbr.core.exceptions import InvalidCmdOption
 
 
 # ---------------------------------------------------------------------------

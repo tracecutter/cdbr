@@ -1,9 +1,9 @@
 """
-pkit.__init__
+cdbr.__init__
 
-Core library for the pkit project inspection and documentation tool.
+Core library for the cdbr project inspection and documentation tool.
 
-This package contains the reusable machinery behind the pkit CLI.
+This package contains the reusable machinery behind the cdbr CLI.
 It is safe to import and performs no I/O or command execution.
 
 All CLI behavior lives outside this module.
@@ -15,9 +15,9 @@ All CLI behavior lives outside this module.
 from importlib.metadata import version, PackageNotFoundError
 
 try:
-    __version__ = version("pkit")
+    __version__ = version("cdbr")
 except PackageNotFoundError as e:
     raise RuntimeError(
-        "pkit is being executed without being installed as a package.\n"
-        "This is not supported. Install pkit properly (pipx, pip, editable install)."
+        "cdbr is being executed without being installed as a package.\n"
+        "This is not supported. Install cdbr properly (pipx, pip, editable install)."
     ) from e

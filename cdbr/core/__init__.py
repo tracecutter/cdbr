@@ -1,7 +1,7 @@
 """
-pkit.core.__init__
+cdbr.core.__init__
 
-Core domain logic for pkit.
+Core domain logic for cdbr.
 
 This package contains semantic operations over project configuration
 (e.g. dependencies, versioning) and raises domain-level exceptions.
@@ -14,4 +14,4 @@ No CLI, no filesystem I/O.
 
 # Exceptions
 
-from .exceptions import PkitCoreError as PkitCoreError
+from .exceptions import CdbrCoreError as CdbrCoreError

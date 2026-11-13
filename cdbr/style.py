@@ -1,7 +1,7 @@
 """
-pkit.style
+cdbr.style
 
-pkit stylistic choices
+cdbr stylistic choices
 
 This module exports styley freaky to avoid look and feel leaky.
 

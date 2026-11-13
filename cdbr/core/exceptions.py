@@ -1,15 +1,15 @@
 """
-pkit.core.exceptions
+cdbr.core.exceptions
 
-Core exceptions for pkit.
+Core exceptions for cdbr.
 
 :copyright: Copyright (c) 2025 John Fogelin. All rights reserved. See AUTHORS.
 :license: PROPRIETARY, see LICENSE for details.
 """
 
 
-class PkitCoreError(Exception):
-    """Base class for all pkit core/domain errors."""
+class CdbrCoreError(Exception):
+    """Base class for all cdbr core/domain errors."""
 
 
 # ---------------------------------------------------------------------------
@@ -17,9 +17,9 @@ class PkitCoreError(Exception):
 # ---------------------------------------------------------------------------
 
 
-class PkitCmdError(PkitCoreError):
+class CdbrCmdError(CdbrCoreError):
     """Base class for documentation-related errors."""
 
 
-class InvalidCmdOption(PkitCmdError):
+class InvalidCmdOption(CdbrCmdError):
     """Invalid command option combination."""

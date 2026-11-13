@@ -1,16 +1,16 @@
 """
-pkit.context
+cdbr.context
 
-Semantic command context types for pkit.
+Semantic command context types for cdbr.
 
 This module defines immutable context classes that represent the
-fully-resolved intent of a pkit command invocation, independent of
+fully-resolved intent of a cdbr command invocation, independent of
 how that intent was expressed (CLI, tests, or replay).
 
-`PkitContext` is the common base for all pkit command contexts and
+`CdbrContext` is the common base for all cdbr command contexts and
 defines truly global execution concerns (e.g. quiet/verbose).
 
-Concrete command contexts subclass `PkitContext` and live with their
+Concrete command contexts subclass `CdbrContext` and live with their
 respective command implementations.
 
 It is safe to import from command modules without side-effects.
@@ -28,20 +28,20 @@ from npkglib import toml_io as toml
 from npkglib import mark
 
 
-T = TypeVar("T", bound="PkitContext")
+T = TypeVar("T", bound="CdbrContext")
 
-_current_context: PkitContext | None = None
+_current_context: CdbrContext | None = None
 
 
 # ---------------------------------------------------------------------------
-# Pkit CLI derived execution Context and Mode
+# Cdbr CLI derived execution Context and Mode
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, kw_only=True)
-class PkitMode:
+class CdbrMode:
     """
-    Resolved execution mode for pkit.
+    Resolved execution mode for cdbr.
 
     Represents how the CLI operates, independent of where the inputs
     originated (CLI flags, environment, config, etc).
@@ -54,14 +54,14 @@ class PkitMode:
 
 
 @dataclass(frozen=True, kw_only=True)
-class PkitContext:
+class CdbrContext:
     """
     Global CLI execution context.
 
     Immutable and shared across command contexts.
     """
 
-    mode: PkitMode
+    mode: CdbrMode
 
     def extend(self, cls: type[T], **kwargs) -> T:
         """
@@ -121,7 +121,7 @@ def _project_name_from_doc(doc: toml.TOMLDocument) -> str:
 # ---------------------------------------------------------------------------
 
 
-def current_get() -> PkitContext:
+def current_get() -> CdbrContext:
     if _current_context is None:
-        raise RuntimeError("pkit context has not been initialized")
+        raise RuntimeError("cdbr context has not been initialized")
     return _current_context

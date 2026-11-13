@@ -1,5 +1,5 @@
 """
-pkit.test.harnass
+cdbr.test.harnass
 
 The test framework harnass
 
@@ -20,13 +20,13 @@ class RunResult:
     stderr: str
 
 
-def run_pkit(
+def run_cdbr(
     args: list[str],
     cwd: Path,
     env: dict | None = None,
 ) -> RunResult:
     proc = subprocess.run(
-        ["pkit", *args],
+        ["cdbr", *args],
         cwd=cwd,
         capture_output=True,
         text=True,

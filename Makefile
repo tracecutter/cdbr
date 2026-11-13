@@ -1,4 +1,4 @@
-.PHONY: all help init init-git init-git-sanitize init-gh \
+.PHONY: all help init init-git init-git-sanitize init-git-fork init-gh \
 		refresh reinstate reincarnate \
 		clean clean-pyc clean-build clean-docs clean-gen clean-bak \
 		check check-sys check-types check-readme check-lint check-style reformat \
@@ -185,6 +185,26 @@ init-git-sanitize:
 	else \
 		echo "❌ Not a git repo, use make init-git."; \
 	fi
+
+init-git-fork:
+	@if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
+		echo "❌ Not a git repository; use make init-git."; \
+		exit 1; \
+	fi
+	@echo "🧹 Sanitizing existing forked git repository…"
+	@echo "🔀 Ensuring main branch…"
+	@git switch main 2>/dev/null || git switch -c main
+	@echo "🗑️ Removing inherited local branches…"
+	@git for-each-ref --format='%(refname:short)' refs/heads/ | \
+		grep -vx 'main' | \
+		while IFS= read -r branch; do git branch -D "$$branch"; done
+	@echo "🏷️ Removing inherited tags…"
+	@git tag -l | while IFS= read -r tag; do git tag -d "$$tag"; done
+	@echo "🔗 Removing origin…"
+	@if git remote get-url origin >/dev/null 2>&1; then \
+		git remote remove origin; \
+	fi
+	@echo "✅ Git forked repository sanitized."
 
 GH_VISIBILITY ?= private   # or override with: make init-gh GH_VISIBILITY=public
 

@@ -1,5 +1,5 @@
 """
-pkit.core.d2d
+cdbr.core.d2d
 
 Distribution-to-Destination (d2d) management of non-Python artifacts for
 a user environment according to a personal routing policy.
@@ -66,7 +66,7 @@ Example:
 
     [[artifacts]]
     kind = "man"
-    path  = "man/man1/pkit.1"
+    path  = "man/man1/cdbr.1"
 
 Artifact paths must begin with the artifact kind.
 
@@ -94,9 +94,9 @@ destination directory while preserving their internal structure.
 
 Example:
 
-    _assets/man/man1/pkit.1
+    _assets/man/man1/cdbr.1
         ↓
-    ~/.local/share/man/man1/pkit.1
+    ~/.local/share/man/man1/cdbr.1
 
 This ensures compatibility with standard filesystem conventions such as
 the man directory layout.

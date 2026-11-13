@@ -1,12 +1,12 @@
 """
-pkit.ui
+cdbr.ui
 
-UI facade for pkit.
+UI facade for cdbr.
 
 This module re-exports Click (or rich-click) so that command
 modules can simply:
 
-    import pkit.ui as click
+    import cdbr.ui as click
 
 without caring which backend is in use.
 

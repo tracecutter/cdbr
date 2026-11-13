@@ -1,7 +1,7 @@
 .\" psym :: documentation rendered from source.
 .\" Do not edit this artifact directly.
 
-.TH PKIT 1 "{{ dynamic.meta.date }}" "pkit {{ project.version }}" "General Commands Manual"
+.TH CDBR 1 "{{ dynamic.meta.date }}" "cdbr {{ project.version }}" "General Commands Manual"
 
 .SH NAME
 \fB{{ code.meta.title }}\fR \- {{ code.meta.tagline }}
@@ -17,7 +17,7 @@
 
 .SH ENVIRONMENT
 .TP
-.B PKIT_CONFIG
+.B CDBR_CONFIG
 Path to an alternative configuration file. Overrides the default
 \fIpyproject.toml\fR location.
 

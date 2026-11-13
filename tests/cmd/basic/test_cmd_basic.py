@@ -1,5 +1,5 @@
 """
-pkit.tests.cmd.basic.test_cmd_basic
+cdbr.tests.cmd.basic.test_cmd_basic
 
 INTERNAL
 
@@ -9,8 +9,8 @@ INTERNAL
 
 from pathlib import Path
 
-from pkit.test.fs import populate_fs
-from pkit.test.harness import run_pkit
+from cdbr.test.fs import populate_fs
+from cdbr.test.harness import run_cdbr
 
 
 def test_cmd_basic(tmp_path):
@@ -19,8 +19,8 @@ def test_cmd_basic(tmp_path):
     # Arrange: copy test filesystem (if needed)
     populate_fs(here / "before", tmp_path)
 
-    # Act: run pkit with a couple of options
-    result = run_pkit(
+    # Act: run cdbr with a couple of options
+    result = run_cdbr(
         [
             "--dry-run",
             "--name",
@@ -37,6 +37,6 @@ def test_cmd_basic(tmp_path):
     assert result.exitcode == 0
 
     # Assert: basic output sanity (worker ran)
-    assert "pkit invocation" in result.stderr
+    assert "cdbr invocation" in result.stderr
     assert "alice" in result.stderr
     assert "foo" in result.stderr

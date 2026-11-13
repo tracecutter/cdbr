@@ -1,8 +1,8 @@
 Clone and install in editable mode:
 
 ```bash
-git clone https://github.com/tracecutter/pkit.git
-cd pkit
+git clone https://github.com/tracecutter/cdbr.git
+cd cdbr
 make install
 ```
 

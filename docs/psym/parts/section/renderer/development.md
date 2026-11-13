@@ -53,7 +53,7 @@ Symbol names must be globally unique. Collisions are treated as errors.
 Rendering Lifecycle
 -------------------
 
-1. A backend instantiates a renderer with a resolved ``PkitContext``.
+1. A backend instantiates a renderer with a resolved ``CdbrContext``.
 2. The renderer loads its template.
 3. Base symbols are populated automatically.
 4. The renderer may add additional symbols during initialization.

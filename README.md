@@ -2,16 +2,16 @@
 psym :: documentation rendered from source.
 Do not edit this artifact directly.
 -->
-# pkit
+# cdbr
 
 **A Python single-command CLI utility base project powered by npkg.**
 
 <p align="center">
-  <img src="docs/psym/assets/pkit.png" width="180" alt="pkit logo">
+  <img src="docs/psym/assets/cdbr.png" width="180" alt="cdbr logo">
 </p>
 
 <p align="center">
-<a href="https://tracecutter.github.io/pkit/">
+<a href="https://tracecutter.github.io/cdbr/">
 <img src="https://img.shields.io/badge/docs-GitHub%20Pages-blue" alt="Docs">
 </a>
 <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python">
@@ -44,7 +44,7 @@ Do not edit this artifact directly.
 ## Installation 
 
 ```bash
-pip install pkit    # or pipx
+pip install cdbr    # or pipx
 ```
 
 ---
@@ -81,14 +81,14 @@ Once configured, artifact delivery happens automatically and silently.
 
 ## Quick start 
 
-pkit is a Python single-command CLI utility powered by npkg.
+cdbr is a Python single-command CLI utility powered by npkg.
 
 ### First command
 
 To start:
 
 ```bash
-pkit --help
+cdbr --help
 ```
 
 ### Safe exploration
@@ -123,7 +123,7 @@ Usage:  [OPTIONS] [ARGS]...
 
   Minimal single-command kitchen sink demonstrating core Click patterns.
 
-  See `man pkit` or the user guide for full documentation.
+  See `man cdbr` or the user guide for full documentation.
 
 Options:
   -f, --file PATH           Project configuration file.  [default:
@@ -205,7 +205,7 @@ Symbol names must be globally unique. Collisions are treated as errors.
 Rendering Lifecycle
 -------------------
 
-1. A backend instantiates a renderer with a resolved ``PkitContext``.
+1. A backend instantiates a renderer with a resolved ``CdbrContext``.
 2. The renderer loads its template.
 3. Base symbols are populated automatically.
 4. The renderer may add additional symbols during initialization.
@@ -230,8 +230,8 @@ the caller and written by the compiler.
 Clone and install in editable mode:
 
 ```bash
-git clone https://github.com/tracecutter/pkit.git
-cd pkit
+git clone https://github.com/tracecutter/cdbr.git
+cd cdbr
 make install
 ```
 
@@ -273,6 +273,6 @@ make readme
 
 ## Links 
 
-- Docs: https://tracecutter.github.io/pkit/
-- GitHub: https://github.com/tracecutter/pkit
+- Docs: https://tracecutter.github.io/cdbr/
+- GitHub: https://github.com/tracecutter/cdbr
 - Author: https://github.com/tracecutter

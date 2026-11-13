@@ -1,5 +1,5 @@
 """
-pkit.test.assertx
+cdbr.test.assertx
 
 An assertion framework
 

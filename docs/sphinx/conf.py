@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
-# Sphinx configuration — pkit
-# Rendering only (content produced by pkit)
+# Sphinx configuration — cdbr
+# Rendering only (content produced by cdbr)
 # ---------------------------------------------------------------------------
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from datetime import datetime
 # Project metadata
 # ---------------------------------------------------------------------------
 
-project = "pkit"
+project = "cdbr"
 author = "John Fogelin"
 copyright = f"{datetime.now().year}, {author}"
 
@@ -51,7 +51,7 @@ graphviz_dot_args = [
 html_theme = "furo"
 
 html_static_path = ["_static"]
-html_logo = "_static/pkit.png"
+html_logo = "_static/cdbr.png"
 html_favicon = "_static/favicon.ico"
 html_title = f"{project} {release}"
 
@@ -77,7 +77,7 @@ latex_elements = {
 \centering
 \vspace*{3cm}
 
-{\Huge\bfseries pkit\par}
+{\Huge\bfseries cdbr\par}
 \vspace{0.5cm}
 {\Large A Python project CLI\par}
 
@@ -116,7 +116,7 @@ latex_elements[
 """
 
 latex_documents = [
-    ("index", "pkit.tex", "pkit Documentation", author, "manual"),
+    ("index", "cdbr.tex", "cdbr Documentation", author, "manual"),
 ]
 
 latex_toplevel_sectioning = "chapter"

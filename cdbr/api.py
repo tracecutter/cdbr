@@ -1,21 +1,21 @@
 """
-pkit.api
+cdbr.api
 
-Declarative public API support for pkit.
+Declarative public API support for cdbr.
 
 [[api.overview]]
 
 The API subsystem allows source code to declare public interface
 elements using the ``api`` decorator:
 
-    from pkit import api
+    from cdbr import api
 
     @api()
     def my_function():
         ...
 
-In ``pkit``, the decorator is backed by a small registry implemented in
-``pkit._api``.  Decorated objects are recorded along with lightweight
+In ``cdbr``, the decorator is backed by a small registry implemented in
+``cdbr._api``.  Decorated objects are recorded along with lightweight
 metadata and are exported onto the package namespace.
 
 Currently provided
@@ -49,7 +49,7 @@ translated into documentation symbols describing things such as:
 - selected public member metadata for classes
 
 That extraction layer and its documentation backends are not yet
-implemented here.  ``pkit.api`` currently provides the declarative
+implemented here.  ``cdbr.api`` currently provides the declarative
 registry layer only.
 
 [[api.example]]
@@ -57,7 +57,7 @@ registry layer only.
 Example:
 
 ```code
-    from pkit import api
+    from cdbr import api
 
     @api(group="example")
     def example():
@@ -74,7 +74,7 @@ INTERNAL
 
 from __future__ import annotations  # noqa: F401
 
-from pkit._api import api
+from cdbr._api import api
 
 
 @api(group="example")
