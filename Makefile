@@ -5,7 +5,8 @@
 		test test-coverage test-all \
 		docs docs-% docs-%-% \
 		dist release \
-		pub-docs pub-pypi pub-brew \
+		pub-docs pub-pypi pub-brew pub-container \
+		container-build container-check container-run container-push \
 		status corpus
 
 
@@ -44,6 +45,17 @@ IS_EXTERNAL			:= $(if $(filter external,$(NPKG_TYPE)),1,0)
 IS_TOOL				:= $(if $(filter tool,$(NPKG_ROLE)),1,0)
 IS_PACKAGE			:= $(if $(filter package,$(NPKG_ROLE)),1,0)
 
+# Optional web-daemon/container capability. Projects opt in through
+# [tool.npkg.web]; these targets remain inert for ordinary packages/tools.
+WEB_ENABLED			:= $(if $(filter true True 1 yes,$(shell pfig get key tool.npkg.web.enabled 2>/dev/null)),1,0)
+WEB_COMMAND			:= $(or $(shell pfig get key tool.npkg.web.command 2>/dev/null),$(PROJECT_NAME)d)
+WEB_PORT			:= $(or $(shell pfig get key tool.npkg.web.port 2>/dev/null),8000)
+WEB_HEALTH_PATH		:= $(or $(shell pfig get key tool.npkg.web.health-path 2>/dev/null),/health)
+CONTAINER_FILE		:= $(or $(shell pfig get key tool.npkg.web.container-file 2>/dev/null),Dockerfile)
+CONTAINER_IMAGE		:= $(or $(shell pfig get key tool.npkg.web.container-image 2>/dev/null),$(PROJECT_NAME))
+CONTAINER_DEV_TAG	?= local
+CONTAINER_RELEASE_TAG	?= v$(VERSION)
+
 INIT_STAMP			= .init_stamp
 
 # ------------------------------------------------------------
@@ -65,6 +77,17 @@ define ensure-correct-venv
 	@if [ "$(EXPECTED_VENV)" != "$$(basename $$VIRTUAL_ENV)" ]; then \
 		echo "❌ ERROR: Wrong virtualenv active: $$(basename $$VIRTUAL_ENV)"; \
 		echo "   Expected: $(EXPECTED_VENV)"; \
+		exit 1; \
+	fi
+endef
+
+define ensure-web-enabled
+	@if [ "$(WEB_ENABLED)" != "1" ]; then \
+		echo "❌ Web/container support is not enabled in [tool.npkg.web]."; \
+		exit 1; \
+	fi
+	@if ! command -v docker >/dev/null 2>&1; then \
+		echo "❌ Docker is required for this target."; \
 		exit 1; \
 	fi
 endef
@@ -108,6 +131,11 @@ help:
 	@echo "pub-docs - publish documents on GitHub.io"
 	@echo "pub-pypi - publish release on PyPi"
 	@echo "pub-brew - publish release on GitHub as homebrew tap"
+	@echo "container-build - build the configured web container locally"
+	@echo "container-check - build and health-check the web container"
+	@echo "container-run - run the local web container in the foreground"
+	@echo "container-push - push the release-tagged container image"
+	@echo "pub-container - publish a container from an existing release tag"
 
 init: $(INIT_STAMP)
 	@echo "✅ Project initialization complete."
@@ -409,6 +437,61 @@ test-one:
 	pytest -q $(TEST)
 
 # ------------------------------------------------------------
+# 🐳 Optional web daemon / container workflow
+# ------------------------------------------------------------
+
+container-build:
+	$(ensure-web-enabled)
+	@echo "🐳 Building $(CONTAINER_IMAGE):$(CONTAINER_DEV_TAG)…"
+	docker build --file "$(CONTAINER_FILE)" \
+		--tag "$(CONTAINER_IMAGE):$(CONTAINER_DEV_TAG)" .
+
+container-run: container-build
+	$(ensure-web-enabled)
+	@echo "🌐 Running $(WEB_COMMAND) on http://127.0.0.1:$(WEB_PORT)…"
+	docker run --rm \
+		--env PORT="$(WEB_PORT)" \
+		--publish "$(WEB_PORT):$(WEB_PORT)" \
+		"$(CONTAINER_IMAGE):$(CONTAINER_DEV_TAG)"
+
+container-check: container-build
+	$(ensure-web-enabled)
+	@echo "🩺 Checking $(CONTAINER_IMAGE):$(CONTAINER_DEV_TAG)$(WEB_HEALTH_PATH)…"
+	@name="$(PROJECT_NAME)-check-$$$$"; \
+		docker run --detach --rm --name "$$name" \
+			--env PORT="$(WEB_PORT)" \
+			"$(CONTAINER_IMAGE):$(CONTAINER_DEV_TAG)" >/dev/null; \
+		trap 'docker stop "$$name" >/dev/null 2>&1 || true' EXIT INT TERM; \
+		ready=0; \
+		for attempt in $$(seq 1 30); do \
+			if docker exec "$$name" python -c \
+				"import urllib.request; urllib.request.urlopen('http://127.0.0.1:$(WEB_PORT)$(WEB_HEALTH_PATH)', timeout=2)" \
+				>/dev/null 2>&1; then \
+				ready=1; break; \
+			fi; \
+			sleep 1; \
+		done; \
+		[ "$$ready" = "1" ] || { docker logs "$$name"; exit 1; }
+	@echo "✅ Container health check passed."
+
+container-push:
+	$(ensure-web-enabled)
+	@echo "📦 Publishing $(CONTAINER_IMAGE):$(CONTAINER_RELEASE_TAG)…"
+	docker tag "$(CONTAINER_IMAGE):$(CONTAINER_DEV_TAG)" \
+		"$(CONTAINER_IMAGE):$(CONTAINER_RELEASE_TAG)"
+	docker push "$(CONTAINER_IMAGE):$(CONTAINER_RELEASE_TAG)"
+
+pub-container: release-guard
+	$(ensure-web-enabled)
+	@if ! git tag --points-at HEAD | grep -Fxq "$(CONTAINER_RELEASE_TAG)"; then \
+		echo "❌ Container publishing is release-only."; \
+		echo "   HEAD must carry tag $(CONTAINER_RELEASE_TAG)."; \
+		exit 1; \
+	fi
+	$(MAKE) --no-print-directory container-build
+	$(MAKE) --no-print-directory container-push
+
+# ------------------------------------------------------------
 #  🟩 Documentation rules
 # ------------------------------------------------------------
 
@@ -516,6 +599,12 @@ status:
 	@echo "IS_PACKAGE=$(IS_PACKAGE)"
 	@echo "IS_EXTERNAL=$(IS_EXTERNAL)"
 	@echo "IS_IN_SITU=$(IS_IN_SITU)"
+	@echo "WEB_ENABLED=$(WEB_ENABLED)"
+	@echo "WEB_COMMAND=$(WEB_COMMAND)"
+	@echo "WEB_PORT=$(WEB_PORT)"
+	@echo "WEB_HEALTH_PATH=$(WEB_HEALTH_PATH)"
+	@echo "CONTAINER_IMAGE=$(CONTAINER_IMAGE)"
+	@echo "CONTAINER_RELEASE_TAG=$(CONTAINER_RELEASE_TAG)"
 
 # ------------------------------------------------------------
 #  🚀 Local release

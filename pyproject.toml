@@ -96,6 +96,15 @@ build-backend = "setuptools.build_meta"
 role = "tool"
 type = "external"
 
+[tool.npkg.web]
+enabled = true
+command = "cdbrd"
+port = 8000
+health-path = "/health"
+container-file = "Dockerfile"
+container-image = "ghcr.io/tracecutter/cdbr"
+deploy-on = "release"
+
 [tool.psym]
 docs-dir = "docs"
 
