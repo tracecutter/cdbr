@@ -20,6 +20,8 @@ WARP_SIZE = 1500
 CELL_SIZE = WARP_SIZE // GRID_SIZE
 MIN_OCR_CONFIDENCE = 80.0
 MIN_TEMPLATE_MARGIN = 0.15
+MIN_WHOLE_NUMBER_MARGIN = 0.20
+LOCAL_BACKGROUND_KERNEL = 31
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -33,7 +35,7 @@ class CellReading:
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     try:
-        return subprocess.run(command, check=True, capture_output=True, text=True)
+        return subprocess.run(command, check=True, capture_output=True, text=True, errors="replace")
     except FileNotFoundError:
         raise ValueError(f"Required image tool is not installed: {command[0]}") from None
     except subprocess.CalledProcessError as exc:
@@ -171,15 +173,34 @@ def _cell_images(grid: np.ndarray) -> list[tuple[int, int, np.ndarray]]:
 
 
 def _block_mask(cells: list[tuple[int, int, np.ndarray]]) -> list[bool]:
-    medians = np.array([np.median(cell[15:92, 15:92]) for _, _, cell in cells], dtype=np.uint8)
-    threshold, _ = cv2.threshold(medians, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return [bool(median <= threshold) for median in medians]
+    medians = np.array([np.median(cell[15:92, 15:92]) for _, _, cell in cells], dtype=np.float32).reshape(
+        GRID_SIZE, GRID_SIZE
+    )
+    local_paper = cv2.dilate(medians, np.ones((3, 3), dtype=np.uint8))
+    relative = np.clip(255.0 * medians / np.maximum(local_paper, 1.0), 0, 255).astype(np.uint8)
+    threshold, _ = cv2.threshold(relative, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return [bool(value <= threshold) for value in relative.ravel()]
 
 
-def _clean_number(cell: np.ndarray) -> np.ndarray:
+def _foreground_binary(gray: np.ndarray) -> np.ndarray:
+    """Extract dark ink while suppressing smooth illumination changes."""
+
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE,
+        (LOCAL_BACKGROUND_KERNEL, LOCAL_BACKGROUND_KERNEL),
+    )
+    ink = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
+    return cv2.threshold(ink, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+
+
+def _clean_number(cell: np.ndarray, *, suppress_illumination: bool = False) -> np.ndarray:
     gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
     region = gray[5:70, 5:70]
-    binary = cv2.threshold(region, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    binary = (
+        _foreground_binary(region)
+        if suppress_illumination
+        else cv2.threshold(region, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    )
     count, labels, statistics, _ = cv2.connectedComponentsWithStats(binary)
     cleaned = np.full_like(binary, 255)
     for index in range(1, count):
@@ -290,8 +311,8 @@ def extract_reference_grid(image: np.ndarray) -> np.ndarray:
     return cv2.warpPerspective(image, transform, (1300, 200))
 
 
-def _number_feature(cell: np.ndarray) -> np.ndarray:
-    cleaned = _clean_number(cell)
+def _number_feature(cell: np.ndarray, *, suppress_illumination: bool = False) -> np.ndarray:
+    cleaned = _clean_number(cell, suppress_illumination=suppress_illumination)
     y_coordinates, x_coordinates = np.where(cleaned < 128)
     feature = np.full((80, 120), 255, dtype=np.uint8)
     if not len(x_coordinates):
@@ -330,19 +351,73 @@ def _template_value(cell: np.ndarray, templates: dict[int, np.ndarray]) -> int:
     )
 
 
-def _digit_glyphs(cell: np.ndarray) -> list[np.ndarray]:
+def _template_scores(feature: np.ndarray, templates: dict[int, list[np.ndarray]]) -> list[tuple[float, int]]:
+    return sorted(
+        (
+            min(float(np.mean((feature - sample.astype(np.float32)) ** 2)) for sample in samples),
+            value,
+        )
+        for value, samples in templates.items()
+        if samples
+    )
+
+
+def _digit_glyphs(cell: np.ndarray, *, suppress_illumination: bool = False) -> list[np.ndarray]:
     """Segment one or two glyphs, including digits joined by thresholding."""
 
     gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
     region = gray[5:70, 5:70]
-    binary = cv2.threshold(region, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    binary = (
+        _foreground_binary(region)
+        if suppress_illumination
+        else cv2.threshold(region, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    )
     count, labels, statistics, _ = cv2.connectedComponentsWithStats(binary)
-    glyphs: list[tuple[int, np.ndarray]] = []
+    components: list[tuple[int, int, int, int, int, int]] = []
     for index in range(1, count):
-        x, y, width, height, area = statistics[index]
-        if not (5 <= width <= 48 and 15 <= height <= 42 and 50 <= area <= 800):
+        x, y, width, height, area = (int(value) for value in statistics[index])
+        if 5 <= width <= 48 and 8 <= height <= 42 and 50 <= area <= 800:
+            components.append((index, x, y, width, height, area))
+
+    merged: list[tuple[int, int, int, int, np.ndarray]] = []
+    used: set[int] = set()
+    for first, (_, x, y, width, height, _) in enumerate(components):
+        if first in used:
             continue
-        mask = (labels[y : y + height, x : x + width] == index).astype(np.uint8) * 255
+        matching: int | None = None
+        for second in range(first + 1, len(components)):
+            if second in used:
+                continue
+            _, other_x, other_y, other_width, other_height, _ = components[second]
+            overlap = min(x + width, other_x + other_width) - max(x, other_x)
+            vertical_gap = max(y, other_y) - min(y + height, other_y + other_height)
+            combined_height = max(y + height, other_y + other_height) - min(y, other_y)
+            if overlap >= min(width, other_width) // 2 and vertical_gap <= 2 and combined_height <= 42:
+                matching = second
+                break
+        indices = [components[first][0]]
+        bounds = [x, y, x + width, y + height]
+        if matching is not None:
+            used.add(matching)
+            index, other_x, other_y, other_width, other_height, _ = components[matching]
+            indices.append(index)
+            bounds = [
+                min(bounds[0], other_x),
+                min(bounds[1], other_y),
+                max(bounds[2], other_x + other_width),
+                max(bounds[3], other_y + other_height),
+            ]
+        used.add(first)
+        x1, y1, x2, y2 = bounds
+        mask = np.isin(labels[y1:y2, x1:x2], indices).astype(np.uint8) * 255
+        merged.append((x1, y1, x2 - x1, y2 - y1, mask))
+
+    glyphs: list[tuple[int, np.ndarray]] = []
+    for x, y, width, height, mask in merged:
+        if x <= 10 and y == 0 and height >= 35:
+            continue
+        if not (5 <= width <= 48 and 15 <= height <= 42):
+            continue
         chunks = [(x, mask)]
         if width > 26:
             projection = np.sum(mask > 0, axis=0)
@@ -351,30 +426,72 @@ def _digit_glyphs(cell: np.ndarray) -> list[np.ndarray]:
             split = low + int(np.argmin(projection[low : high + 1]))
             chunks = [(x, mask[:, :split]), (x + split, mask[:, split:])]
         for position, glyph in chunks:
-            glyph = cv2.copyMakeBorder(glyph, 3, 3, 3, 3, cv2.BORDER_CONSTANT, value=0)
-            glyph = cv2.resize(glyph, (32, 48), interpolation=cv2.INTER_NEAREST)
-            glyphs.append((position, glyph))
+            bordered: np.ndarray = cv2.copyMakeBorder(glyph, 3, 3, 3, 3, cv2.BORDER_CONSTANT, value=0)
+            normalized: np.ndarray = cv2.resize(bordered, (32, 48), interpolation=cv2.INTER_NEAREST)
+            glyphs.append((position, normalized))
     return [glyph for _, glyph in sorted(glyphs, key=lambda item: item[0])]
 
 
 def _digit_templates(reference_grid: np.ndarray) -> dict[str, list[np.ndarray]]:
-    templates: dict[str, list[np.ndarray]] = {str(digit): [] for digit in range(10)}
-    for value in range(1, 27):
-        row = 0 if value <= 13 else 1
-        column = (value - 1) % 13
-        cell = reference_grid[
-            row * 100 : (row + 1) * 100,
-            column * 100 : (column + 1) * 100,
-        ].copy()
-        cell[43:] = 255  # Exclude supplied clue letters below the printed number.
-        glyphs = _digit_glyphs(cell)
-        if len(glyphs) != len(str(value)):
-            continue
-        for digit, glyph in zip(str(value), glyphs, strict=True):
-            templates[digit].append(glyph)
-    if any(not samples for samples in templates.values()):
-        raise ValueError("Reference grid did not provide templates for every digit")
-    return templates
+    for suppress_illumination in (False, True):
+        templates: dict[str, list[np.ndarray]] = {str(digit): [] for digit in range(10)}
+        for value in range(1, 27):
+            row = 0 if value <= 13 else 1
+            column = (value - 1) % 13
+            cell = reference_grid[
+                row * 100 : (row + 1) * 100,
+                column * 100 : (column + 1) * 100,
+            ].copy()
+            cell[43:] = 255
+            glyphs = _digit_glyphs(cell, suppress_illumination=suppress_illumination)
+            if len(glyphs) != len(str(value)):
+                continue
+            for digit, glyph in zip(str(value), glyphs, strict=True):
+                templates[digit].append(glyph)
+        if all(templates.values()):
+            return templates
+    raise ValueError("Reference grid did not provide templates for every digit")
+
+
+def _coarse_glyph_feature(glyph: np.ndarray) -> np.ndarray:
+    """Describe ink distribution without depending on exact pixel alignment."""
+
+    ink = glyph.astype(np.float32) / 255.0
+    return np.array(
+        [
+            float(np.mean(ink[y : y + 12, x : x + 8]))
+            for y in range(0, glyph.shape[0], 12)
+            for x in range(0, glyph.shape[1], 8)
+        ],
+        dtype=np.float32,
+    )
+
+
+def _classify_digit(glyph: np.ndarray, templates: dict[str, list[np.ndarray]]) -> tuple[str, float]:
+    glyph_float = glyph.astype(np.float32)
+    pixel_scores = sorted(
+        (
+            min(float(np.mean((glyph_float - sample.astype(np.float32)) ** 2)) for sample in samples),
+            digit,
+        )
+        for digit, samples in templates.items()
+    )
+    best_score, digit = pixel_scores[0]
+    second_score = pixel_scores[1][0]
+    margin = (second_score - best_score) / second_score if second_score else 0.0
+    if digit == "0":
+        feature = _coarse_glyph_feature(glyph)
+        coarse_scores = sorted(
+            (
+                min(float(np.mean((feature - _coarse_glyph_feature(sample)) ** 2)) for sample in samples),
+                candidate,
+            )
+            for candidate, samples in templates.items()
+        )
+        coarse_by_digit = {candidate: score for score, candidate in coarse_scores}
+        if coarse_scores[0][1] == "6" and coarse_by_digit["0"] >= 2.0 * coarse_scores[0][0]:
+            digit = "6"
+    return digit, margin
 
 
 def extract_clues(reference_grid: np.ndarray, work_dir: Path) -> dict[int, str]:
@@ -388,9 +505,9 @@ def extract_clues(reference_grid: np.ndarray, work_dir: Path) -> dict[int, str]:
             row * 100 : (row + 1) * 100,
             column * 100 : (column + 1) * 100,
         ]
-        region = cell[35:95, 10:90]
+        region = cell[32:98, 5:98]
         gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
-        binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        binary = _foreground_binary(gray)
         count, labels, statistics, _ = cv2.connectedComponentsWithStats(binary)
         cleaned = np.full_like(binary, 255)
         found = False
@@ -405,22 +522,27 @@ def extract_clues(reference_grid: np.ndarray, work_dir: Path) -> dict[int, str]:
         cleaned = cv2.resize(cleaned, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST)
         image_path = work_dir / f"clue-{value}.png"
         cv2.imwrite(str(image_path), cleaned)
-        result = _run(
-            [
-                "tesseract",
-                str(image_path),
-                "stdout",
-                "--psm",
-                "10",
-                "-l",
-                "eng",
-                "-c",
-                "tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-            ]
-        )
-        letter = result.stdout.strip().upper()
-        if len(letter) == 1 and letter.isalpha():
-            clues[value] = letter
+        attempts = [
+            _run(
+                [
+                    "tesseract",
+                    str(image_path),
+                    "stdout",
+                    "--psm",
+                    str(mode),
+                    "-l",
+                    "eng",
+                    "-c",
+                    "tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                ]
+            )
+            .stdout.strip()
+            .upper()
+            for mode in (10, 13, 6)
+        ]
+        candidates = [text[-1] for text in attempts if text and text[-1].isalpha()]
+        if candidates:
+            clues[value] = Counter(candidates).most_common(1)[0][0]
     if len(set(clues.values())) != len(clues):
         raise ValueError("Recognised reference clues violate the letter bijection")
     return clues
@@ -440,17 +562,7 @@ def _classify_from_reference(
     digits: list[str] = []
     margins: list[float] = []
     for glyph in glyphs:
-        glyph_float = glyph.astype(np.float32)
-        scores = sorted(
-            (
-                min(float(np.mean((glyph_float - sample.astype(np.float32)) ** 2)) for sample in samples),
-                digit,
-            )
-            for digit, samples in templates.items()
-        )
-        best_score, digit = scores[0]
-        second_score = scores[1][0]
-        margin = (second_score - best_score) / second_score if second_score else 0.0
+        digit, margin = _classify_digit(glyph, templates)
         digits.append(digit)
         margins.append(margin)
     text = "".join(digits)
@@ -463,6 +575,113 @@ def _classify_from_reference(
         confidence=50.0 + 50.0 * margin,
         trusted=valid and margin >= minimum_margin,
     )
+
+
+def _coarse_scores(glyph: np.ndarray, templates: dict[str, list[np.ndarray]]) -> list[tuple[float, str]]:
+    feature = _coarse_glyph_feature(glyph)
+    return sorted(
+        (
+            min(float(np.mean((feature - _coarse_glyph_feature(sample)) ** 2)) for sample in samples),
+            digit,
+        )
+        for digit, samples in templates.items()
+        if samples
+    )
+
+
+def _classify_from_board(
+    item: tuple[int, int, np.ndarray],
+    board_templates: dict[str, list[np.ndarray]],
+    reference_templates: dict[str, list[np.ndarray]],
+) -> CellReading:
+    row, column, cell = item
+    glyphs = _digit_glyphs(cell)
+    if not 1 <= len(glyphs) <= 2:
+        return CellReading(row=row, column=column, text="", confidence=0.0)
+    digits: list[str] = []
+    margins: list[float] = []
+    for glyph in glyphs:
+        board_scores = _coarse_scores(glyph, board_templates)
+        reference_scores = _coarse_scores(glyph, reference_templates)
+        if len(board_scores) < 2 or not reference_scores:
+            return CellReading(row=row, column=column, text="", confidence=0.0)
+        best_score, digit = board_scores[0]
+        second_score = board_scores[1][0]
+        margin = (second_score - best_score) / second_score if second_score else 0.0
+        if margin < MIN_TEMPLATE_MARGIN and reference_scores[0][1] != digit:
+            return CellReading(row=row, column=column, text="", confidence=50.0 * margin)
+        digits.append(digit)
+        margins.append(margin)
+    text = "".join(digits)
+    valid = text.isdigit() and 1 <= int(text) <= 26
+    return CellReading(
+        row=row,
+        column=column,
+        text=text,
+        confidence=50.0 + 50.0 * min(margins),
+        trusted=valid,
+    )
+
+
+def _audit_confident_readings(
+    readings: list[CellReading],
+    cells_by_position: dict[tuple[int, int], np.ndarray],
+    reference_templates: dict[str, list[np.ndarray]],
+) -> list[CellReading]:
+    samples: dict[str, list[tuple[tuple[int, int], np.ndarray]]] = {str(digit): [] for digit in range(10)}
+    for reading in readings:
+        if not reading.trusted:
+            continue
+        position = (reading.row, reading.column)
+        glyphs = _digit_glyphs(cells_by_position[position])
+        if len(glyphs) == len(reading.text):
+            for digit, glyph in zip(reading.text, glyphs, strict=True):
+                samples[digit].append((position, glyph))
+
+    replacements: dict[tuple[int, int], CellReading] = {}
+    for reading in readings:
+        if not reading.trusted:
+            continue
+        position = (reading.row, reading.column)
+        glyphs = _digit_glyphs(cells_by_position[position])
+        if len(glyphs) != len(reading.text):
+            continue
+        candidate_digits: list[str] = []
+        margins: list[float] = []
+        for glyph in glyphs:
+            feature = _coarse_glyph_feature(glyph)
+            board_scores = sorted(
+                (
+                    min(
+                        float(np.mean((feature - _coarse_glyph_feature(sample)) ** 2))
+                        for sample_position, sample in digit_samples
+                        if sample_position != position
+                    ),
+                    digit,
+                )
+                for digit, digit_samples in samples.items()
+                if len(digit_samples) >= 5 and any(sample_position != position for sample_position, _ in digit_samples)
+            )
+            reference_scores = _coarse_scores(glyph, reference_templates)
+            if len(board_scores) < 2:
+                break
+            margin = (board_scores[1][0] - board_scores[0][0]) / board_scores[1][0]
+            if margin < MIN_TEMPLATE_MARGIN or reference_scores[0][1] != board_scores[0][1]:
+                break
+            candidate_digits.append(board_scores[0][1])
+            margins.append(margin)
+        if len(candidate_digits) != len(glyphs):
+            continue
+        candidate = int("".join(candidate_digits))
+        if 1 <= candidate <= 26 and candidate != int(reading.text):
+            replacements[position] = CellReading(
+                row=reading.row,
+                column=reading.column,
+                text=str(candidate),
+                confidence=50.0 + 50.0 * min(margins),
+                trusted=True,
+            )
+    return [replacements.get((item.row, item.column), item) for item in readings]
 
 
 def create_review_sheet(
@@ -564,6 +783,33 @@ def recognize_photo(source: Path, work_dir: Path) -> PuzzleObservation:
                 )
             replacements = {(item.row, item.column): item for item in reconsidered}
             readings = [replacements.get((item.row, item.column), item) for item in readings]
+        for _ in range(2):
+            unresolved = [reading for reading in readings if not reading.trusted]
+            if not unresolved:
+                break
+            board_glyph_templates: dict[str, list[np.ndarray]] = {str(digit): [] for digit in range(10)}
+            for reading in readings:
+                if not reading.trusted:
+                    continue
+                glyphs = _digit_glyphs(cells_by_position[(reading.row, reading.column)])
+                if len(glyphs) == len(reading.text):
+                    for digit, glyph in zip(reading.text, glyphs, strict=True):
+                        board_glyph_templates[digit].append(glyph)
+            reconsidered = [
+                _classify_from_board(
+                    (
+                        item.row,
+                        item.column,
+                        cells_by_position[(item.row, item.column)],
+                    ),
+                    board_glyph_templates,
+                    digit_templates,
+                )
+                for item in unresolved
+            ]
+            replacements = {(item.row, item.column): item for item in reconsidered if item.trusted}
+            readings = [replacements.get((item.row, item.column), item) for item in readings]
+        readings = _audit_confident_readings(readings, cells_by_position, digit_templates)
     else:
         with ThreadPoolExecutor(max_workers=8) as executor:
             readings = list(executor.map(lambda cell: _read_cell(cell, work_dir), playable))
@@ -621,6 +867,36 @@ def recognize_photo(source: Path, work_dir: Path) -> PuzzleObservation:
             for item in retried
         ]
         replacements = {(item.row, item.column): item for item in retried}
+        readings = [replacements.get((item.row, item.column), item) for item in readings]
+
+    if templates is not None:
+        cells_by_position = {(row, column): cell for row, column, cell in playable}
+        board_templates: dict[int, list[np.ndarray]] = {}
+        for reading in readings:
+            if reading.trusted and reading.text.isdigit():
+                board_templates.setdefault(int(reading.text), []).append(
+                    _number_feature(cells_by_position[(reading.row, reading.column)])
+                )
+        reference_templates = {value: [feature] for value, feature in templates.items()}
+        replacements = {}
+        for reading in readings:
+            if reading.trusted:
+                continue
+            feature = _number_feature(cells_by_position[(reading.row, reading.column)]).astype(np.float32)
+            reference_scores = _template_scores(feature, reference_templates)
+            board_scores = _template_scores(feature, board_templates)
+            if len(reference_scores) < 2 or not board_scores:
+                continue
+            reference_margin = (reference_scores[1][0] - reference_scores[0][0]) / reference_scores[1][0]
+            reference_value = reference_scores[0][1]
+            if reference_margin >= MIN_WHOLE_NUMBER_MARGIN and board_scores[0][1] == reference_value:
+                replacements[(reading.row, reading.column)] = CellReading(
+                    row=reading.row,
+                    column=reading.column,
+                    text=str(reference_value),
+                    confidence=max(MIN_OCR_CONFIDENCE, 50.0 + 50.0 * reference_margin),
+                    trusted=True,
+                )
         readings = [replacements.get((item.row, item.column), item) for item in readings]
     readings_by_position = {(item.row, item.column): item for item in readings}
 

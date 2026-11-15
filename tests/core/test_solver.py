@@ -2,7 +2,7 @@
 
 from cdbr.core.lexicon import Lexicon, LexiconEntry
 from cdbr.core.model import CodewordPuzzle, extract_slots
-from cdbr.core.solver import decode_grid, solve
+from cdbr.core.solver import Solution, _solution_quality, decode_grid, solve
 from cdbr.core.presentation import solution_rows
 
 
@@ -47,3 +47,22 @@ def test_solver_reports_contradiction_under_lexicon():
     assert result.exhausted is True
     assert result.best_mapping == {1: "Z"}
     assert solution_rows(puzzle, result.best_mapping) == ("Z??",)
+
+
+def test_solution_quality_prefers_the_stronger_weakest_word():
+    common = Solution(
+        mapping={},
+        words={
+            1: LexiconEntry(word="COMMON", score=5.0, source="test"),
+            2: LexiconEntry(word="PLAIN", score=4.0, source="test"),
+        },
+    )
+    obscure = Solution(
+        mapping={},
+        words={
+            1: LexiconEntry(word="POPULAR", score=6.0, source="test"),
+            2: LexiconEntry(word="ARCANE", score=1.0, source="test"),
+        },
+    )
+
+    assert _solution_quality(common) > _solution_quality(obscure)

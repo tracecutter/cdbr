@@ -1,0 +1,44 @@
+"""Tests for illumination-tolerant photograph recognition helpers."""
+
+import cv2
+import numpy as np
+
+from cdbr.core.recognition import _block_mask, _coarse_glyph_feature, _foreground_binary
+
+
+def test_foreground_binary_rejects_smooth_shadow() -> None:
+    image = np.full((100, 160), 235, dtype=np.uint8)
+    image[:, :90] -= 80
+    image = cv2.GaussianBlur(image, (31, 31), 0)
+    cv2.putText(image, "14", (50, 65), cv2.FONT_HERSHEY_SIMPLEX, 1.5, 20, 3, cv2.LINE_AA)
+
+    foreground = _foreground_binary(image)
+
+    assert np.mean(foreground[35:70, 50:105]) > 20
+    assert np.mean(foreground[:, :30]) < 5
+    assert np.mean(foreground[:, 130:]) < 5
+
+
+def test_coarse_glyph_feature_preserves_six_tail() -> None:
+    zero = np.zeros((48, 32), dtype=np.uint8)
+    cv2.ellipse(zero, (16, 27), (9, 15), 0, 0, 360, 255, 4)
+    six = zero.copy()
+    cv2.line(six, (8, 27), (10, 5), 255, 4)
+
+    zero_feature = _coarse_glyph_feature(zero)
+    six_feature = _coarse_glyph_feature(six)
+
+    assert six_feature[4] > zero_feature[4]
+    assert not np.array_equal(six_feature, zero_feature)
+
+
+def test_block_mask_tolerates_page_brightness_gradient() -> None:
+    expected = [(row + column) % 4 == 1 for row in range(15) for column in range(15)]
+    cells = []
+    for index, blocked in enumerate(expected):
+        row, column = divmod(index, 15)
+        paper = 230 - 5 * row
+        brightness = round(paper * 0.6) if blocked else paper
+        cells.append((row, column, np.full((100, 100, 3), brightness, dtype=np.uint8)))
+
+    assert _block_mask(cells) == expected

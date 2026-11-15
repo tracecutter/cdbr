@@ -11,6 +11,9 @@ from pathlib import Path
 from wordfreq import iter_wordlist, zipf_frequency
 
 
+SUPPLEMENTAL_BRITISH_WORDS = ("mercyproof",)
+
+
 def word_pattern(values: Iterable[object]) -> tuple[int, ...]:
     seen: dict[object, int] = {}
     return tuple(seen.setdefault(value, len(seen)) for value in values)
@@ -70,6 +73,7 @@ def english_lexicon(
             "ESDB/SCOWL-2026.02.25-en_GB-70",
         )
     )
+    entries.extend(_normalized_words(SUPPLEMENTAL_BRITISH_WORDS, "cdbr-british-supplement"))
     if system_dictionary.is_file():
         entries.extend(
             _normalized_words(

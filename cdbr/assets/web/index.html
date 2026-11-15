@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f2efe8">
+    <meta name="description" content="Turn a photograph of a Code Break puzzle into a solved page.">
+    <title>Code Break Solver</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Code Break Solver home">
+        <img src="/static/f-logo.png" alt="" width="52" height="52">
+        <span>
+          <strong>Code Break</strong>
+          <small>Photo solver</small>
+        </span>
+      </a>
+      <p class="privacy-note"><span aria-hidden="true"></span>Your photo is processed, then discarded.</p>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <p class="eyebrow">From newspaper to finished puzzle</p>
+        <h1 id="page-title">Solve your Code Break.</h1>
+        <p class="lede">Take a clear photo. We’ll read the grid, crack the code, and write the answers back onto the original page.</p>
+      </section>
+
+      <section class="workspace" aria-label="Puzzle solver">
+        <form id="solver-form" action="/solve" method="post" enctype="multipart/form-data">
+          <div id="drop-zone" class="drop-zone">
+            <input
+              id="photo"
+              name="photo"
+              type="file"
+              accept="image/*,.heic,.heif"
+              capture="environment"
+              required
+            >
+            <div class="empty-state" id="empty-state">
+              <span class="camera-mark" aria-hidden="true">
+                <svg viewBox="0 0 32 32" role="img">
+                  <path d="M10 8.5 12 5h8l2 3.5h4a3 3 0 0 1 3 3V25a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V11.5a3 3 0 0 1 3-3h4Z"/>
+                  <circle cx="16" cy="18" r="6"/>
+                </svg>
+              </span>
+              <h2>Photograph your puzzle</h2>
+              <p>Keep the full square in frame and avoid heavy shadows.</p>
+              <label class="primary-button" for="photo">Take or choose photo</label>
+              <span class="drop-hint">or drop an image here</span>
+            </div>
+
+            <div class="preview-state" id="preview-state" hidden>
+              <div class="preview-frame">
+                <img id="preview-image" alt="Your selected puzzle">
+                <div class="file-fallback" id="file-fallback" hidden>
+                  <span>HEIC</span>
+                  <strong>Photo ready</strong>
+                </div>
+              </div>
+              <div class="file-meta">
+                <span>
+                  <strong id="file-name"></strong>
+                  <small id="file-size"></small>
+                </span>
+                <button class="text-button" id="change-photo" type="button">Change photo</button>
+              </div>
+              <button class="solve-button" id="solve-button" type="submit">
+                <span>Solve this puzzle</span>
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6"/></svg>
+              </button>
+            </div>
+
+            <div class="working-state" id="working-state" hidden aria-live="polite">
+              <div class="solver-glyph" aria-hidden="true">
+                <span>04</span><span>22</span><span>08</span><span>15</span>
+              </div>
+              <p class="eyebrow">Working on it</p>
+              <h2 id="working-message">Finding the puzzle grid…</h2>
+              <p>Some photographs take a minute. Keep this page open.</p>
+              <div class="progress-track"><span></span></div>
+            </div>
+          </div>
+        </form>
+
+        <div class="result-state" id="result-state" hidden aria-live="polite">
+          <div class="result-heading">
+            <span class="result-tick" aria-hidden="true">✓</span>
+            <div>
+              <p class="eyebrow" id="result-kicker">Puzzle solved</p>
+              <h2>Your finished page</h2>
+            </div>
+          </div>
+          <figure class="result-image-wrap">
+            <img id="result-image" alt="Solved Code Break puzzle">
+          </figure>
+          <div class="result-actions">
+            <a class="primary-button" id="download-result" download="codebreak-solved.jpg">Save solved photo</a>
+            <button class="secondary-button" id="solve-another" type="button">Solve another</button>
+          </div>
+          <p class="result-detail" id="result-detail"></p>
+        </div>
+
+        <div class="error-state" id="error-state" hidden role="alert">
+          <span aria-hidden="true">!</span>
+          <div>
+            <h2>We couldn’t solve that photo</h2>
+            <p id="error-message">Try another image with the complete puzzle in frame.</p>
+            <button class="text-button" id="try-again" type="button">Choose another photo</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="tips" aria-labelledby="tips-title">
+        <div>
+          <p class="eyebrow">Better photographs, better answers</p>
+          <h2 id="tips-title">Three small things make a big difference.</h2>
+        </div>
+        <ol>
+          <li><span>01</span><p><strong>Show every edge</strong>Leave a little space around the entire puzzle.</p></li>
+          <li><span>02</span><p><strong>Get square-ish</strong>Shoot from above rather than from a steep angle.</p></li>
+          <li><span>03</span><p><strong>Use even light</strong>Avoid casting your phone’s shadow over the grid.</p></li>
+        </ol>
+      </section>
+    </main>
+
+    <footer>
+      <p><strong>Code Break Solver</strong> · British English · No account required</p>
+      <p>Made with unreasonable enthusiasm for small numbered squares.</p>
+    </footer>
+  </body>
+</html>

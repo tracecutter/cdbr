@@ -25,6 +25,15 @@ class SolveResult:
     best_mapping: dict[int, str]
 
 
+def _solution_quality(solution: Solution) -> tuple[float, float]:
+    """Rank complete solutions by their weakest and then average vocabulary."""
+
+    scores = [
+        entry.score - (0.15 if entry.source.startswith("compound(") else 0.0) for entry in solution.words.values()
+    ]
+    return (min(scores, default=0.0), sum(scores) / len(scores) if scores else 0.0)
+
+
 def _compatible(
     symbols: tuple[int, ...],
     word: str,
@@ -133,7 +142,7 @@ def solve(
     puzzle: CodewordPuzzle,
     lexicon: Lexicon,
     *,
-    max_solutions: int = 2,
+    max_solutions: int = 20,
     max_nodes: int = 100_000,
 ) -> SolveResult:
     """Find up to max_solutions, reporting whether search was exhaustive."""
@@ -185,8 +194,9 @@ def solve(
                 return
 
     search(dict(puzzle.clues))
+    ranked_solutions = tuple(sorted(solutions, key=_solution_quality, reverse=True))
     return SolveResult(
-        solutions=tuple(solutions),
+        solutions=ranked_solutions,
         exhausted=not stopped,
         nodes=nodes,
         best_mapping=best_mapping,

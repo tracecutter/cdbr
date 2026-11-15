@@ -77,3 +77,7 @@ var/
 
 # Logs
 *.log
+
+# Generated puzzle output
+/solved.*
+examples/*_solved.*
