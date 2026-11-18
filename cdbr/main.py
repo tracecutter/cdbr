@@ -130,7 +130,8 @@ set `PORT` and run a single service process.
 
 OCR quality still depends on the photograph. Perspective, shadows, handwriting,
 and damaged grid lines can leave cells unresolved. Puzzle generation is bounded
-search: a time limit can expire without producing a certified candidate.
+search: it retains the best certified candidate found during the chosen time,
+although the limit can expire without producing a certified candidate.
 
 [[section.links]]
 - Documentation: https://tracecutter.github.io/cdbr/

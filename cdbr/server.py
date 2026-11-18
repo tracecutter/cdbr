@@ -63,7 +63,10 @@ class GenerationJob:
     progress: str = "Waiting to start…"
     created_at: float = field(default_factory=time.monotonic)
     cancelled: bool = False
+    accepted: bool = False
     generated: GeneratedPuzzle | None = None
+    certified_candidates: int = 0
+    deadline: float | None = None
     error: str | None = None
     published_serial: int | None = None
 
@@ -192,6 +195,7 @@ def _generation_job_public(job: GenerationJob) -> dict[str, object]:
         "status": job.status,
         "progress": job.progress,
         "elapsed_seconds": round(time.monotonic() - job.created_at),
+        "remaining_seconds": max(0, round(job.deadline - time.monotonic())) if job.deadline is not None else None,
     }
     if job.error is not None:
         payload["error"] = job.error
@@ -201,10 +205,21 @@ def _generation_job_public(job: GenerationJob) -> dict[str, object]:
             "black_cells": blocks,
             "clues": len(job.generated.puzzle.clues),
             "seed": job.generated.seed,
+            "certified_candidates": job.certified_candidates,
         }
     if job.published_serial is not None:
         payload["published_serial"] = job.published_serial
     return payload
+
+
+def _generated_quality(generated: GeneratedPuzzle) -> tuple[float, float, float]:
+    """Rank candidates by open cells, then weakest and average vocabulary."""
+
+    blocks = sum(symbol is None for row in generated.puzzle.grid for symbol in row)
+    scores: list[float] = []
+    if generated.certification.solutions:
+        scores = [entry.score for entry in generated.certification.solutions[0].words.values()]
+    return (-float(blocks), min(scores, default=0.0), sum(scores) / len(scores) if scores else 0.0)
 
 
 def _run_generation_job(job: GenerationJob) -> None:
@@ -215,6 +230,7 @@ def _run_generation_job(job: GenerationJob) -> None:
             return
         job.status = "running"
         job.progress = "Loading the British English lexicon…"
+        job.deadline = time.monotonic() + job.request.minutes * 60
 
     def progress(message: str) -> None:
         with _generation_lock:
@@ -223,27 +239,39 @@ def _run_generation_job(job: GenerationJob) -> None:
             job.progress = message
 
     try:
-        generated = generate_puzzle(
-            english_lexicon(),
-            seed=secrets.randbits(31),
-            limits=GenerationLimits(
-                attempts=1_000,
-                seconds=job.request.minutes * 60,
-                clue_count=3,
-            ),
-            progress=progress,
-            required_words=job.request.required_words,
-            excluded_words=job.request.excluded_words,
-        )
+        lexicon = english_lexicon()
+        while job.deadline is not None:
+            remaining = job.deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                generated = generate_puzzle(
+                    lexicon,
+                    seed=secrets.randbits(31),
+                    limits=GenerationLimits(
+                        attempts=1_000,
+                        seconds=remaining,
+                        clue_count=3,
+                    ),
+                    progress=progress,
+                    required_words=job.request.required_words,
+                    excluded_words=job.request.excluded_words,
+                )
+            except ValueError:
+                break
+            with _generation_lock:
+                if job.cancelled:
+                    raise GenerationCancelled
+                job.certified_candidates += 1
+                if job.generated is None or _generated_quality(generated) > _generated_quality(job.generated):
+                    job.generated = generated
+                    blocks = sum(symbol is None for row in generated.puzzle.grid for symbol in row)
+                    job.progress = f"New best: {blocks} black cells"
     except GenerationCancelled:
         with _generation_lock:
-            job.status = "cancelled"
-            job.progress = "Cancelled"
-    except ValueError as exc:
-        with _generation_lock:
-            job.status = "failed"
-            job.progress = "No certified puzzle was found"
-            job.error = str(exc)
+            if not job.accepted:
+                job.status = "cancelled"
+                job.progress = "Cancelled"
     except Exception:
         with _generation_lock:
             job.status = "failed"
@@ -251,9 +279,15 @@ def _run_generation_job(job: GenerationJob) -> None:
             job.error = "The generator encountered an unexpected error"
     else:
         with _generation_lock:
-            job.generated = generated
-            job.status = "complete"
-            job.progress = "Certified puzzle ready"
+            if job.accepted:
+                return
+            if job.generated is None:
+                job.status = "failed"
+                job.progress = "No certified puzzle was found"
+                job.error = "No certified puzzle found within the generation limits"
+            else:
+                job.status = "complete"
+                job.progress = "Best certified puzzle ready"
 
 
 @app.post("/api/generation-jobs", status_code=202)
@@ -264,7 +298,7 @@ def create_generation_job_endpoint(request: CreatePuzzleRequest) -> dict[str, ob
                 (
                     job_id
                     for job_id, job in _generation_jobs.items()
-                    if job.status in {"complete", "failed", "cancelled"}
+                    if job.status in {"accepted", "complete", "failed", "cancelled"}
                 ),
                 None,
             )
@@ -296,8 +330,13 @@ def cancel_generation_job_endpoint(job_id: str) -> dict[str, object]:
 def publish_generation_job_endpoint(job_id: str) -> dict[str, object]:
     job = _generation_job(job_id)
     with _generation_lock:
-        if job.status != "complete" or job.generated is None:
+        if job.generated is None or job.status not in {"running", "complete", "accepted"}:
             raise HTTPException(status_code=409, detail="The generation job has no certified puzzle to publish")
+        if job.status == "running":
+            job.accepted = True
+            job.cancelled = True
+            job.status = "accepted"
+            job.progress = "Best candidate accepted"
         if job.published_serial is None:
             serial = max((1, *_runtime_corpus.keys())) + 1
             generated = job.generated

@@ -7,10 +7,10 @@
     <meta name="description" content="Turn a photograph of a Code Break puzzle into a solved page.">
     <title>Code Break Solver</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="/static/app.css">
-    <script src="/static/app.js" defer></script>
+    <link rel="stylesheet" href="/static/app.css?v=20261118-7">
+    <script src="/static/app.js?v=20261118-2" defer></script>
   </head>
-  <body>
+  <body data-mode="idle">
     <header class="site-header">
       <a class="brand" href="/" aria-label="Code Break Solver home">
         <img src="/static/f-logo.png" alt="" width="52" height="52">
@@ -42,61 +42,91 @@
         </nav>
 
         <section class="idle-workspace" id="idle-workspace" aria-labelledby="idle-title">
-          <div class="idle-heading">
-            <p class="eyebrow">Ready when you are</p>
-            <h2 id="idle-title">How would you like to begin?</h2>
+          <div class="game-heading idle-heading">
+            <div>
+              <p class="eyebrow">Ready when you are</p>
+              <h2 id="idle-title">Choose how to begin.</h2>
+            </div>
+            <p class="game-status">Play · scan · create</p>
           </div>
-          <div class="blank-board-wrap">
-            <div class="blank-puzzle-shell" id="blank-puzzle-shell" aria-hidden="true"></div>
-            <p><strong>Your puzzle will appear here.</strong><span>Choose Play, Scan, or Create above.</span></p>
-          </div>
-          <div class="blank-reference-wrap">
-            <span>Reference grid</span>
-            <div class="blank-reference-grid" id="blank-reference-grid" aria-hidden="true"></div>
+
+          <div class="game-play-area">
+            <div class="blank-board-wrap">
+              <div class="blank-puzzle-shell" id="blank-puzzle-shell" aria-hidden="true"></div>
+            </div>
+
+            <aside class="game-side idle-side" aria-label="Choose a puzzle source">
+              <div class="reference-section blank-reference-wrap">
+                <div class="reference-heading">
+                  <div>
+                    <p class="eyebrow">Reference grid</p>
+                    <h2>Your puzzle starts here.</h2>
+                  </div>
+                  <p>Choose Play, Scan, or Create above.</p>
+                </div>
+                <div class="blank-reference-grid" id="blank-reference-grid" aria-hidden="true"></div>
+              </div>
+            </aside>
           </div>
         </section>
 
         <section class="creator-workspace" id="creator-workspace" aria-labelledby="creator-title" hidden>
-          <div class="creator-heading">
+          <div class="game-heading creator-heading">
             <div>
               <p class="eyebrow">Make it personal</p>
               <h2 id="creator-title">Create a puzzle.</h2>
             </div>
-            <p>Required words will appear in the finished solution. Ordinary British English fills the rest.</p>
+            <p class="game-status">Three clues · British English</p>
           </div>
-          <form class="creator-form" id="creator-form">
-            <label>
-              <span>Required words</span>
-              <textarea id="required-words" rows="3" required placeholder="PERFECT&#10;FOR&#10;PETERSFIELD"></textarea>
-              <small>One word or phrase per line. Between 1 and 8.</small>
-            </label>
-            <label>
-              <span>Excluded words</span>
-              <textarea id="excluded-words" rows="3" placeholder="NESS&#10;NASH"></textarea>
-              <small>Optional. One word per line.</small>
-            </label>
-            <label class="search-length">
-              <span>Search time</span>
-              <select id="generation-minutes">
-                <option value="1">1 minute · quick try</option>
-                <option value="5" selected>5 minutes · recommended</option>
-                <option value="15">15 minutes · patient</option>
-                <option value="30">30 minutes · deep search</option>
-              </select>
-              <small>The search stops as soon as it certifies a puzzle.</small>
-            </label>
-            <button class="primary-button creator-submit" type="submit">Start creating</button>
-          </form>
 
-          <div class="creator-progress" id="creator-progress" hidden aria-live="polite">
-            <div class="progress-track"><span></span></div>
-            <p class="eyebrow">Building your puzzle</p>
-            <h3 id="creator-progress-title">Waiting to start…</h3>
-            <p id="creator-progress-detail"></p>
-            <div class="creator-actions">
-              <button class="primary-button" id="publish-created" type="button" hidden>Play this puzzle</button>
-              <button class="secondary-button" id="cancel-created" type="button">Cancel</button>
+          <div class="game-play-area creator-play-area">
+            <div class="creator-board-wrap">
+              <div class="blank-puzzle-shell creator-puzzle-shell" id="creator-puzzle-shell" aria-hidden="true"></div>
+              <div class="creator-progress" id="creator-progress" hidden aria-live="polite">
+                <div class="progress-track"><span></span></div>
+                <p class="eyebrow" id="creator-progress-kicker">Building your puzzle</p>
+                <h3 id="creator-progress-title">Waiting to start…</h3>
+                <p id="creator-progress-detail"></p>
+                <div class="creator-actions">
+                  <button class="primary-button" id="publish-created" type="button" hidden>Play this puzzle</button>
+                  <button class="secondary-button" id="cancel-created" type="button">Cancel</button>
+                </div>
+              </div>
             </div>
+
+            <aside class="game-side creator-side" aria-label="Puzzle ingredients">
+              <div class="reference-heading creator-instructions">
+                <div>
+                  <p class="eyebrow">Puzzle ingredients</p>
+                  <h2>Choose your words.</h2>
+                </div>
+                <p>Required words appear in the solution. Ordinary British English fills the spaces between them.</p>
+              </div>
+
+              <form class="creator-form" id="creator-form">
+                <label>
+                  <span>Required words</span>
+                  <textarea id="required-words" rows="3" required placeholder="MOONLIGHT&#10;CINEMA&#10;POPCORN"></textarea>
+                  <small>One word or phrase per line. Between 1 and 8.</small>
+                </label>
+                <label>
+                  <span>Excluded words</span>
+                  <textarea id="excluded-words" rows="2"></textarea>
+                  <small>Optional. One word per line.</small>
+                </label>
+                <label class="search-length">
+                  <span>Search time</span>
+                  <select id="generation-minutes">
+                    <option value="1">1 minute · quick try</option>
+                    <option value="5" selected>5 minutes · recommended</option>
+                    <option value="15">15 minutes · patient</option>
+                    <option value="30">30 minutes · deep search</option>
+                  </select>
+                  <small>The search keeps its best certified puzzle. Play it early or use the full time.</small>
+                </label>
+                <button class="primary-button creator-submit" type="submit">Start creating</button>
+              </form>
+            </aside>
           </div>
         </section>
 
@@ -109,29 +139,44 @@
           <p class="game-status" id="game-status" aria-live="polite">Preparing puzzle…</p>
         </div>
 
-        <div class="puzzle-shell" id="puzzle-shell" aria-label="Code Break puzzle grid"></div>
+        <div class="game-play-area">
+          <div class="puzzle-shell" id="puzzle-shell" aria-label="Code Break puzzle grid"></div>
 
-        <div class="reference-section">
-          <div class="reference-heading">
-            <div>
-              <p class="eyebrow">Reference grid</p>
-              <h2>Choose your next hint.</h2>
+          <aside class="game-side" aria-label="Puzzle hints and actions">
+            <div class="reference-section">
+              <div class="reference-heading">
+                <div>
+                  <p class="eyebrow">Reference grid</p>
+                  <h2>Choose your next hint.</h2>
+                </div>
+                <p id="game-guidance">Select a numbered cell, then click it again to reveal the letter throughout the puzzle.</p>
+              </div>
+              <div class="reference-grid" id="reference-grid" aria-label="Letter reference grid"></div>
             </div>
-            <p id="game-guidance">Select a numbered cell, then click it again to reveal the letter throughout the puzzle.</p>
-          </div>
-          <div class="reference-grid" id="reference-grid" aria-label="Letter reference grid"></div>
-        </div>
 
-        <div class="game-actions">
-          <button class="primary-button" id="reveal-all" type="button">Reveal entire puzzle</button>
-          <button class="secondary-button" id="reset-game" type="button">Reset puzzle</button>
-          <button class="text-button" id="scan-from-game" type="button">Scan another puzzle</button>
+            <div class="game-actions">
+              <button class="primary-button" id="reveal-all" type="button">Reveal entire puzzle</button>
+              <button class="secondary-button" id="reset-game" type="button">Reset puzzle</button>
+              <div class="game-links">
+                <button class="text-button" id="scan-from-game" type="button">Scan another puzzle</button>
+                <button class="text-button" id="quit-game" type="button">Quit puzzle</button>
+              </div>
+            </div>
+          </aside>
         </div>
         </section>
 
-        <section class="workspace" id="scanner-workspace" aria-label="Puzzle scanner" hidden>
+        <section class="scanner-workspace" id="scanner-workspace" aria-label="Puzzle scanner" hidden>
+        <div class="game-heading scanner-heading">
+          <div>
+            <p class="eyebrow">Bring a photograph</p>
+            <h2>Scan a puzzle.</h2>
+          </div>
+          <p class="game-status">Your photo is processed, then discarded</p>
+        </div>
+
         <form id="solver-form" action="/solve" method="post" enctype="multipart/form-data">
-          <div id="drop-zone" class="drop-zone">
+          <div id="drop-zone" class="game-play-area scan-play-area">
             <input
               id="photo"
               name="photo"
@@ -140,21 +185,20 @@
               capture="environment"
               required
             >
-            <div class="empty-state" id="empty-state">
-              <span class="camera-mark" aria-hidden="true">
-                <svg viewBox="0 0 32 32" role="img">
-                  <path d="M10 8.5 12 5h8l2 3.5h4a3 3 0 0 1 3 3V25a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V11.5a3 3 0 0 1 3-3h4Z"/>
-                  <circle cx="16" cy="18" r="6"/>
-                </svg>
-              </span>
-              <h2>Photograph your puzzle</h2>
-              <p>Keep the full square in frame and avoid heavy shadows.</p>
-              <label class="primary-button" for="photo">Take or choose photo</label>
-              <span class="drop-hint">or drop an image here</span>
-            </div>
+            <div class="scan-preview-shell">
+              <div class="empty-state" id="empty-state">
+                <span class="camera-mark" aria-hidden="true">
+                  <svg viewBox="0 0 32 32" role="img">
+                    <path d="M10 8.5 12 5h8l2 3.5h4a3 3 0 0 1 3 3V25a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V11.5a3 3 0 0 1 3-3h4Z"/>
+                    <circle cx="16" cy="18" r="6"/>
+                  </svg>
+                </span>
+                <h2>Your photograph appears here.</h2>
+                <p>Keep the complete puzzle in frame.</p>
+              </div>
 
-            <div class="preview-state" id="preview-state" hidden>
-              <div class="preview-frame">
+              <div class="preview-state" id="preview-state" hidden>
+                <div class="preview-frame">
                 <img id="preview-image" alt="Your selected puzzle">
                 <div class="file-fallback" id="file-fallback" hidden>
                   <span>HEIC</span>
@@ -170,18 +214,44 @@
                   <div class="progress-track"><span></span></div>
                 </div>
               </div>
-              <div class="file-meta">
+              </div>
+            </div>
+
+            <aside class="game-side scan-side" aria-label="Scan controls">
+              <div class="reference-heading scan-instructions">
+                <div>
+                  <p class="eyebrow">Photograph</p>
+                  <h2>Open your puzzle.</h2>
+                </div>
+                <p>Use a clear photograph with the puzzle and reference grid visible. A little skew or shadow is fine.</p>
+              </div>
+
+              <div class="scan-actions">
+                <label class="primary-button" for="photo">Take or choose photo</label>
+                <span class="drop-hint">or drop an image onto the puzzle area</span>
+                <div class="file-meta" id="file-meta" hidden>
                 <span>
                   <strong id="file-name"></strong>
                   <small id="file-size"></small>
                 </span>
                 <button class="text-button" id="change-photo" type="button">Change photo</button>
               </div>
-              <button class="solve-button" id="solve-button" type="submit">
-                <span>Open this puzzle</span>
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6"/></svg>
-              </button>
-            </div>
+                <button class="solve-button" id="solve-button" type="submit" hidden>
+                  <span>Open this puzzle</span>
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6"/></svg>
+                </button>
+                <button class="text-button scan-quit" id="quit-scan" type="button">Back to puzzle desk</button>
+              </div>
+
+              <div class="error-state" id="error-state" hidden role="alert">
+                <span aria-hidden="true">!</span>
+                <div>
+                  <h2>We couldn’t solve that photo</h2>
+                  <p id="error-message">Try another image with the complete puzzle in frame.</p>
+                  <button class="text-button" id="try-again" type="button">Choose another photo</button>
+                </div>
+              </div>
+            </aside>
           </div>
         </form>
 
@@ -203,14 +273,6 @@
           <p class="result-detail" id="result-detail"></p>
         </div>
 
-        <div class="error-state" id="error-state" hidden role="alert">
-          <span aria-hidden="true">!</span>
-          <div>
-            <h2>We couldn’t solve that photo</h2>
-            <p id="error-message">Try another image with the complete puzzle in frame.</p>
-            <button class="text-button" id="try-again" type="button">Choose another photo</button>
-          </div>
-        </div>
         </section>
       </section>
     </main>

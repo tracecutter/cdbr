@@ -26,6 +26,10 @@ class SolveResult:
     best_mapping: dict[int, str]
 
 
+class _SearchDeadlineReached(Exception):
+    """Stop constraint propagation when its wall-clock budget expires."""
+
+
 def _solution_quality(solution: Solution) -> tuple[float, float]:
     """Rank complete solutions by their weakest and then average vocabulary."""
 
@@ -66,7 +70,11 @@ def _slot_candidates(
     slot: Slot,
     lexicon: Lexicon,
     mapping: dict[int, str],
+    *,
+    deadline: float | None = None,
 ) -> tuple[LexiconEntry, ...]:
+    if deadline is not None and time.monotonic() >= deadline:
+        raise _SearchDeadlineReached
     reverse = {letter: symbol for symbol, letter in mapping.items()}
     candidates = tuple(
         entry for entry in lexicon.candidates(slot.symbols) if _compatible(slot.symbols, entry.word, mapping, reverse)
@@ -75,6 +83,8 @@ def _slot_candidates(
         return candidates
     compounds: dict[str, LexiconEntry] = {}
     for split in range(2, slot.length - 1):
+        if deadline is not None and time.monotonic() >= deadline:
+            raise _SearchDeadlineReached
         left = tuple(
             entry
             for entry in lexicon.candidates(slot.symbols[:split])
@@ -86,6 +96,8 @@ def _slot_candidates(
             if _compatible(slot.symbols[split:], entry.word, mapping, reverse)
         )[:1000]
         for first in left:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise _SearchDeadlineReached
             for second in right:
                 word = first.word + second.word
                 if word_pattern(word) != word_pattern(slot.symbols):
@@ -108,12 +120,17 @@ def _propagate(
     lexicon: Lexicon,
     mapping: dict[int, str],
     on_progress: Callable[[dict[int, str]], None] | None = None,
+    deadline: float | None = None,
 ) -> tuple[dict[int, str], dict[int, tuple[LexiconEntry, ...]]] | None:
     current = dict(mapping)
     while True:
+        if deadline is not None and time.monotonic() >= deadline:
+            raise _SearchDeadlineReached
         if on_progress is not None:
             on_progress(current)
-        candidates = {slot.index: _slot_candidates(slot, lexicon, current) for slot in puzzle.slots}
+        candidates: dict[int, tuple[LexiconEntry, ...]] = {}
+        for slot in puzzle.slots:
+            candidates[slot.index] = _slot_candidates(slot, lexicon, current, deadline=deadline)
         if any(not values for values in candidates.values()):
             return None
         forced: dict[int, str] = {}
@@ -169,7 +186,11 @@ def solve(
             if len(progress) > len(best_mapping):
                 best_mapping = dict(progress)
 
-        propagated = _propagate(puzzle, lexicon, mapping, on_progress=record_progress)
+        try:
+            propagated = _propagate(puzzle, lexicon, mapping, on_progress=record_progress, deadline=deadline)
+        except _SearchDeadlineReached:
+            stopped = True
+            return
         if propagated is None:
             return
         resolved, candidates = propagated

@@ -19,7 +19,6 @@ const gameWorkspace = document.querySelector('#game-workspace');
 const scannerWorkspace = document.querySelector('#scanner-workspace');
 const idleWorkspace = document.querySelector('#idle-workspace');
 const creatorWorkspace = document.querySelector('#creator-workspace');
-const puzzleDesk = document.querySelector('.puzzle-desk');
 const showGameButton = document.querySelector('#show-game');
 const showScannerButton = document.querySelector('#show-scanner');
 const showCreatorButton = document.querySelector('#show-creator');
@@ -28,10 +27,14 @@ const referenceGrid = document.querySelector('#reference-grid');
 const gameStatus = document.querySelector('#game-status');
 const gameGuidance = document.querySelector('#game-guidance');
 const gameTitle = document.querySelector('#game-title');
+const fileMeta = document.querySelector('#file-meta');
+const solveButton = document.querySelector('#solve-button');
 const blankPuzzleShell = document.querySelector('#blank-puzzle-shell');
+const creatorPuzzleShell = document.querySelector('#creator-puzzle-shell');
 const blankReferenceGrid = document.querySelector('#blank-reference-grid');
 const creatorForm = document.querySelector('#creator-form');
 const creatorProgress = document.querySelector('#creator-progress');
+const creatorProgressKicker = document.querySelector('#creator-progress-kicker');
 const creatorProgressTitle = document.querySelector('#creator-progress-title');
 const creatorProgressDetail = document.querySelector('#creator-progress-detail');
 const publishCreated = document.querySelector('#publish-created');
@@ -58,19 +61,20 @@ const workingStages = [
 ];
 
 function showMode(mode) {
-  idleWorkspace.hidden = true;
+  document.body.dataset.mode = mode;
+  idleWorkspace.hidden = mode !== 'idle';
   gameWorkspace.hidden = mode !== 'game';
   scannerWorkspace.hidden = mode !== 'scanner';
   creatorWorkspace.hidden = mode !== 'creator';
   showGameButton.classList.toggle('is-active', mode === 'game');
   showScannerButton.classList.toggle('is-active', mode === 'scanner');
   showCreatorButton.classList.toggle('is-active', mode === 'creator');
-  puzzleDesk.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function renderBlankDesk() {
   for (let index = 0; index < 225; index += 1) {
     blankPuzzleShell.append(document.createElement('span'));
+    creatorPuzzleShell.append(document.createElement('span'));
   }
   for (let symbol = 1; symbol <= 26; symbol += 1) {
     const cell = document.createElement('span');
@@ -213,6 +217,7 @@ showGameButton.addEventListener('click', startCorpusGame);
 showScannerButton.addEventListener('click', () => showMode('scanner'));
 showCreatorButton.addEventListener('click', () => showMode('creator'));
 document.querySelector('#scan-from-game').addEventListener('click', () => showMode('scanner'));
+document.querySelector('#quit-game').addEventListener('click', () => showMode('idle'));
 document.querySelector('#reset-game').addEventListener('click', loadGame);
 document.querySelector('#reveal-all').addEventListener('click', async () => {
   if (!game || !window.confirm('Reveal the complete puzzle?')) return;
@@ -240,7 +245,10 @@ function resetCreator() {
   generationJob = undefined;
   creatorForm.hidden = false;
   creatorProgress.hidden = true;
+  creatorProgress.classList.remove('is-complete');
+  creatorProgressKicker.textContent = 'Building your puzzle';
   publishCreated.hidden = true;
+  publishCreated.textContent = 'Play best now';
   cancelCreated.textContent = 'Cancel';
 }
 
@@ -253,13 +261,30 @@ async function pollGenerationJob() {
     return;
   }
   const job = await response.json();
-  creatorProgressTitle.textContent = job.progress;
-  creatorProgressDetail.textContent = `${job.elapsed_seconds}s elapsed`;
+  if (job.candidate && job.status === 'running') {
+    const candidate = job.candidate;
+    const count = candidate.certified_candidates;
+    creatorProgressKicker.textContent = 'Best so far';
+    creatorProgressTitle.textContent = `${candidate.black_cells} black cells`;
+    creatorProgressDetail.textContent = `${count} certified ${count === 1 ? 'candidate' : 'candidates'} · ${job.remaining_seconds}s remaining · still searching`;
+    publishCreated.textContent = 'Play best now';
+    publishCreated.hidden = false;
+    cancelCreated.textContent = 'Discard and start over';
+  } else if (job.progress.includes('fill complete')) {
+    creatorProgressTitle.textContent = 'Candidate filled — checking uniqueness';
+    creatorProgressDetail.textContent = `${job.elapsed_seconds}s elapsed · search continues until certified`;
+  } else {
+    creatorProgressTitle.textContent = job.progress;
+    creatorProgressDetail.textContent = `${job.elapsed_seconds}s elapsed`;
+  }
   if (job.status === 'complete') {
     const candidate = job.candidate;
+    creatorProgress.classList.add('is-complete');
+    creatorProgressKicker.textContent = 'Puzzle ready';
     creatorProgressDetail.textContent = `${candidate.black_cells} black cells · ${candidate.clues} clues · certified unique`;
+    publishCreated.textContent = 'Play this puzzle';
     publishCreated.hidden = false;
-    cancelCreated.textContent = 'Discard';
+    cancelCreated.textContent = 'Discard and start over';
     return;
   }
   if (job.status === 'failed' || job.status === 'cancelled') {
@@ -276,6 +301,8 @@ creatorForm.addEventListener('submit', async (event) => {
   if (!requiredWords.length) return;
   creatorForm.hidden = true;
   creatorProgress.hidden = false;
+  creatorProgress.classList.remove('is-complete');
+  creatorProgressKicker.textContent = 'Building your puzzle';
   creatorProgressTitle.textContent = 'Starting the generator…';
   creatorProgressDetail.textContent = 'Three clues · British English';
   const response = await fetch('/api/generation-jobs', {
@@ -330,6 +357,8 @@ function showSelection(file) {
   emptyState.hidden = true;
   workingState.hidden = true;
   previewState.hidden = false;
+  fileMeta.hidden = false;
+  solveButton.hidden = false;
   resultState.hidden = true;
   errorState.hidden = true;
   document.querySelector('#file-name').textContent = file.name || 'Puzzle photograph';
@@ -368,6 +397,8 @@ function chooseAgain() {
   workingState.hidden = true;
   previewState.classList.remove('is-working');
   previewState.hidden = true;
+  fileMeta.hidden = true;
+  solveButton.hidden = true;
   emptyState.hidden = false;
   selectedFile = undefined;
   input.value = '';
@@ -400,6 +431,19 @@ dropZone.addEventListener('drop', (event) => {
 document.querySelector('#change-photo').addEventListener('click', chooseAgain);
 document.querySelector('#try-again').addEventListener('click', chooseAgain);
 document.querySelector('#solve-another').addEventListener('click', chooseAgain);
+document.querySelector('#quit-scan').addEventListener('click', () => {
+  clearInterval(stageTimer);
+  workingState.hidden = true;
+  previewState.classList.remove('is-working');
+  previewState.hidden = true;
+  fileMeta.hidden = true;
+  solveButton.hidden = true;
+  emptyState.hidden = false;
+  errorState.hidden = true;
+  selectedFile = undefined;
+  input.value = '';
+  showMode('idle');
+});
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();

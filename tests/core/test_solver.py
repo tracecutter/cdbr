@@ -49,6 +49,19 @@ def test_solver_reports_contradiction_under_lexicon():
     assert solution_rows(puzzle, result.best_mapping) == ("Z??",)
 
 
+def test_solver_honours_deadline_during_constraint_propagation(monkeypatch):
+    grid = ((1, 2, 3),)
+    puzzle = CodewordPuzzle(grid=grid, clues={}, slots=extract_slots(grid))
+    lexicon = Lexicon([LexiconEntry(word="CAT", score=5.0, source="test")])
+    ticks = iter((0.0, 0.0, 2.0))
+    monkeypatch.setattr("cdbr.core.solver.time.monotonic", lambda: next(ticks, 2.0))
+
+    result = solve(puzzle, lexicon, deadline=1.0)
+
+    assert result.exhausted is False
+    assert result.solutions == ()
+
+
 def test_solution_quality_prefers_the_stronger_weakest_word():
     common = Solution(
         mapping={},

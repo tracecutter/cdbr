@@ -18,7 +18,7 @@ def test_home_serves_upload_experience():
     response = client.get("/")
 
     assert response.status_code == 200
-    assert "How would you like to begin?" in response.text
+    assert "Choose how to begin." in response.text
     assert 'action="/solve"' in response.text
     assert 'id="game-workspace" aria-labelledby="game-title" hidden' in response.text
     assert ">Create</button>" in response.text
@@ -172,6 +172,72 @@ def test_publish_generated_candidate_assigns_next_serial():
     assert response.json()["title"] == "Puzzle 2"
     assert response.json()["origin"] == "cdbr_generated"
     assert "solution" not in response.json()
+
+
+def test_generation_job_keeps_best_certified_candidate(monkeypatch):
+    def generated(grid, seed):
+        puzzle = CodewordPuzzle(grid=grid, clues={1: "A"}, slots=extract_slots(grid))
+        return GeneratedPuzzle(
+            puzzle=puzzle,
+            answer=tuple("".join("#" if value is None else "A" for value in row) for row in grid),
+            mapping={1: "A", 2: "B", 3: "C", 4: "D"},
+            certification=SimpleNamespace(solutions=()),
+            seed=seed,
+        )
+
+    candidates = iter(
+        (
+            generated(((1, None), (2, 3)), 1),
+            generated(((1, 2), (3, 4)), 2),
+        )
+    )
+
+    def fake_generate(*_args, **_kwargs):
+        try:
+            return next(candidates)
+        except StopIteration:
+            raise ValueError("budget exhausted") from None
+
+    monkeypatch.setattr(server_module, "english_lexicon", lambda: object())
+    monkeypatch.setattr(server_module, "generate_puzzle", fake_generate)
+    job = server_module.GenerationJob(
+        job_id="best-test",
+        request=server_module.CreatePuzzleRequest(required_words=["AB"], minutes=0.25),
+    )
+
+    server_module._run_generation_job(job)
+
+    assert job.status == "complete"
+    assert job.certified_candidates == 2
+    assert job.generated is not None
+    assert job.generated.seed == 2
+
+
+def test_running_generation_job_can_publish_best_so_far():
+    server_module._runtime_corpus.clear()
+    grid = ((1, 2), (3, 4))
+    generated = GeneratedPuzzle(
+        puzzle=CodewordPuzzle(grid=grid, clues={1: "A", 2: "B", 3: "C"}, slots=extract_slots(grid)),
+        answer=("AB", "CD"),
+        mapping={1: "A", 2: "B", 3: "C", 4: "D"},
+        certification=SimpleNamespace(solutions=()),
+        seed=101,
+    )
+    job = server_module.GenerationJob(
+        job_id="running-best-test",
+        request=server_module.CreatePuzzleRequest(required_words=["AB"], minutes=1),
+        status="running",
+        generated=generated,
+        certified_candidates=1,
+    )
+    server_module._generation_jobs[job.job_id] = job
+
+    response = client.post("/api/generation-jobs/running-best-test/publish")
+
+    assert response.status_code == 201
+    assert job.status == "accepted"
+    assert job.accepted is True
+    assert job.cancelled is True
 
 
 def test_solve_rejects_empty_upload():
