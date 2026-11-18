@@ -1,17 +1,23 @@
 Getting Started
 ===============
 
-Pass a photograph of a Code Break puzzle to cdbr:
+Give cdbr a clear photograph containing the complete 15x15 puzzle and its reference grid. It corrects perspective, reads the numbered cells and supplied letters, then solves the substitution puzzle using a British English lexicon.
 
 Installation
 ------------
 
-{{ code.section.quickstart.install }}
+Install the command from the public Git repository into an isolated environment:
+
+.. code:: bash
+
+   pipx install git+https://github.com/tracecutter/cdbr.git
+
+Image recognition also requires ImageMagick and Tesseract to be available on the host system. Developers should use the repository’s documented editable virtual-environment workflow.
 
 Safe Exploration
 ----------------
 
-{{ code.section.quickstart.safety }}
+cdbr never overwrites an existing solution image or puzzle file unless ``--force`` is supplied. OCR uncertainty is reported rather than silently inventing a cell value, and ``--review`` can be used to correct uncertain cells before solving.
 
 First Command
 -------------
@@ -20,12 +26,23 @@ First Command
 
    cdbr puzzle.jpg
 
+This prints the solved grid. Use ``--orig`` to print the recognised puzzle instead, or ``--image`` to also write ``puzzle_solved.jpg`` beside the input.
+
 Sample Workflow
 ---------------
 
-{{ code.section.quickstart.workflow }}
+.. code:: bash
+
+   # Solve to text
+   cdbr puzzle.heic
+
+   # Inspect the recognised puzzle as TOML
+   cdbr --orig puzzle.heic
+
+   # Review uncertain cells and write on the original photograph
+   cdbr --review --image puzzle.heic
 
 Next Steps
 ----------
 
-{{ code.section.quickstart.next }}
+Use ``cdbr create --help`` to construct a new puzzle, or ``cdbrd --help`` to run the local web application.

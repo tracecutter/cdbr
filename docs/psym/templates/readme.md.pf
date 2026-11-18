@@ -25,19 +25,13 @@ Do not edit this artifact directly.
 
 ---
 
-## Installation {{#toc.installation}}
+## Installation{{#toc.installation}}
 
 {{ code.section.quickstart.install }}
 
 ---
 
-## Asset delivery (d2d) {{#toc.d2d}}
-
-{{ code.d2d.summary }}
-
----
-
-## Quick start {{#toc.quick-start}}
+## Quick start{{#toc.quick-start}}
 
 {{ code.section.quickstart.intro }}
 
@@ -59,40 +53,48 @@ Do not edit this artifact directly.
 
 ---
 
-## Overview {{#toc.overview}}
+## Overview{{#toc.overview}}
 
 {{ code.section.overview }}
 
 ---
 
-## Usage {{#toc.usage}}
+## Solve a photograph{{#toc.solve}}
 
 {{ dynamic.cli.help.root }}
 
-### Writing custom documentation renderers {{#toc.renderer-usage}}
+---
 
-{{ fs.section.renderer.development }}
+## Create a puzzle{{#toc.create}}
+
+{{ code.section.create }}
 
 ---
 
-## Project status {{#toc.project-status}}
+## Web application{{#toc.web}}
+
+{{ code.section.web }}
+
+---
+
+## Project status{{#toc.project-status}}
 
 {{ code.section.status }}
 
 ---
 
-## Development {{#toc.development}}
+## Development{{#toc.development}}
 
 {{ fs.parts.development }}
 
 ---
 
-## Changelog {{#toc.changelog}}
+## Changelog{{#toc.changelog}}
 
 {{ fs.parts.changelog }}
 
 ---
 
-## Links {{#toc.links}}
+## Links{{#toc.links}}
 
 {{ code.section.links }}

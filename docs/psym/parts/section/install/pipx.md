@@ -1,7 +1,7 @@
 ### Recommended: pipx (global, isolated)
 
 ```bash
-pipx install cdbr
+pipx install git+https://github.com/tracecutter/cdbr.git
 ```
 
-This makes `cdbr` available globally without polluting project environments.
+This installs both `cdbr` and `cdbrd` without modifying the system Python.

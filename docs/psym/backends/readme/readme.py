@@ -43,10 +43,15 @@ class ReadmeBackend(Backend):
 
     def build(self, ctx: BackendContext):
         template = Template.from_file(ctx.docs_root / "templates/readme.md.pf")
+        symbols = ctx.symbols.clone()
+        invocation = symbols.get("project.invocation").value
+        help_symbol = symbols.get("dynamic.cli.help.root")
+        if invocation and help_symbol.value:
+            help_symbol.value = help_symbol.value.replace("Usage:  ", f"Usage: {invocation} ", 1)
 
         yield RenderJob(
             template=template,
-            symbols=ctx.symbols,
+            symbols=symbols,
             output_path=Path("readme/README.md"),
             fmt="md",
             render_hooks=self,

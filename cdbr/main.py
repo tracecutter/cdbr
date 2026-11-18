@@ -7,7 +7,7 @@ cdbr
 Solve Code Break puzzles from photographs.
 
 [[meta.brief]]
-cdbr reads a photograph of a Code Break puzzle and prepares it for solving.
+cdbr reads, solves, and creates numbered Code Break puzzles.
 
 [[meta.author]]
 John Fogelin
@@ -19,15 +19,124 @@ Copyright (c) 2026 John Fogelin. All rights reserved.
 MIT. See LICENSE for details.
 
 [[section.quickstart.intro]]
-Pass a photograph of a Code Break puzzle to cdbr:
+Give cdbr a clear photograph containing the complete 15x15 puzzle and its
+reference grid. It corrects perspective, reads the numbered cells and supplied
+letters, then solves the substitution puzzle using a British English lexicon.
+
+[[section.quickstart.install]]
+Install the command from the public Git repository into an isolated environment:
+
+```bash
+pipx install git+https://github.com/tracecutter/cdbr.git
+```
+
+Image recognition also requires ImageMagick and Tesseract to be available on
+the host system. Developers should use the repository's documented editable
+virtual-environment workflow.
 
 [[section.quickstart.first_command]]
 ```bash
 cdbr puzzle.jpg
 ```
 
-This prints the solved grid. Use ``--orig`` to print the recognised puzzle
-instead, or ``--image`` to also write ``puzzle_solved.jpg`` beside the input.
+This prints the solved grid. Use `--orig` to print the recognised puzzle
+instead, or `--image` to also write `puzzle_solved.jpg` beside the input.
+
+[[section.quickstart.safety]]
+cdbr never overwrites an existing solution image or puzzle file unless
+`--force` is supplied. OCR uncertainty is reported rather than silently
+inventing a cell value, and `--review` can be used to correct uncertain cells
+before solving.
+
+[[section.quickstart.workflow]]
+```bash
+# Solve to text
+cdbr puzzle.heic
+
+# Inspect the recognised puzzle as TOML
+cdbr --orig puzzle.heic
+
+# Review uncertain cells and write on the original photograph
+cdbr --review --image puzzle.heic
+```
+
+[[section.quickstart.next]]
+Use `cdbr create --help` to construct a new puzzle, or `cdbrd --help` to run
+the local web application.
+
+[[section.overview]]
+Code Break (also called Codeword) puzzles replace every letter in a crossword-like
+grid with a number from 1 to 26. Equal numbers represent equal letters, different
+numbers represent different letters, and a small reference grid supplies the
+starting clues.
+
+cdbr supports four related workflows:
+
+- recognise and solve a photographed puzzle;
+- preserve the recognised board as deterministic TOML for review or testing;
+- render the solution in handwriting on the source photograph; and
+- construct and independently certify new 15x15 puzzles.
+
+The companion `cdbrd` executable serves the same solving and generation engine
+through a lightweight local web application. CLI solving does not require the
+web service to be running.
+
+OCR, lexical solving, puzzle construction, and presentation are separate stages.
+A complete solution is reported as unique only when the configured search is
+exhausted and exactly one solution remains under the active lexicon.
+
+[[section.create]]
+Puzzle construction is available through the existing secondary mode:
+
+```bash
+cdbr create --include PERFECT --include PETERSFIELD \
+    --clues 3 --output puzzle.toml --image puzzle.png
+```
+
+`--include WORD` requires a themed answer word and may be repeated.
+`--exclude WORD` prevents unwanted filler. The generator fills a 15x15 topology,
+selects the requested number of reference clues, and independently certifies the
+result with the solver.
+
+Use `--best-of MINUTES` with `--output` to keep searching and replace the output
+only when a certified candidate has fewer black cells. `--keep-candidates DIR`
+archives every certified candidate for later editorial review. Generation can be
+computationally expensive; reproducible searches should specify `--seed`.
+
+Run `cdbr create --help` for the complete set of construction limits.
+
+[[section.web]]
+Start the local web application with:
+
+```bash
+cdbrd --host 127.0.0.1 --port 8000
+```
+
+Then open http://127.0.0.1:8000/. The web interface can play a corpus puzzle,
+scan a photograph into the playable board, or create a new puzzle. Uploaded
+photographs and game sessions are currently held only for the lifetime of the
+service; no database is required.
+
+`cdbrd --reload` is intended for local development. Container deployments should
+set `PORT` and run a single service process.
+
+[[section.status]]
+- Python 3.11+
+- British English lexical policy
+- JPEG, PNG, HEIC/HEIF, AVIF, TIFF, and WebP photo input
+- CLI and lightweight web application
+- Experimental OCR and puzzle generation
+- MIT license
+
+OCR quality still depends on the photograph. Perspective, shadows, handwriting,
+and damaged grid lines can leave cells unresolved. Puzzle generation is bounded
+search: a time limit can expire without producing a certified candidate.
+
+[[section.links]]
+- Documentation: https://tracecutter.github.io/cdbr/
+- Source: https://github.com/tracecutter/cdbr
+- Issues: https://github.com/tracecutter/cdbr/issues
+- Author: https://github.com/tracecutter
 
 INTERNAL
 
@@ -201,6 +310,7 @@ def cdbr(ctx: CdbrCmdContext) -> None:
 @click.command(
     name="cdbr",
     cls=OptionalImageCommand,
+    epilog="Create puzzles with 'cdbr create --help'. Run the web app with 'cdbrd --help'.",
     context_settings={
         "help_option_names": ["-h", "--help"],
         "max_content_width": 100,
@@ -218,7 +328,7 @@ def cdbr(ctx: CdbrCmdContext) -> None:
     ),
 )
 @click.option("-q", "--quiet", is_flag=True, help="Suppress non-error output.")
-@click.option("-v", "--verbose", count=True, help="Increase diagnostic output.")
+@click.option("-v", "--verbose", is_flag=True, help="Enable diagnostic output.")
 @click.option("--trace", is_flag=True, help="Enable trace instrumentation.")
 @click.option("--telemetry", is_flag=True, help="Enable telemetry instrumentation.")
 @click.option("--emoji/--no-emoji", default=True, help="Enable emoji prefixes in output.")
@@ -238,7 +348,7 @@ def cdbr_main(
     click_ctx,
     photo: Path,
     quiet: bool,
-    verbose: int,
+    verbose: bool,
     trace: bool,
     telemetry: bool,
     emoji: bool,
@@ -249,9 +359,13 @@ def cdbr_main(
     solution_image: Path | None,
     force: bool,
 ) -> None:
-    """Read a Code Break puzzle from PHOTO."""
+    """Read and solve a Code Break puzzle from PHOTO.
 
-    mark.configure(MarkContext(quiet=quiet, verbose=bool(verbose), emoji=emoji))
+    PHOTO must include the complete puzzle grid and reference grid. By default
+    cdbr prints the best text solution to standard output.
+    """
+
+    mark.configure(MarkContext(quiet=quiet, verbose=verbose, emoji=emoji))
     signalers = tuple(name for name, enabled in (("trace", trace), ("telemetry", telemetry)) if enabled)
     signal.configure(signalers)
     if signalers:
@@ -262,7 +376,7 @@ def cdbr_main(
         raise click.UsageError("--solve and --orig are mutually exclusive")
     destination = _solution_destination(photo, image, solution_image, force)
 
-    root = CdbrContext(mode=CdbrMode(quiet=quiet, verbose=bool(verbose), emoji=emoji))
+    root = CdbrContext(mode=CdbrMode(quiet=quiet, verbose=verbose, emoji=emoji))
     ctx = root.extend(
         CdbrCmdContext,
         photo=photo,
@@ -276,7 +390,13 @@ def cdbr_main(
 
 @click.command(name="create", context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--seed", type=int, default=0, show_default=True, help="Make generation reproducible.")
-@click.option("--attempts", type=click.IntRange(min=1), default=100, show_default=True)
+@click.option(
+    "--attempts",
+    type=click.IntRange(min=1),
+    default=100,
+    show_default=True,
+    help="Maximum topology and fill attempts for each seed.",
+)
 @click.option(
     "--best-of",
     type=click.FloatRange(min=0),
@@ -299,9 +419,27 @@ def cdbr_main(
     show_default=True,
     help="Hard wall-clock limit; zero means unlimited.",
 )
-@click.option("--slots", type=click.IntRange(min=1, max=60), default=28, show_default=True)
-@click.option("--min-word-length", type=click.IntRange(min=2, max=15), default=4, show_default=True)
-@click.option("--max-word-length", type=click.IntRange(min=2, max=15), default=14, show_default=True)
+@click.option(
+    "--slots",
+    type=click.IntRange(min=1, max=60),
+    default=28,
+    show_default=True,
+    help="Target number of across and down answer slots.",
+)
+@click.option(
+    "--min-word-length",
+    type=click.IntRange(min=2, max=15),
+    default=4,
+    show_default=True,
+    help="Shortest generated filler word.",
+)
+@click.option(
+    "--max-word-length",
+    type=click.IntRange(min=2, max=15),
+    default=14,
+    show_default=True,
+    help="Longest generated filler word.",
+)
 @click.option(
     "--include", "included_words", multiple=True, help="Require WORD in the completed puzzle.", metavar="WORD"
 )
@@ -309,8 +447,20 @@ def cdbr_main(
 @click.option(
     "--min-score", type=click.FloatRange(min=0), default=3.5, show_default=True, help="Minimum word-frequency score."
 )
-@click.option("--fill-nodes", type=click.IntRange(min=1), default=500, show_default=True)
-@click.option("--certify-nodes", type=click.IntRange(min=1), default=50_000, show_default=True)
+@click.option(
+    "--fill-nodes",
+    type=click.IntRange(min=1),
+    default=500,
+    show_default=True,
+    help="Maximum search nodes used to fill one candidate.",
+)
+@click.option(
+    "--certify-nodes",
+    type=click.IntRange(min=1),
+    default=50_000,
+    show_default=True,
+    help="Maximum solver nodes used to certify uniqueness.",
+)
 @click.option(
     "--clues",
     type=click.IntRange(min=0, max=26),
@@ -361,7 +511,11 @@ def create_main(
     keep_candidates: Path | None,
     force: bool,
 ) -> None:
-    """Construct and independently certify a 15x15 Codeword puzzle."""
+    """Construct and independently certify a 15x15 Codeword puzzle.
+
+    Repeat --include to place themed words and --exclude to reject unwanted
+    filler. Generation is bounded search and may finish without a candidate.
+    """
 
     if output is not None and output.exists() and not force:
         raise click.UsageError(f"Output already exists: {output} (use --force to overwrite)")

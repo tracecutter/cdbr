@@ -447,12 +447,25 @@ async def solve_endpoint(photo: Annotated[UploadFile, File()]) -> Response:
         )
 
 
-@click.command(name="cdbrd")
-@click.option("--host", default="0.0.0.0", show_default=True, envvar="CDBR_HOST")
-@click.option("--port", default=8000, show_default=True, type=click.IntRange(1, 65535), envvar="PORT")
+@click.command(name="cdbrd", context_settings={"help_option_names": ["-h", "--help"]})
+@click.option(
+    "--host",
+    default="0.0.0.0",
+    show_default=True,
+    envvar="CDBR_HOST",
+    help="Address on which the HTTP service listens.",
+)
+@click.option(
+    "--port",
+    default=8000,
+    show_default=True,
+    type=click.IntRange(1, 65535),
+    envvar="PORT",
+    help="HTTP port; may also be supplied through PORT.",
+)
 @click.option("--reload", is_flag=True, help="Reload when Python source files change.")
 def cdbrd_main(host: str, port: int, reload: bool) -> None:
-    """Run the cdbr HTTP service."""
+    """Run the local cdbr web application and HTTP API."""
 
     uvicorn.run("cdbr.server:app", host=host, port=port, reload=reload, workers=1)
 

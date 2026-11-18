@@ -15,9 +15,9 @@ Do not edit this artifact directly.
 <img src="https://img.shields.io/badge/docs-GitHub%20Pages-blue" alt="Docs">
 </a>
 <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python">
-<img src="https://img.shields.io/badge/status-experimental-lightgrey" alt="Status">
+<img src="https://img.shields.io/badge/status-beta-lightgrey" alt="Status">
 <a href="./LICENSE">
-<img src="https://img.shields.io/badge/license-proprietary-lightgrey" alt="License">
+<img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
 </a>
 </p>
 
@@ -27,11 +27,11 @@ Do not edit this artifact directly.
 <summary><strong>Table of Contents</strong></summary>
 
 - [Installation](#installation)
-- [D2D](#d2d)
 - [Quick Start](#quick-start)
 - [Overview](#overview)
-- [Usage](#usage)
-- [Renderer Usage](#renderer-usage)
+- [Solve](#solve)
+- [Create](#create)
+- [Web](#web)
 - [Project Status](#project-status)
 - [Development](#development)
 - [Changelog](#changelog)
@@ -41,45 +41,25 @@ Do not edit this artifact directly.
 
 ---
 
-## Installation 
+## Installation
 
-{{ code.section.quickstart.install }}
+Install the command from the public Git repository into an isolated environment:
 
----
-
-## Asset delivery (d2d) 
-
-
-Some applications bundle non-Python artifacts such as command wrappers,
-man pages, examples, or templates. These artifacts are delivered to user
-directories using the **Distribution-to-Destination (d2d)** mechanism.
-
-Artifacts bundled inside a package are stored under:
-
-    <package>/_assets/
-
-and routed into user directories according to a personal policy defined in:
-
-    ~/.config/d2d/routes.toml
-
-Example configuration:
-
-```toml
-[routes]
-bin = "~/.local/bin"
-man = "~/.local/share/man"
+```bash
+pipx install git+https://github.com/tracecutter/cdbr.git
 ```
 
-On first run, the application will explain how to create this configuration
-file if it does not already exist.
-
-Once configured, artifact delivery happens automatically and silently.
+Image recognition also requires ImageMagick and Tesseract to be available on
+the host system. Developers should use the repository's documented editable
+virtual-environment workflow.
 
 ---
 
-## Quick start 
+## Quick start
 
-Pass a photograph of a Code Break puzzle to cdbr:
+Give cdbr a clear photograph containing the complete 15x15 puzzle and its
+reference grid. It corrects perspective, reads the numbered cells and supplied
+letters, then solves the substitution puzzle using a British English lexicon.
 
 ### First command
 
@@ -87,165 +67,204 @@ Pass a photograph of a Code Break puzzle to cdbr:
 cdbr puzzle.jpg
 ```
 
+This prints the solved grid. Use `--orig` to print the recognised puzzle
+instead, or `--image` to also write `puzzle_solved.jpg` beside the input.
+
 ### Safe exploration
 
-{{ code.section.quickstart.safety }}
+cdbr never overwrites an existing solution image or puzzle file unless
+`--force` is supplied. OCR uncertainty is reported rather than silently
+inventing a cell value, and `--review` can be used to correct uncertain cells
+before solving.
 
 ### Sample workflow
 
-{{ code.section.quickstart.workflow }}
+```bash
+# Solve to text
+cdbr puzzle.heic
+
+# Inspect the recognised puzzle as TOML
+cdbr --orig puzzle.heic
+
+# Review uncertain cells and write on the original photograph
+cdbr --review --image puzzle.heic
+```
 
 ### Next steps
 
-{{ code.section.quickstart.next }}
+Use `cdbr create --help` to construct a new puzzle, or `cdbrd --help` to run
+the local web application.
 
 ---
 
-## Overview 
+## Overview
 
-{{ code.section.overview }}
+Code Break (also called Codeword) puzzles replace every letter in a crossword-like
+grid with a number from 1 to 26. Equal numbers represent equal letters, different
+numbers represent different letters, and a small reference grid supplies the
+starting clues.
+
+cdbr supports four related workflows:
+
+- recognise and solve a photographed puzzle;
+- preserve the recognised board as deterministic TOML for review or testing;
+- render the solution in handwriting on the source photograph; and
+- construct and independently certify new 15x15 puzzles.
+
+The companion `cdbrd` executable serves the same solving and generation engine
+through a lightweight local web application. CLI solving does not require the
+web service to be running.
+
+OCR, lexical solving, puzzle construction, and presentation are separate stages.
+A complete solution is reported as unique only when the configured search is
+exhausted and exactly one solution remains under the active lexicon.
 
 ---
 
-## Usage 
+## Solve a photograph
 
 
 ```text
-Usage:  [OPTIONS] PHOTO
+Usage: cdbr [OPTIONS] PHOTO
 
-  Read a Code Break puzzle from PHOTO.
+  Read and solve a Code Break puzzle from PHOTO.
+
+  PHOTO must include the complete puzzle grid and reference grid. By default
+  cdbr prints the best text solution to standard output.
 
 Options:
   -q, --quiet           Suppress non-error output.
-  -v, --verbose         Increase diagnostic output.
+  -v, --verbose         Enable diagnostic output.
   --trace               Enable trace instrumentation.
   --telemetry           Enable telemetry instrumentation.
   --emoji / --no-emoji  Enable emoji prefixes in output.
+  --review              Interactively review uncertain cells.
+  --solve               Print the text solution (the default).
+  -o, --orig            Print the recognised original puzzle as TOML.
+  -i, --image           Also write the solved photograph; optionally pass
+                        PATH.
+  -f, --force           Overwrite an existing solution image.
   -V, --version         Show the version and exit.
   --help                Show this message and exit.
+
+  Create puzzles with 'cdbr create --help'. Run the web app with 'cdbrd
+  --help'.
 ```
 
 
-### Writing custom documentation renderers 
+---
 
-A **Renderer** defines *how a single documentation artifact* (README,
-manpage, etc.) is produced.
+## Create a puzzle
 
-A renderer instance represents **exactly one output artifact**, rendered from
-one template, using one authoritative symbol table.
+Puzzle construction is available through the existing secondary mode:
 
-Renderers are normal Python classes that subclass ``Renderer``. They are
-not discovered directly. Instead, they are instantiated by **backend modules**,
-which control how many renderers exist and which artifacts are produced.
+```bash
+cdbr create --include PERFECT --include PETERSFIELD \
+    --clues 3 --output puzzle.toml --image puzzle.png
+```
 
-Conceptual Model
-----------------
+`--include WORD` requires a themed answer word and may be repeated.
+`--exclude WORD` prevents unwanted filler. The generator fills a 15x15 topology,
+selects the requested number of reference clues, and independently certifies the
+result with the solver.
 
-- A **Backend** decides *what* documentation artifacts exist.
-- A **Renderer** decides *how* one artifact is rendered.
-- A **Template** provides the static structure of the artifact.
+Use `--best-of MINUTES` with `--output` to keep searching and replace the output
+only when a certified candidate has fewer black cells. `--keep-candidates DIR`
+archives every certified candidate for later editorial review. Generation can be
+computationally expensive; reproducible searches should specify `--seed`.
 
-Backends may create one or many renderer instances. Each renderer produces
-exactly one output.
-
-Renderer Responsibilities
--------------------------
-
-Each renderer instance is responsible for:
-
-- loading a single template
-- assembling an authoritative symbol table
-- rendering exactly one documentation artifact
-
-Renderers do not:
-
-- decide which artifacts exist
-- perform filesystem writes
-- manage multiple outputs
-
-Those concerns belong to the backend and the compiler.
-
-Symbol Tables
--------------
-
-Each renderer builds **one flat, authoritative symbol table**.
-
-Symbols are populated from multiple sources:
-
-- project metadata
-- filesystem documentation parts
-- source code documentation parts
-- dynamic CLI usage
-- renderer-specific additions
-
-Symbol names must be globally unique. Collisions are treated as errors.
-
-Rendering Lifecycle
--------------------
-
-1. A backend instantiates a renderer with a resolved ``CdbrContext``.
-2. The renderer loads its template.
-3. Base symbols are populated automatically.
-4. The renderer may add additional symbols during initialization.
-5. ``render()`` produces exactly one output artifact.
-
-Renderers do not perform file I/O directly. Rendered content is returned to
-the caller and written by the compiler.
+Run `cdbr create --help` for the complete set of construction limits.
 
 ---
 
-## Project status 
+## Web application
 
-{{ code.section.status }}
+Start the local web application with:
+
+```bash
+cdbrd --host 127.0.0.1 --port 8000
+```
+
+Then open http://127.0.0.1:8000/. The web interface can play a corpus puzzle,
+scan a photograph into the playable board, or create a new puzzle. Uploaded
+photographs and game sessions are currently held only for the lifetime of the
+service; no database is required.
+
+`cdbrd --reload` is intended for local development. Container deployments should
+set `PORT` and run a single service process.
 
 ---
 
-## Development 
+## Project status
+
+- Python 3.11+
+- British English lexical policy
+- JPEG, PNG, HEIC/HEIF, AVIF, TIFF, and WebP photo input
+- CLI and lightweight web application
+- Experimental OCR and puzzle generation
+- MIT license
+
+OCR quality still depends on the photograph. Perspective, shadows, handwriting,
+and damaged grid lines can leave cells unresolved. Puzzle generation is bounded
+search: a time limit can expire without producing a certified candidate.
+
+---
+
+## Development
 
 Clone and install in editable mode:
 
 ```bash
 git clone https://github.com/tracecutter/cdbr.git
 cd cdbr
-make install
+python -m venv .venv
+. .venv/bin/activate
+pip install -e '.[dev]'
 ```
 
-To build docs locally:
-
-```bash
-make docs
-```
-
-Run checks:
+Run the complete validation suite:
 
 ```bash
 make check
-```
-
-Run tests:
-
-```bash
 pytest
 ```
 
-Update README usage:
+Regenerate README, manpage, and Sphinx projections from their canonical sources:
 
 ```bash
-make readme
+make docs docs-sync
 ```
 
+Run the web application during development:
+
+```bash
+cdbrd --reload
+```
+
+The generated `README.md`, manpages, and files under `docs/sphinx/src/` must not
+be edited directly. Update structured source docstrings, `docs/psym/parts/`, or
+`docs/psym/templates/`, then regenerate the projections.
+
+System tests require ImageMagick and Tesseract. The project configuration in
+`pyproject.toml` is authoritative for Python dependencies and tool settings.
+
 ---
 
-## Changelog 
+## Changelog
 
-### v1.0.0
-- Initial public release
-- Dependency inspection and mutation
-- README usage auto-generation
-- Designed as a reference implementation for `npkg`
+### 0.1.0 — in development
+
+- Photograph recognition with perspective correction and conservative cell OCR
+- British English constraint solver with partial-result reporting
+- Text, TOML, and handwriting-on-photo presentation
+- Certified 15x15 puzzle generation with required and excluded words
+- Lightweight web application for scanning, creating, and playing puzzles
 
 ---
 
-## Links 
+## Links
 
-{{ code.section.links }}
+- Documentation: https://tracecutter.github.io/cdbr/
+- Source: https://github.com/tracecutter/cdbr
+- Issues: https://github.com/tracecutter/cdbr/issues
+- Author: https://github.com/tracecutter

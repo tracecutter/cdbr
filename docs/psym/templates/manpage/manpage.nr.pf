@@ -15,11 +15,11 @@
 .SH OPTIONS
 {{ dynamic.manpage.section.options }}
 
-.SH ENVIRONMENT
-.TP
-.B CDBR_CONFIG
-Path to an alternative configuration file. Overrides the default
-\fIpyproject.toml\fR location.
+.SH PUZZLE CREATION
+{{ code.section.create }}
+
+.SH WEB APPLICATION
+{{ code.section.web }}
 
 .SH FILES
 {{ fs.section.files }}
@@ -31,7 +31,7 @@ Path to an alternative configuration file. Overrides the default
 {{ fs.section.examples }}
 
 .SH SEE ALSO
-{{ dynamic.manpage.section.see_also }}
+{{ fs.section.see_also }}
 
 .SH AUTHOR
 {{ code.meta.author }}

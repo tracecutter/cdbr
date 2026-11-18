@@ -5,6 +5,16 @@ Using {{ code.meta.title }} effectively.
 
 {{ code.section.overview }}
 
+Puzzle Creation
+---------------
+
+{{ code.section.create }}
+
+Web Application
+---------------
+
+{{ code.section.web }}
+
 Status
 ------
 

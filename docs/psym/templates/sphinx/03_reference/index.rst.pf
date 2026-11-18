@@ -5,3 +5,16 @@ Command and option reference.
 
 {{ dynamic.cli.help.root }}
 
+The existing secondary command is documented separately because the current
+CLI preserves direct ``cdbr PHOTO`` compatibility.
+
+.. code-block:: text
+
+   cdbr create --help
+
+The companion web-service executable provides its own live help:
+
+.. code-block:: text
+
+   cdbrd --help
+

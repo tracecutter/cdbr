@@ -1,14 +1,14 @@
-`pip`
-: The Python package installer.
+`cdbrd(1)`
+: Local web application and HTTP service for cdbr.
 
-`pipx`
-: Install and run Python applications in isolated environments.
+`tesseract(1)`
+: OCR engine used while reading numbered cells and supplied letters.
 
-PEP 440
-: Version identification and dependency specification.
-
-PEP 621
-: Standard project metadata in `pyproject.toml`.
+`magick(1)`
+: ImageMagick command used to decode, orient, and resize photographs.
 
 Project documentation
-: https://tracecutter.github.io/psym/
+: https://tracecutter.github.io/cdbr/
+
+Source repository
+: https://github.com/tracecutter/cdbr

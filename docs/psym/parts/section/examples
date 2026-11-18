@@ -1,34 +1,36 @@
-List declared dependencies:
+Solve a photograph and print the completed grid:
 ```bash
-psym deps
+cdbr puzzle.heic
 ```
 
-Add a runtime dependency:
+Print the recognised puzzle as TOML without solving it:
 ```bash
-psym add requests
+cdbr --orig puzzle.jpg
 ```
 
-Add a development dependency:
+Review uncertain OCR cells and write the solution on the source photograph:
 ```bash
-psym add --dev pytest
+cdbr --review --image puzzle.heic
 ```
 
-Bump the project version:
+Write the solved photograph to an explicit path:
 ```bash
-psym bump minor
+cdbr --image=finished.jpg puzzle.jpg
 ```
 
-Check project configuration and environment:
+Create a themed puzzle with exactly three supplied clues:
 ```bash
-psym lint
+cdbr create --include PERFECT --include PETERSFIELD --clues 3 \
+    --output puzzle.toml --image puzzle.png
 ```
 
-Generate documentation artifacts:
+Search for better candidates for thirty minutes and retain every certified result:
 ```bash
-psym docs
+cdbr create --include PERFECT --best-of 30 --max-candidates 30 \
+    --output best.toml --image best.png --keep-candidates candidates
 ```
 
-Inspect a specific field in pyproject.toml:
+Run the local web application:
 ```bash
-psym get project.version
+cdbrd --host 127.0.0.1 --port 8000
 ```

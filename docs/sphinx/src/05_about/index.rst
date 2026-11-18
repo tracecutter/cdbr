@@ -4,20 +4,17 @@ About
 Context
 -------
 
-cdbr is part of the **npkg toolchain**, a collection of small,
-composable utilities that define a shared practice for Python project
-lifecycle management.
+cdbr reads, solves, and creates numbered Code Break puzzles.
 
-Each tool focuses on a single concern, while sharing common conventions
-for structure, execution, and documentation.
+The project uses the npkg development conventions and psym documentation
+compiler, while its OCR, solver, generator, presentation, CLI, and HTTP layers
+remain usable as separate components.
 
 See Also
 --------
 
-- npkg — execution model and lifecycle framework
-- psym - symbol based package documentation utility
-- pdep — dependency analysis and reasoning
-- d2d — distribution-to-destination artifact delivery
-- p5ix — installation and release orchestration
-- npkglib - npkg utility functions
+- Documentation: https://tracecutter.github.io/cdbr/
+- Source: https://github.com/tracecutter/cdbr
+- Issues: https://github.com/tracecutter/cdbr/issues
+- Author: https://github.com/tracecutter
 

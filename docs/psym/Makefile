@@ -7,14 +7,14 @@ MANPAGE_BUILD_DIR   := $(BUILD_ROOT)/manpage
 DIST_ROOT           := $(PROJECT_ROOT)/psym_dist
 SENTINEL            := psym :: documentation rendered from source.
 
-.PHONY: all readme manpage sphinx sync publish publish-readme clean dist
+.PHONY: all readme manpage sphinx audit sync publish publish-readme clean dist
 
 
 # ------------------------------------------------------------
 # Default build
 # ------------------------------------------------------------
 
-all: readme manpage
+all: readme manpage audit
 
 
 # ------------------------------------------------------------
@@ -35,6 +35,15 @@ sphinx:
 	@echo "📘 Building Sphinx documentation (psym projection)..."
 	@cd $(PROJECT_ROOT) && \
 		psym docs --force sphinx
+
+audit:
+	@echo "🔍 Checking rendered documentation symbols..."
+	@if grep -R -n -E '\{\{[^}]+\}\}' \
+		"$(BUILD_ROOT)/readme/README.md" "$(BUILD_ROOT)/manpage"; then \
+		echo "❌ Rendered documentation contains unresolved symbols"; \
+		exit 1; \
+	fi
+	@echo "✔ Documentation symbols resolved."
 
 
 # ------------------------------------------------------------
