@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections.abc import Callable
+import time
 
 import tomlkit
 
@@ -144,6 +145,7 @@ def solve(
     *,
     max_solutions: int = 20,
     max_nodes: int = 100_000,
+    deadline: float | None = None,
 ) -> SolveResult:
     """Find up to max_solutions, reporting whether search was exhaustive."""
 
@@ -158,7 +160,7 @@ def solve(
         if stopped:
             return
         nodes += 1
-        if nodes > max_nodes:
+        if nodes > max_nodes or (deadline is not None and time.monotonic() >= deadline):
             stopped = True
             return
 

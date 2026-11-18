@@ -29,6 +29,12 @@ _FONT_CANDIDATES = (
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
 )
 
+_PRINT_FONT_CANDIDATES = (
+    Path("/System/Library/Fonts/Helvetica.ttc"),
+    Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+)
+
 
 def solution_rows(puzzle: CodewordPuzzle, mapping: dict[int, str]) -> tuple[str, ...]:
     """Render the mundane one-character-per-cell solution."""
@@ -52,6 +58,102 @@ def _handwriting_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont
         if path.exists():
             return ImageFont.truetype(path, size)
     return ImageFont.load_default(size=size)
+
+
+@lru_cache(maxsize=16)
+def _print_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for path in _PRINT_FONT_CANDIDATES:
+        if path.exists():
+            return ImageFont.truetype(path, size)
+    return ImageFont.load_default(size=size)
+
+
+def write_generated_puzzle_image(
+    destination: Path,
+    puzzle: CodewordPuzzle,
+    *,
+    seed: int,
+    skew_degrees: float = 0.0,
+) -> None:
+    """Render a clean, printable puzzle page with optional photographic rotation."""
+
+    page = Image.new("RGB", (1600, 2100), (246, 246, 241))
+    draw = ImageDraw.Draw(page)
+    grid_left, grid_top, grid_size = 150, 210, 1300
+    cell = grid_size / 15
+    alphabet = "ABCDEFGHIJKLM"
+    for index, letter in enumerate(alphabet):
+        x = grid_left + (index + 1) * grid_size / 14
+        draw.text((x, 115), letter, font=_print_font(40), fill="black", anchor="mm")
+
+    for row in range(15):
+        for column in range(15):
+            left = round(grid_left + column * cell)
+            top = round(grid_top + row * cell)
+            right = round(grid_left + (column + 1) * cell)
+            bottom = round(grid_top + (row + 1) * cell)
+            symbol = puzzle.grid[row][column]
+            fill = (112, 112, 108) if symbol is None else (246, 246, 241)
+            draw.rectangle((left, top, right, bottom), fill=fill, outline="black", width=3)
+            if symbol is not None:
+                draw.text(
+                    (left + 7, top + 4),
+                    str(symbol),
+                    font=_print_font(24),
+                    fill="black",
+                )
+
+    lower_top = grid_top + grid_size + 95
+    for index, letter in enumerate("NOPQRSTUVWXYZ"):
+        x = grid_left + (index + 1) * grid_size / 14
+        draw.text((x, lower_top), letter, font=_print_font(40), fill="black", anchor="mm")
+    draw.text(
+        (800, lower_top + 90),
+        "REFERENCE GRID",
+        font=_print_font(42),
+        fill="black",
+        anchor="mm",
+    )
+
+    reference_left, reference_top = 150, lower_top + 140
+    reference_width, reference_height = 1300, 180
+    reference_cell_width = reference_width / 13
+    for symbol in range(1, 27):
+        reference_row = 0 if symbol <= 13 else 1
+        reference_column = (symbol - 1) % 13
+        left = round(reference_left + reference_column * reference_cell_width)
+        top = round(reference_top + reference_row * reference_height / 2)
+        right = round(reference_left + (reference_column + 1) * reference_cell_width)
+        bottom = round(reference_top + (reference_row + 1) * reference_height / 2)
+        draw.rectangle((left, top, right, bottom), outline="black", width=3)
+        draw.text((left + 6, top + 3), str(symbol), font=_print_font(22), fill="black")
+        clue_letter = puzzle.clues.get(symbol)
+        if clue_letter is not None:
+            draw.text(
+                ((left + right) / 2, top + 59),
+                clue_letter,
+                font=_print_font(45),
+                fill="black",
+                anchor="mm",
+            )
+
+    draw.rectangle((745, reference_top + 245, 855, reference_top + 315), outline="black", width=3)
+    draw.text(
+        (800, reference_top + 280),
+        str(seed),
+        font=_print_font(30),
+        fill="black",
+        anchor="mm",
+    )
+    if skew_degrees:
+        page = page.rotate(
+            skew_degrees,
+            resample=Image.Resampling.BICUBIC,
+            expand=True,
+            fillcolor=(222, 220, 211),
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    page.save(destination)
 
 
 def _letter_layer(

@@ -16,7 +16,7 @@
         <img src="/static/f-logo.png" alt="" width="52" height="52">
         <span>
           <strong>Code Break</strong>
-          <small>Photo solver</small>
+          <small>Play · scan · solve</small>
         </span>
       </a>
       <p class="privacy-note"><span aria-hidden="true"></span>Your photo is processed, then discarded.</p>
@@ -24,12 +24,112 @@
 
     <main>
       <section class="intro" aria-labelledby="page-title">
-        <p class="eyebrow">From newspaper to finished puzzle</p>
-        <h1 id="page-title">Solve your Code Break.</h1>
-        <p class="lede">Take a clear photo. We’ll read the grid, crack the code, and write the answers back onto the original page.</p>
+        <div>
+          <p class="eyebrow">Your quiet puzzle desk</p>
+          <h1 id="page-title">Code Break.</h1>
+        </div>
+        <p class="lede">Begin with one of ours, bring a photograph, or build something new.</p>
       </section>
 
-      <section class="workspace" aria-label="Puzzle solver">
+      <section class="puzzle-desk" aria-label="Code Break puzzle desk">
+        <nav class="desk-toolbar" aria-label="Choose how to begin">
+          <span>Start</span>
+          <div class="mode-switch">
+            <button class="mode-button" id="show-game" type="button">Play</button>
+            <button class="mode-button" id="show-scanner" type="button">Scan</button>
+            <button class="mode-button" id="show-creator" type="button">Create</button>
+          </div>
+        </nav>
+
+        <section class="idle-workspace" id="idle-workspace" aria-labelledby="idle-title">
+          <div class="idle-heading">
+            <p class="eyebrow">Ready when you are</p>
+            <h2 id="idle-title">How would you like to begin?</h2>
+          </div>
+          <div class="blank-board-wrap">
+            <div class="blank-puzzle-shell" id="blank-puzzle-shell" aria-hidden="true"></div>
+            <p><strong>Your puzzle will appear here.</strong><span>Choose Play, Scan, or Create above.</span></p>
+          </div>
+          <div class="blank-reference-wrap">
+            <span>Reference grid</span>
+            <div class="blank-reference-grid" id="blank-reference-grid" aria-hidden="true"></div>
+          </div>
+        </section>
+
+        <section class="creator-workspace" id="creator-workspace" aria-labelledby="creator-title" hidden>
+          <div class="creator-heading">
+            <div>
+              <p class="eyebrow">Make it personal</p>
+              <h2 id="creator-title">Create a puzzle.</h2>
+            </div>
+            <p>Required words will appear in the finished solution. Ordinary British English fills the rest.</p>
+          </div>
+          <form class="creator-form" id="creator-form">
+            <label>
+              <span>Required words</span>
+              <textarea id="required-words" rows="3" required placeholder="PERFECT&#10;FOR&#10;PETERSFIELD"></textarea>
+              <small>One word or phrase per line. Between 1 and 8.</small>
+            </label>
+            <label>
+              <span>Excluded words</span>
+              <textarea id="excluded-words" rows="3" placeholder="NESS&#10;NASH"></textarea>
+              <small>Optional. One word per line.</small>
+            </label>
+            <label class="search-length">
+              <span>Search time</span>
+              <select id="generation-minutes">
+                <option value="1">1 minute · quick try</option>
+                <option value="5" selected>5 minutes · recommended</option>
+                <option value="15">15 minutes · patient</option>
+                <option value="30">30 minutes · deep search</option>
+              </select>
+              <small>The search stops as soon as it certifies a puzzle.</small>
+            </label>
+            <button class="primary-button creator-submit" type="submit">Start creating</button>
+          </form>
+
+          <div class="creator-progress" id="creator-progress" hidden aria-live="polite">
+            <div class="progress-track"><span></span></div>
+            <p class="eyebrow">Building your puzzle</p>
+            <h3 id="creator-progress-title">Waiting to start…</h3>
+            <p id="creator-progress-detail"></p>
+            <div class="creator-actions">
+              <button class="primary-button" id="publish-created" type="button" hidden>Play this puzzle</button>
+              <button class="secondary-button" id="cancel-created" type="button">Cancel</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="game-workspace" id="game-workspace" aria-labelledby="game-title" hidden>
+        <div class="game-heading">
+          <div>
+            <p class="eyebrow">Three letters to begin</p>
+            <h2 id="game-title">Loading puzzle…</h2>
+          </div>
+          <p class="game-status" id="game-status" aria-live="polite">Preparing puzzle…</p>
+        </div>
+
+        <div class="puzzle-shell" id="puzzle-shell" aria-label="Code Break puzzle grid"></div>
+
+        <div class="reference-section">
+          <div class="reference-heading">
+            <div>
+              <p class="eyebrow">Reference grid</p>
+              <h2>Choose your next hint.</h2>
+            </div>
+            <p id="game-guidance">Select a numbered cell, then click it again to reveal the letter throughout the puzzle.</p>
+          </div>
+          <div class="reference-grid" id="reference-grid" aria-label="Letter reference grid"></div>
+        </div>
+
+        <div class="game-actions">
+          <button class="primary-button" id="reveal-all" type="button">Reveal entire puzzle</button>
+          <button class="secondary-button" id="reset-game" type="button">Reset puzzle</button>
+          <button class="text-button" id="scan-from-game" type="button">Scan another puzzle</button>
+        </div>
+        </section>
+
+        <section class="workspace" id="scanner-workspace" aria-label="Puzzle scanner" hidden>
         <form id="solver-form" action="/solve" method="post" enctype="multipart/form-data">
           <div id="drop-zone" class="drop-zone">
             <input
@@ -58,7 +158,16 @@
                 <img id="preview-image" alt="Your selected puzzle">
                 <div class="file-fallback" id="file-fallback" hidden>
                   <span>HEIC</span>
-                  <strong>Photo ready</strong>
+                  <strong id="file-fallback-message">Preparing preview…</strong>
+                </div>
+                <div class="working-state" id="working-state" hidden aria-live="polite">
+                  <div class="solver-glyph" aria-hidden="true">
+                    <span>04</span><span>22</span><span>08</span><span>15</span>
+                  </div>
+                  <p class="eyebrow">Working on it</p>
+                  <h2 id="working-message">Finding the puzzle grid…</h2>
+                  <p>Some photographs take a minute. Keep this page open.</p>
+                  <div class="progress-track"><span></span></div>
                 </div>
               </div>
               <div class="file-meta">
@@ -69,19 +178,9 @@
                 <button class="text-button" id="change-photo" type="button">Change photo</button>
               </div>
               <button class="solve-button" id="solve-button" type="submit">
-                <span>Solve this puzzle</span>
+                <span>Open this puzzle</span>
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6"/></svg>
               </button>
-            </div>
-
-            <div class="working-state" id="working-state" hidden aria-live="polite">
-              <div class="solver-glyph" aria-hidden="true">
-                <span>04</span><span>22</span><span>08</span><span>15</span>
-              </div>
-              <p class="eyebrow">Working on it</p>
-              <h2 id="working-message">Finding the puzzle grid…</h2>
-              <p>Some photographs take a minute. Keep this page open.</p>
-              <div class="progress-track"><span></span></div>
             </div>
           </div>
         </form>
@@ -112,18 +211,7 @@
             <button class="text-button" id="try-again" type="button">Choose another photo</button>
           </div>
         </div>
-      </section>
-
-      <section class="tips" aria-labelledby="tips-title">
-        <div>
-          <p class="eyebrow">Better photographs, better answers</p>
-          <h2 id="tips-title">Three small things make a big difference.</h2>
-        </div>
-        <ol>
-          <li><span>01</span><p><strong>Show every edge</strong>Leave a little space around the entire puzzle.</p></li>
-          <li><span>02</span><p><strong>Get square-ish</strong>Shoot from above rather than from a steep angle.</p></li>
-          <li><span>03</span><p><strong>Use even light</strong>Avoid casting your phone’s shadow over the grid.</p></li>
-        </ol>
+        </section>
       </section>
     </main>
 

@@ -39,7 +39,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
+import sys
 import tempfile
+import time
 
 import cdbr.ui as click
 from npkglib import guppy, mark, signal
@@ -51,10 +53,11 @@ from cdbr import __version__
 from cdbr.context import CdbrContext, CdbrMode
 from cdbr.core import d2d
 from cdbr.core.exceptions import CdbrCoreError
+from cdbr.core.generator import GenerationLimits, generate_puzzle, generated_puzzle_to_toml
 from cdbr.core.lexicon import english_lexicon
 from cdbr.core.model import CodewordPuzzle
 from cdbr.core.photo import PhotoFormat, detect_photo_format
-from cdbr.core.presentation import solution_rows, write_solution_photo
+from cdbr.core.presentation import solution_rows, write_generated_puzzle_image, write_solution_photo
 from cdbr.core.puzzle import BLOCK, CellUncertainty, PuzzleObservation, puzzle_to_toml
 from cdbr.core.recognition import recognize_photo
 from cdbr.core.solver import solve
@@ -271,9 +274,219 @@ def cdbr_main(
     cdbr(ctx)
 
 
+@click.command(name="create", context_settings={"help_option_names": ["-h", "--help"]})
+@click.option("--seed", type=int, default=0, show_default=True, help="Make generation reproducible.")
+@click.option("--attempts", type=click.IntRange(min=1), default=100, show_default=True)
+@click.option(
+    "--best-of",
+    type=click.FloatRange(min=0),
+    default=0.0,
+    show_default=True,
+    metavar="MINUTES",
+    help="Search for MINUTES and retain the certified puzzle with fewest black cells.",
+)
+@click.option(
+    "--max-candidates",
+    type=click.IntRange(min=0),
+    default=0,
+    show_default=True,
+    help="Stop best-of search after this many certified candidates; zero means unlimited.",
+)
+@click.option(
+    "--seconds",
+    type=click.FloatRange(min=0),
+    default=600.0,
+    show_default=True,
+    help="Hard wall-clock limit; zero means unlimited.",
+)
+@click.option("--slots", type=click.IntRange(min=1, max=60), default=28, show_default=True)
+@click.option("--min-word-length", type=click.IntRange(min=2, max=15), default=4, show_default=True)
+@click.option("--max-word-length", type=click.IntRange(min=2, max=15), default=14, show_default=True)
+@click.option(
+    "--include", "included_words", multiple=True, help="Require WORD in the completed puzzle.", metavar="WORD"
+)
+@click.option("--exclude", "excluded_words", multiple=True, help="Forbid WORD as generated filler.", metavar="WORD")
+@click.option(
+    "--min-score", type=click.FloatRange(min=0), default=3.5, show_default=True, help="Minimum word-frequency score."
+)
+@click.option("--fill-nodes", type=click.IntRange(min=1), default=500, show_default=True)
+@click.option("--certify-nodes", type=click.IntRange(min=1), default=50_000, show_default=True)
+@click.option(
+    "--clues",
+    type=click.IntRange(min=0, max=26),
+    default=3,
+    show_default=True,
+    help="Exact number of supplied reference letters.",
+)
+@click.option("--answer", is_flag=True, help="Include the answer grid in the TOML output.")
+@click.option(
+    "--image", "puzzle_image", type=click.Path(dir_okay=False, path_type=Path), help="Write a printable puzzle image."
+)
+@click.option(
+    "--skew",
+    type=click.FloatRange(min=-5, max=5),
+    default=0.0,
+    show_default=True,
+    help="Rotate the rendered page slightly.",
+)
+@click.option(
+    "-o", "--output", type=click.Path(dir_okay=False, path_type=Path), help="Write TOML to PATH instead of stdout."
+)
+@click.option(
+    "--keep-candidates",
+    type=click.Path(file_okay=False, path_type=Path),
+    metavar="DIRECTORY",
+    help="Archive every certified candidate as TOML and PNG.",
+)
+@click.option("-f", "--force", is_flag=True, help="Overwrite an existing output file.")
+def create_main(
+    seed: int,
+    attempts: int,
+    best_of: float,
+    max_candidates: int,
+    seconds: float,
+    slots: int,
+    min_word_length: int,
+    max_word_length: int,
+    included_words: tuple[str, ...],
+    excluded_words: tuple[str, ...],
+    min_score: float,
+    fill_nodes: int,
+    certify_nodes: int,
+    clues: int,
+    answer: bool,
+    puzzle_image: Path | None,
+    skew: float,
+    output: Path | None,
+    keep_candidates: Path | None,
+    force: bool,
+) -> None:
+    """Construct and independently certify a 15x15 Codeword puzzle."""
+
+    if output is not None and output.exists() and not force:
+        raise click.UsageError(f"Output already exists: {output} (use --force to overwrite)")
+    if puzzle_image is not None and puzzle_image.exists() and not force:
+        raise click.UsageError(f"Puzzle image already exists: {puzzle_image} (use --force to overwrite)")
+    if best_of and output is None:
+        raise click.UsageError("--best-of requires --output so improvements can be saved safely")
+    limits = GenerationLimits(
+        target_slots=slots,
+        minimum_word_length=min_word_length,
+        max_word_length=max_word_length,
+        minimum_score=min_score,
+        fill_nodes=fill_nodes,
+        certify_nodes=certify_nodes,
+        clue_count=clues,
+        attempts=attempts,
+        seconds=seconds,
+    )
+    lexicon = english_lexicon()
+
+    def archive(generated) -> None:
+        if keep_candidates is None:
+            return
+        keep_candidates.mkdir(parents=True, exist_ok=True)
+        blocks = sum(symbol is None for row in generated.puzzle.grid for symbol in row)
+        stem = (
+            f"candidate-seed-{generated.seed:06d}-b{blocks:03d}"
+            f"-c{len(generated.puzzle.clues):02d}-n{generated.certification.nodes:06d}"
+        )
+        candidate_toml = keep_candidates / f"{stem}.toml"
+        candidate_png = keep_candidates / f"{stem}.png"
+        candidate_toml.write_text(
+            generated_puzzle_to_toml(generated, include_answer=True),
+            encoding="utf-8",
+        )
+        write_generated_puzzle_image(
+            candidate_png,
+            generated.puzzle,
+            seed=generated.seed,
+            skew_degrees=skew,
+        )
+        mark.info(f"candidate: {candidate_toml}")
+
+    def save(generated) -> None:
+        text = generated_puzzle_to_toml(generated, include_answer=answer)
+        if output is None:
+            click.echo(text)
+        else:
+            output.write_text(text, encoding="utf-8")
+            mark.info(f"puzzle: {output}")
+        if puzzle_image is not None:
+            write_generated_puzzle_image(
+                puzzle_image,
+                generated.puzzle,
+                seed=generated.seed,
+                skew_degrees=skew,
+            )
+            mark.info(f"puzzle image: {puzzle_image}")
+
+    if not best_of:
+        generated = generate_puzzle(
+            lexicon,
+            seed=seed,
+            limits=limits,
+            progress=lambda message: click.echo(message, err=True),
+            required_words=included_words,
+            excluded_words=excluded_words,
+        )
+        archive(generated)
+        save(generated)
+        return
+
+    deadline = time.monotonic() + best_of * 60
+    best = None
+    best_quality: tuple[int, int, int] | None = None
+    candidate_seed = seed
+    candidates = 0
+    while time.monotonic() < deadline and (not max_candidates or candidates < max_candidates):
+        remaining = deadline - time.monotonic()
+        candidate_limits = replace(
+            limits,
+            seconds=min(60.0, remaining),
+            attempts=min(limits.attempts, 20),
+        )
+
+        def report_progress(message: str, active_seed: int = candidate_seed) -> None:
+            click.echo(f"seed {active_seed}: {message}", err=True)
+
+        try:
+            candidate = generate_puzzle(
+                lexicon,
+                seed=candidate_seed,
+                limits=candidate_limits,
+                progress=report_progress,
+                required_words=included_words,
+                excluded_words=excluded_words,
+            )
+        except ValueError:
+            candidate_seed += 1
+            continue
+        candidates += 1
+        blocks = sum(symbol is None for row in candidate.puzzle.grid for symbol in row)
+        archive(candidate)
+        quality = (blocks, len(candidate.puzzle.clues), candidate.certification.nodes)
+        if best_quality is None or quality < best_quality:
+            best = candidate
+            best_quality = quality
+            save(candidate)
+            mark.info(
+                f"new best: {blocks} black cells, {len(candidate.puzzle.clues)} clues "
+                f"(seed {candidate.seed}; {candidates} certified candidates)"
+            )
+        candidate_seed += 1
+    if best is None:
+        raise ValueError("No certified puzzle found within the best-of budget")
+    assert best_quality is not None
+    mark.info(f"best-of complete: {best_quality[0]} black cells after {candidates} certified candidates")
+
+
 def main() -> None:
     try:
-        cdbr_main()
+        if len(sys.argv) > 1 and sys.argv[1] == "create":
+            create_main.main(args=sys.argv[2:], prog_name="cdbr create")
+        else:
+            cdbr_main()
     except CdbrCoreError as exc:
         mark.error(str(exc))
         raise SystemExit(2) from None

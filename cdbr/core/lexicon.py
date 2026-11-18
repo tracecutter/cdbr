@@ -27,7 +27,7 @@ class LexiconEntry:
 
 
 class Lexicon:
-    def __init__(self, entries: Iterable[LexiconEntry]) -> None:
+    def __init__(self, entries: Iterable[LexiconEntry], *, discouraged: Iterable[str] = ()) -> None:
         best: dict[str, LexiconEntry] = {}
         for entry in entries:
             current = best.get(entry.word)
@@ -39,9 +39,53 @@ class Lexicon:
         self._index = {
             key: tuple(sorted(values, key=lambda item: (-item.score, item.word))) for key, values in index.items()
         }
+        by_length: dict[int, list[LexiconEntry]] = defaultdict(list)
+        for entry in best.values():
+            by_length[len(entry.word)].append(entry)
+        self._by_length = {
+            length: tuple(sorted(values, key=lambda item: (-item.score, item.word)))
+            for length, values in by_length.items()
+        }
+        by_position: dict[tuple[int, int, str], list[LexiconEntry]] = defaultdict(list)
+        for entry in best.values():
+            for position, letter in enumerate(entry.word):
+                by_position[(len(entry.word), position, letter)].append(entry)
+        self._by_position = {
+            key: tuple(sorted(values, key=lambda item: (-item.score, item.word))) for key, values in by_position.items()
+        }
+        self._entries = tuple(best.values())
+        self._discouraged = frozenset(discouraged)
 
     def candidates(self, symbols: tuple[int, ...]) -> tuple[LexiconEntry, ...]:
         return self._index.get((len(symbols), word_pattern(symbols)), ())
+
+    def entries(self, length: int) -> tuple[LexiconEntry, ...]:
+        """Return words of *length*, ranked from familiar to obscure."""
+
+        return self._by_length.get(length, ())
+
+    def matching(self, pattern: tuple[str | None, ...]) -> tuple[LexiconEntry, ...]:
+        """Return ranked words matching the letters fixed in *pattern*."""
+
+        fixed = tuple((position, letter) for position, letter in enumerate(pattern) if letter is not None)
+        if not fixed:
+            return self.entries(len(pattern))
+        position, letter = min(
+            fixed,
+            key=lambda item: len(self._by_position.get((len(pattern), item[0], item[1]), ())),
+        )
+        candidates = self._by_position.get((len(pattern), position, letter), ())
+        return tuple(entry for entry in candidates if all(entry.word[index] == expected for index, expected in fixed))
+
+    def extended(self, entries: Iterable[LexiconEntry]) -> Lexicon:
+        """Return a lexicon containing these entries as well as the current vocabulary."""
+
+        return Lexicon((*self._entries, *entries), discouraged=self._discouraged)
+
+    def discouraged(self, word: str) -> bool:
+        """Return whether *word* is unsuitable as unrequested puzzle filler."""
+
+        return word in self._discouraged
 
 
 def _normalized_words(words: Iterable[str], source: str) -> Iterable[LexiconEntry]:
@@ -67,9 +111,10 @@ def english_lexicon(
 
     entries = list(_normalized_words(iter_wordlist("en"), "wordfreq-3.1.1"))
     british = files("cdbr").joinpath("assets/lexicon/en_GB_70.txt")
+    british_words = british.read_text(encoding="utf-8").splitlines()
     entries.extend(
         _normalized_words(
-            british.read_text(encoding="utf-8").splitlines(),
+            british_words,
             "ESDB/SCOWL-2026.02.25-en_GB-70",
         )
     )
@@ -89,4 +134,10 @@ def english_lexicon(
                     str(wordlist),
                 )
             )
-    return Lexicon(entries)
+    lowercase = {word.strip() for word in british_words if word.strip().islower()}
+    proper_only = {
+        "".join(character for character in word.strip().upper() if character.isalpha())
+        for word in british_words
+        if word.strip()[:1].isupper() and word.strip().lower() not in lowercase
+    }
+    return Lexicon(entries, discouraged=proper_only)

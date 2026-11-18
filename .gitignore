@@ -80,4 +80,7 @@ var/
 
 # Generated puzzle output
 /solved.*
+/puzzle.toml
+/publish/
+/results/
 examples/*_solved.*

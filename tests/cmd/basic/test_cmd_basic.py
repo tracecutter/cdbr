@@ -71,6 +71,35 @@ def test_cmd_rejects_unknown_file_format(tmp_path):
     assert "Unsupported or unrecognised image format" in result.stderr
 
 
+def test_create_command(monkeypatch):
+    monkeypatch.setattr(main_module, "english_lexicon", object)
+    monkeypatch.setattr(
+        main_module,
+        "generate_puzzle",
+        lambda lexicon, seed, limits, progress, required_words, excluded_words: (
+            seed,
+            required_words,
+            excluded_words,
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "generated_puzzle_to_toml",
+        lambda value, include_answer: (
+            f"seed = {value[0]}\ntheme = {value[1][0]}\n"
+            f"excluded = {value[2][0]}\nanswer = {str(include_answer).lower()}\n"
+        ),
+    )
+
+    result = CliRunner().invoke(
+        main_module.create_main,
+        ["--seed", "23", "--include", "PERFECT", "--exclude", "NASH", "--answer"],
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == "seed = 23\ntheme = PERFECT\nexcluded = NASH\nanswer = true\n\n"
+
+
 def test_image_option_derives_output_name(tmp_path, monkeypatch):
     photo = tmp_path / "puzzle.HEIC"
     photo.touch()
