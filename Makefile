@@ -1,11 +1,11 @@
 .PHONY: all help init init-git init-git-sanitize init-git-fork init-gh \
 		refresh reinstate reincarnate \
 		clean clean-pyc clean-build clean-docs clean-gen clean-bak \
-		check check-sys check-types check-readme check-lint check-style reformat \
+		check check-sys check-types check-readme check-lint check-style reformat ci \
 		test test-coverage test-all \
 		docs docs-% docs-%-% \
 		dist release \
-		pub-docs pub-pypi pub-brew pub-container \
+		pub-gh pub-docs pub-pypi pub-brew pub-container \
 		container-build container-check container-run container-push \
 		status corpus
 
@@ -51,6 +51,7 @@ WEB_ENABLED			:= $(if $(filter true True 1 yes,$(shell pfig get key tool.npkg.we
 WEB_COMMAND			:= $(or $(shell pfig get key tool.npkg.web.command 2>/dev/null),$(PROJECT_NAME)d)
 WEB_PORT			:= $(or $(shell pfig get key tool.npkg.web.port 2>/dev/null),8000)
 WEB_HEALTH_PATH		:= $(or $(shell pfig get key tool.npkg.web.health-path 2>/dev/null),/health)
+WEB_DEPLOY_ON			:= $(or $(shell pfig get key tool.npkg.web.deploy-on 2>/dev/null),manual)
 CONTAINER_FILE		:= $(or $(shell pfig get key tool.npkg.web.container-file 2>/dev/null),Dockerfile)
 CONTAINER_IMAGE		:= $(or $(shell pfig get key tool.npkg.web.container-image 2>/dev/null),$(PROJECT_NAME))
 CONTAINER_DEV_TAG	?= local
@@ -114,6 +115,7 @@ help:
 	@echo "check-lint - check for lint using ruff"
 	@echo "check-style - check style compliance with black"
 	@echo "check-types - check types with mypy"
+	@echo "ci - run project checks, docs, tests, and enabled capability checks"
 	@echo "reformat - reformat all python files to comply with black style"
 	@echo "test - run tests quickly with the default Python"
 	@echo "test-coverage - check code coverage"
@@ -128,6 +130,7 @@ help:
 	@echo "preflight - check everything is ready for release"
 	@echo "dist - generate full distribution and stage package for release."
 	@echo "release - tag, build, push, and perform local post-release install if applicable"
+	@echo "pub-gh - publish the tagged release and distribution artifacts to GitHub"
 	@echo "pub-docs - publish documents on GitHub.io"
 	@echo "pub-pypi - publish release on PyPi"
 	@echo "pub-brew - publish release on GitHub as homebrew tap"
@@ -420,6 +423,22 @@ check-version:
 		echo "   (no prior tags in this lineage)"; \
 	fi
 
+# ------------------------------------------------------------
+# 🤖 Capability-aware continuous integration
+# ------------------------------------------------------------
+
+ci:
+	@echo "🤖 Running generic npkg CI for $(PROJECT_NAME)…"
+	$(MAKE) --no-print-directory docs
+	$(MAKE) --no-print-directory check
+	$(MAKE) --no-print-directory test
+	@if [ "$(WEB_ENABLED)" = "1" ]; then \
+		$(MAKE) --no-print-directory container-check; \
+	else \
+		echo "ℹ️ Skipping container check (web capability not enabled)."; \
+	fi
+	@echo "✅ CI passed for $(PROJECT_NAME)."
+
 reformat:
 	black .
 
@@ -603,6 +622,7 @@ status:
 	@echo "WEB_COMMAND=$(WEB_COMMAND)"
 	@echo "WEB_PORT=$(WEB_PORT)"
 	@echo "WEB_HEALTH_PATH=$(WEB_HEALTH_PATH)"
+	@echo "WEB_DEPLOY_ON=$(WEB_DEPLOY_ON)"
 	@echo "CONTAINER_IMAGE=$(CONTAINER_IMAGE)"
 	@echo "CONTAINER_RELEASE_TAG=$(CONTAINER_RELEASE_TAG)"
 
@@ -661,6 +681,32 @@ release: release-guard preflight
 # ------------------------------------------------------------
 #  🌐 Publish docs to GitHub Pages (gh-pages branch)
 # ------------------------------------------------------------
+
+pub-gh: release-guard
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "❌ GitHub CLI (gh) is required for pub-gh."; \
+		exit 1; \
+	fi
+	@if ! git tag --points-at HEAD | grep -Fxq "$(TAG)"; then \
+		echo "❌ GitHub publishing is release-only."; \
+		echo "   HEAD must carry tag $(TAG); run 'make release' first."; \
+		exit 1; \
+	fi
+	@if gh release view "$(TAG)" >/dev/null 2>&1; then \
+		echo "ℹ️ GitHub release $(TAG) already exists."; \
+	else \
+		assets=$$(find dist -maxdepth 1 -type f 2>/dev/null | sort); \
+		[ -n "$$assets" ] || { \
+			echo "❌ No distribution artifacts found in dist/."; \
+			echo "   Run 'make dist' before publishing."; \
+			exit 1; \
+		}; \
+		echo "🌐 Publishing GitHub release $(TAG)…"; \
+		gh release create "$(TAG)" $$assets \
+			--verify-tag \
+			--generate-notes \
+			--title "$(PROJECT_NAME) $(VERSION)"; \
+	fi
 
 pub-docs:
 	$(call ensure-venv-active)

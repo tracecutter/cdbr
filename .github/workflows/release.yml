@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release
+    runs-on: ubuntu-latest
+    outputs:
+      deploy-on: ${{ steps.npkg.outputs.deploy-on }}
+    steps:
+      - name: Check out the released tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes \
+            fonts-dejavu-core \
+            fonts-comic-neue \
+            imagemagick \
+            libheif1 \
+            tesseract-ocr
+
+      - name: Install project and development tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "https://github.com/tracecutter/npkglib/archive/refs/tags/v1.2.0.tar.gz"
+          python -m pip install ".[dev]"
+
+      - name: Read npkg release policy
+        id: npkg
+        run: echo "deploy-on=$(pfig get key tool.npkg.web.deploy-on 2>/dev/null || echo manual)" >> "$GITHUB_OUTPUT"
+
+      - name: Run generic npkg CI
+        run: make ci
+
+  deploy:
+    name: Deploy to DigitalOcean
+    needs: verify
+    if: needs.verify.outputs.deploy-on == 'release'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Deploy released source
+        env:
+          DIGITALOCEAN_APP_ID: ${{ secrets.DIGITALOCEAN_APP_ID }}
+        run: |
+          test -n "$DIGITALOCEAN_APP_ID"
+          doctl apps create-deployment "$DIGITALOCEAN_APP_ID" \
+            --force-rebuild \
+            --wait \
+            --wait-timeout 30m
