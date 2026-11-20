@@ -30,6 +30,11 @@ jobs:
           python-version: "3.13"
           cache: pip
 
+      - name: Install image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes imagemagick
+
       - name: Install public test tools and project runtime
         run: |
           python -m pip install --upgrade pip
