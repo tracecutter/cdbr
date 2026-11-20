@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  workflow_dispatch:
   release:
     types: [published]
 
@@ -21,7 +22,7 @@ jobs:
       - name: Check out the released tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -29,29 +30,53 @@ jobs:
           python-version: "3.13"
           cache: pip
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes \
-            fonts-dejavu-core \
-            fonts-comic-neue \
-            imagemagick \
-            libheif1 \
-            tesseract-ocr
-
-      - name: Install project and development tools
+      - name: Install public test tools and project runtime
         run: |
           python -m pip install --upgrade pip
           python -m pip install \
             "https://github.com/tracecutter/npkglib/archive/refs/tags/v1.2.0.tar.gz"
-          python -m pip install ".[dev]"
+          python -m pip install . pytest ruff black mypy
 
       - name: Read npkg release policy
         id: npkg
-        run: echo "deploy-on=$(pfig get key tool.npkg.web.deploy-on 2>/dev/null || echo manual)" >> "$GITHUB_OUTPUT"
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import tomllib
 
-      - name: Run generic npkg CI
-        run: make ci
+          with open("pyproject.toml", "rb") as stream:
+              project = tomllib.load(stream)
+          print(f"deploy-on={project.get('tool', {}).get('npkg', {}).get('web', {}).get('deploy-on', 'manual')}")
+          PY
+
+      - name: Run public-source checks
+        run: |
+          ruff check --no-cache .
+          black --check --diff .
+          mypy cdbr
+          pytest -q
+
+      - name: Build production container
+        run: docker build --file Dockerfile --tag cdbr:release .
+
+      - name: Health-check production container
+        run: |
+          name="cdbr-release-$RANDOM"
+          docker run --detach --rm --name "$name" cdbr:release >/dev/null
+          trap 'docker stop "$name" >/dev/null 2>&1 || true' EXIT INT TERM
+          ready=0
+          for attempt in $(seq 1 30); do
+            if docker exec "$name" python -c \
+              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)" \
+              >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            docker logs "$name"
+            exit 1
+          fi
 
   deploy:
     name: Deploy to DigitalOcean
