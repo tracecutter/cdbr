@@ -1,6 +1,6 @@
 [project]
 name = "cdbr"
-version = "0.1.0"
+version = "0.1.1"
 description = "Code Break Puzzle Solver."
 authors = [
   { name = "John Fogelin" }
@@ -44,6 +44,7 @@ dev = [
     "furo>=2025.12.19",
     # test
     "pytest>=9.0.3",
+    "httpx2",
     # lint/style
     "ruff>=0.15.15",
     "black<26.0,>=25.12.0",
