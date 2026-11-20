@@ -59,6 +59,8 @@ jobs:
           PY
 
       - name: Run public-source checks
+        env:
+          OMP_THREAD_LIMIT: "1"
         run: |
           ruff check --no-cache .
           black --check --diff .
