@@ -32,6 +32,9 @@ const solveButton = document.querySelector('#solve-button');
 const scanActions = document.querySelector('.scan-actions');
 const reviewState = document.querySelector('#review-state');
 const reviewCells = document.querySelector('#review-cells');
+const reviewClues = document.querySelector('#review-clues');
+const reviewCellGroup = document.querySelector('#review-cell-group');
+const reviewClueGroup = document.querySelector('#review-clue-group');
 const reviewGuidance = document.querySelector('#review-guidance');
 const finishReview = document.querySelector('#finish-review');
 const blankPuzzleShell = document.querySelector('#blank-puzzle-shell');
@@ -464,6 +467,33 @@ document.querySelector('#quit-scan').addEventListener('click', () => {
 function showReview(prepared) {
   scanJob = prepared;
   reviewCells.replaceChildren();
+  reviewClues.replaceChildren();
+  prepared.review_clues.forEach((item) => {
+    const label = document.createElement('label');
+    label.className = 'review-cell review-clue';
+    const image = document.createElement('img');
+    image.src = item.image;
+    image.alt = `Original reference clue for symbol ${item.symbol}`;
+    const detail = document.createElement('span');
+    const coordinate = document.createElement('strong');
+    coordinate.textContent = `Reference ${item.symbol}`;
+    const confidence = document.createElement('small');
+    confidence.textContent = item.proposed === null
+      ? 'No reliable letter reading'
+      : `Scanner suggests ${item.proposed} · ${item.confidence}% agreement`;
+    const value = document.createElement('input');
+    value.type = 'text';
+    value.maxLength = 1;
+    value.pattern = '[A-Za-z]';
+    value.required = true;
+    value.value = item.proposed ?? '';
+    value.dataset.symbol = item.symbol;
+    value.autocapitalize = 'characters';
+    value.setAttribute('aria-label', `Letter for reference symbol ${item.symbol}`);
+    detail.append(coordinate, confidence);
+    label.append(image, detail, value);
+    reviewClues.append(label);
+  });
   prepared.review_cells.forEach((item) => {
     const label = document.createElement('label');
     label.className = 'review-cell';
@@ -490,12 +520,16 @@ function showReview(prepared) {
     label.append(image, detail, value);
     reviewCells.append(label);
   });
-  reviewGuidance.textContent = `${prepared.review_cells.length} cell${prepared.review_cells.length === 1 ? '' : 's'} need confirmation before solving.`;
+  reviewClueGroup.hidden = prepared.review_clues.length === 0;
+  reviewCellGroup.hidden = prepared.review_cells.length === 0;
+  reviewGuidance.textContent = prepared.review_cells.length
+    ? `Confirm ${prepared.review_clues.length} reference clue${prepared.review_clues.length === 1 ? '' : 's'} and ${prepared.review_cells.length} uncertain numbered cell${prepared.review_cells.length === 1 ? '' : 's'}.`
+    : `Confirm the ${prepared.review_clues.length} starting reference clue${prepared.review_clues.length === 1 ? '' : 's'} before solving.`;
   scanActions.hidden = true;
   reviewState.hidden = false;
 }
 
-async function completeScan(cells) {
+async function completeScan(cells, clues) {
   if (!scanJob) return;
   finishReview.disabled = true;
   finishReview.textContent = 'Solving…';
@@ -503,7 +537,7 @@ async function completeScan(cells) {
     const response = await fetch(`/api/scan-jobs/${scanJob.job_id}/complete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cells }),
+      body: JSON.stringify({ cells, clues }),
     });
     if (!response.ok) {
       const data = await response.json();
@@ -524,11 +558,15 @@ async function completeScan(cells) {
 
 finishReview.addEventListener('click', () => {
   const inputs = [...reviewCells.querySelectorAll('input')];
-  if (!inputs.every((item) => item.reportValidity())) return;
+  const clueInputs = [...reviewClues.querySelectorAll('input')];
+  if (![...inputs, ...clueInputs].every((item) => item.reportValidity())) return;
   completeScan(inputs.map((item) => ({
     row: Number(item.dataset.row),
     column: Number(item.dataset.column),
     value: Number(item.value),
+  })), clueInputs.map((item) => ({
+    symbol: Number(item.dataset.symbol),
+    letter: item.value.toUpperCase(),
   })));
 });
 
@@ -568,10 +606,10 @@ form.addEventListener('submit', async (event) => {
     workingState.hidden = true;
     previewState.classList.remove('is-working');
     scanJob = prepared;
-    if (prepared.review_cells.length) {
+    if (prepared.review_cells.length || prepared.review_clues.length) {
       showReview(prepared);
     } else {
-      await completeScan([]);
+      await completeScan([], []);
     }
   } catch (error) {
     workingState.hidden = true;

@@ -9,7 +9,7 @@ import cdbr.server as server_module
 from cdbr import __version__
 from cdbr.core.model import CodewordPuzzle, extract_slots
 from cdbr.core.photo import PhotoFormat
-from cdbr.core.puzzle import UNKNOWN, CellEvidence, CellUncertainty, PuzzleObservation
+from cdbr.core.puzzle import UNKNOWN, CellEvidence, CellUncertainty, ClueEvidence, PuzzleObservation
 from cdbr.core.generator import GeneratedPuzzle
 from cdbr.server import app
 
@@ -130,6 +130,7 @@ def test_scan_job_pauses_for_human_review_before_solving(monkeypatch):
             CellEvidence(row=2, column=1, reading="3", confidence=91.0, trusted=True),
             CellEvidence(row=2, column=2, reading="4", confidence=92.0, trusted=True),
         ),
+        clue_evidence=(ClueEvidence(symbol=1, reading="A", confidence=100.0),),
     )
     puzzle = CodewordPuzzle(grid=((1, 2), (3, 4)), clues={1: "A"}, slots=extract_slots(((1, 2), (3, 4))))
     solved = SimpleNamespace(
@@ -160,16 +161,30 @@ def test_scan_job_pauses_for_human_review_before_solving(monkeypatch):
             "image": f"/api/scan-jobs/{review['job_id']}/cells/1/2",
         }
     ]
+    assert review["review_clues"] == [
+        {
+            "symbol": 1,
+            "proposed": "A",
+            "confidence": 100.0,
+            "image": f"/api/scan-jobs/{review['job_id']}/clues/1",
+        }
+    ]
     crop = client.get(review["review_cells"][0]["image"])
     assert crop.status_code == 200
     assert crop.headers["content-type"] == "image/jpeg"
 
-    incomplete = client.post(f"/api/scan-jobs/{review['job_id']}/complete", json={"cells": []})
+    incomplete = client.post(
+        f"/api/scan-jobs/{review['job_id']}/complete",
+        json={"cells": [], "clues": []},
+    )
     assert incomplete.status_code == 422
 
     completed = client.post(
         f"/api/scan-jobs/{review['job_id']}/complete",
-        json={"cells": [{"row": 1, "column": 2, "value": 2}]},
+        json={
+            "cells": [{"row": 1, "column": 2, "value": 2}],
+            "clues": [{"symbol": 1, "letter": "A"}],
+        },
     )
     assert completed.status_code == 201
     assert completed.json()["grid"] == [[1, 2], [3, 4]]

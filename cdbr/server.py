@@ -65,8 +65,14 @@ class CellCorrection(BaseModel):
     value: int = Field(ge=1, le=26)
 
 
+class ClueCorrection(BaseModel):
+    symbol: int = Field(ge=1, le=26)
+    letter: str = Field(pattern=r"^[A-Za-z]$")
+
+
 class ScanCorrectionRequest(BaseModel):
     cells: list[CellCorrection] = Field(default_factory=list, max_length=225)
+    clues: list[ClueCorrection] = Field(default_factory=list, max_length=26)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -206,12 +212,22 @@ def _scan_public(job: ScanJob) -> dict[str, object]:
                 "image": f"/api/scan-jobs/{job.job_id}/cells/{item.row}/{item.column}",
             }
         )
+    review_clues = [
+        {
+            "symbol": item.symbol,
+            "proposed": item.reading or None,
+            "confidence": round(item.confidence, 1),
+            "image": f"/api/scan-jobs/{job.job_id}/clues/{item.symbol}",
+        }
+        for item in job.observation.clue_evidence
+    ]
     return {
         "job_id": job.job_id,
-        "status": "review" if review else "ready",
+        "status": "review" if review or review_clues else "ready",
         "grid": [list(row) for row in job.observation.grid],
         "clues": job.observation.clues,
         "review_cells": review,
+        "review_clues": review_clues,
     }
 
 
@@ -523,6 +539,14 @@ def scan_cell_endpoint(job_id: str, row: int, column: int) -> FileResponse:
     return FileResponse(source, media_type="image/jpeg")
 
 
+@app.get("/api/scan-jobs/{job_id}/clues/{symbol}", response_class=FileResponse)
+def scan_clue_endpoint(job_id: str, symbol: int) -> FileResponse:
+    source = _scan_job(job_id).work_dir / f"clue-source-{symbol}.jpg"
+    if not source.is_file():
+        raise HTTPException(status_code=404, detail="Reference clue not found")
+    return FileResponse(source, media_type="image/jpeg")
+
+
 @app.post("/api/scan-jobs/{job_id}/complete", status_code=201)
 def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[str, object]:
     """Apply reviewed OCR values, then solve and enter the normal play state."""
@@ -534,6 +558,18 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
     if missing:
         coordinates = ", ".join(f"r{row:02d}c{column:02d}" for row, column in sorted(missing))
         raise HTTPException(status_code=422, detail=f"Confirm every review cell: {coordinates}")
+    required_clues = {item.symbol for item in job.observation.clue_evidence}
+    clue_corrections = {item.symbol: item.letter.upper() for item in request.clues}
+    missing_clues = required_clues - clue_corrections.keys()
+    if missing_clues:
+        symbols = ", ".join(str(symbol) for symbol in sorted(missing_clues))
+        raise HTTPException(status_code=422, detail=f"Confirm every reference clue: {symbols}")
+    extra_clues = clue_corrections.keys() - required_clues
+    if extra_clues:
+        symbols = ", ".join(str(symbol) for symbol in sorted(extra_clues))
+        raise HTTPException(status_code=422, detail=f"Unexpected reference clues: {symbols}")
+    if len(set(clue_corrections.values())) != len(clue_corrections):
+        raise HTTPException(status_code=422, detail="Reference clues must use different letters")
 
     grid = [list(row) for row in job.observation.grid]
     for (row, column), value in corrections.items():
@@ -544,7 +580,7 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
         source=job.observation.source,
         source_format=job.observation.source_format,
         grid=tuple(tuple(row) for row in grid),
-        clues=job.observation.clues,
+        clues=clue_corrections,
         uncertainties=(),
         evidence=job.observation.evidence,
     )

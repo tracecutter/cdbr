@@ -32,6 +32,13 @@ class CellEvidence:
 
 
 @dataclass(frozen=True, kw_only=True)
+class ClueEvidence:
+    symbol: int
+    reading: str
+    confidence: float
+
+
+@dataclass(frozen=True, kw_only=True)
 class PuzzleObservation:
     source: Path
     source_format: str
@@ -39,6 +46,7 @@ class PuzzleObservation:
     clues: dict[int, str]
     uncertainties: tuple[CellUncertainty, ...]
     evidence: tuple[CellEvidence, ...] = ()
+    clue_evidence: tuple[ClueEvidence, ...] = ()
 
     @property
     def width(self) -> int:

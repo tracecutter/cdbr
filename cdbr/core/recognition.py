@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 
 from cdbr.core.photo import detect_photo_format
-from cdbr.core.puzzle import BLOCK, UNKNOWN, CellEvidence, CellUncertainty, PuzzleObservation
+from cdbr.core.puzzle import BLOCK, UNKNOWN, CellEvidence, CellUncertainty, ClueEvidence, PuzzleObservation
 
 
 GRID_SIZE = 15
@@ -518,7 +518,11 @@ def _select_clue(attempts: list[str]) -> str | None:
     return winner if votes > 1 else candidates[0]
 
 
-def extract_clues(reference_grid: np.ndarray, work_dir: Path) -> dict[int, str]:
+def extract_clues(
+    reference_grid: np.ndarray,
+    work_dir: Path,
+    evidence: list[ClueEvidence] | None = None,
+) -> dict[int, str]:
     """Read the large handwritten letters from the numbered reference cells."""
 
     clues: dict[int, str] = {}
@@ -542,6 +546,7 @@ def extract_clues(reference_grid: np.ndarray, work_dir: Path) -> dict[int, str]:
                 found = True
         if not found:
             continue
+        cv2.imwrite(str(work_dir / f"clue-source-{value}.jpg"), cell)
         cleaned = cv2.copyMakeBorder(cleaned, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
         cleaned = cv2.resize(cleaned, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST)
         image_path = work_dir / f"clue-{value}.png"
@@ -568,6 +573,15 @@ def extract_clues(reference_grid: np.ndarray, work_dir: Path) -> dict[int, str]:
                 )
             )
         clue = _select_clue(attempts)
+        if evidence is not None:
+            agreement = sum(clue in set(attempt) for attempt in attempts) / len(attempts) if clue is not None else 0.0
+            evidence.append(
+                ClueEvidence(
+                    symbol=value,
+                    reading=clue or "",
+                    confidence=100.0 * agreement,
+                )
+            )
         if clue is not None:
             clues[value] = clue
     if len(set(clues.values())) != len(clues):
@@ -792,11 +806,13 @@ def recognize_photo(
         templates = None
         digit_templates = None
         clues: dict[int, str] = {}
+        clue_evidence: list[ClueEvidence] = []
     else:
         cv2.imwrite(str(work_dir / "reference-grid.png"), reference_grid)
         templates = _reference_templates(reference_grid)
         digit_templates = _digit_templates(reference_grid)
-        clues = extract_clues(reference_grid, work_dir)
+        clue_evidence = []
+        clues = extract_clues(reference_grid, work_dir, clue_evidence)
     if trace is not None:
         trace.record("reference", started)
 
@@ -1013,6 +1029,7 @@ def recognize_photo(
             )
             for reading in readings
         ),
+        clue_evidence=tuple(clue_evidence),
     )
     if trace is not None:
         trace.elapsed_seconds = time.perf_counter() - recognition_started

@@ -177,6 +177,14 @@ def benchmark_entry(
             "mismatches": topology_mismatches,
         },
         "clues": observation.clues,
+        "clue_evidence": [
+            {
+                "symbol": item.symbol,
+                "reading": item.reading,
+                "confidence": round(item.confidence, 3),
+            }
+            for item in observation.clue_evidence
+        ],
         "grid": observation.grid,
         "evidence": evidence_payload,
         "review_cells": review_cells,

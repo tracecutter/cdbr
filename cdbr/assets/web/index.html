@@ -247,7 +247,14 @@
                 <p class="eyebrow">Check the reading</p>
                 <h2>One quick human pass.</h2>
                 <p id="review-guidance">Confirm the cells the scanner was least certain about.</p>
-                <div class="review-cells" id="review-cells"></div>
+                <section class="review-group" id="review-clue-group">
+                  <h3>Reference clues</h3>
+                  <div class="review-cells" id="review-clues"></div>
+                </section>
+                <section class="review-group" id="review-cell-group">
+                  <h3>Numbered cells</h3>
+                  <div class="review-cells" id="review-cells"></div>
+                </section>
                 <button class="solve-button" id="finish-review" type="button">Confirm and open puzzle</button>
                 <button class="text-button scan-quit" id="cancel-review" type="button">Choose another photo</button>
               </div>
