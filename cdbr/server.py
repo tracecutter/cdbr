@@ -43,14 +43,21 @@ MAX_GENERATION_JOBS = 20
 MAX_SCAN_JOBS = 20
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(kw_only=True)
 class PuzzleSession:
     session_id: str
     puzzle: dict[str, object]
-    solution: dict[int, str]
+    solution: dict[int, str] | None = None
+    observation: PuzzleObservation | None = None
+    solution_status: str = "not_requested"
+    solve_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def public(self) -> dict[str, object]:
-        return {**self.puzzle, "session_id": self.session_id}
+        return {
+            **self.puzzle,
+            "session_id": self.session_id,
+            "solution_status": self.solution_status,
+        }
 
 
 class CreatePuzzleRequest(BaseModel):
@@ -166,9 +173,20 @@ def _complete_mapping(grid: list[list[int | None]], mapping: dict[int, str]) -> 
     return solution
 
 
-def _create_session(puzzle: dict[str, object], solution: dict[int, str]) -> PuzzleSession:
+def _create_session(
+    puzzle: dict[str, object],
+    solution: dict[int, str] | None = None,
+    *,
+    observation: PuzzleObservation | None = None,
+) -> PuzzleSession:
     session_id = secrets.token_urlsafe(12)
-    session = PuzzleSession(session_id=session_id, puzzle=puzzle, solution=solution)
+    session = PuzzleSession(
+        session_id=session_id,
+        puzzle=puzzle,
+        solution=solution,
+        observation=observation,
+        solution_status="certified" if solution is not None else "not_requested",
+    )
     _sessions[session_id] = session
     while len(_sessions) > MAX_SESSIONS:
         _sessions.popitem(last=False)
@@ -180,6 +198,35 @@ def _session(session_id: str) -> PuzzleSession:
         return _sessions[session_id]
     except KeyError:
         raise HTTPException(status_code=404, detail="Puzzle session not found or expired") from None
+
+
+def _solve_session(session: PuzzleSession) -> None:
+    """Populate a session solution on demand without invalidating play on failure."""
+
+    if session.solution_status != "not_requested":
+        return
+    with session.solve_lock:
+        if session.solution_status != "not_requested":
+            return
+        if session.observation is None:
+            session.solution = {}
+            session.solution_status = "unavailable"
+            return
+        try:
+            solved = solve_observation(session.observation)
+        except (CdbrCoreError, ValueError):
+            session.solution = dict(session.observation.clues)
+            session.solution_status = "unavailable"
+            return
+        session.solution = dict(solved.mapping)
+        if solved.result.exhausted and len(solved.result.solutions) == 1:
+            session.solution_status = "certified"
+        elif solved.result.solutions:
+            session.solution_status = "candidate"
+        elif session.solution:
+            session.solution_status = "partial"
+        else:
+            session.solution_status = "unavailable"
 
 
 def _scan_job(job_id: str) -> ScanJob:
@@ -245,14 +292,25 @@ def session_endpoint(session_id: str) -> dict[str, object]:
 @app.post("/api/sessions/{session_id}/reveal/{symbol}")
 def session_reveal_endpoint(session_id: str, symbol: int) -> dict[str, str | int]:
     session = _session(session_id)
-    if symbol not in session.solution:
-        raise HTTPException(status_code=404, detail="Symbol not found")
-    return {"symbol": symbol, "letter": session.solution[symbol]}
+    _solve_session(session)
+    solution = session.solution or {}
+    if symbol not in solution:
+        raise HTTPException(
+            status_code=409,
+            detail="No reliable hint is available for that letter yet; you can keep playing.",
+        )
+    return {"symbol": symbol, "letter": solution[symbol], "solution_status": session.solution_status}
 
 
 @app.post("/api/sessions/{session_id}/reveal")
-def session_reveal_all_endpoint(session_id: str) -> dict[str, dict[int, str]]:
-    return {"mapping": _session(session_id).solution}
+def session_reveal_all_endpoint(session_id: str) -> dict[str, object]:
+    session = _session(session_id)
+    _solve_session(session)
+    return {
+        "mapping": session.solution or {},
+        "solution_status": session.solution_status,
+        "complete": session.solution_status == "certified",
+    }
 
 
 class GenerationCancelled(Exception):
@@ -551,7 +609,7 @@ def scan_clue_endpoint(job_id: str, symbol: int) -> FileResponse:
 
 @app.post("/api/scan-jobs/{job_id}/complete", status_code=201)
 def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[str, object]:
-    """Apply reviewed OCR values, then solve and enter the normal play state."""
+    """Apply reviewed OCR values and enter play without requiring a solution."""
 
     job = _scan_job(job_id)
     required = {(item.row, item.column) for item in job.observation.evidence if not item.trusted}
@@ -585,13 +643,8 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
         clues=clue_corrections,
         uncertainties=(),
         evidence=job.observation.evidence,
+        clue_evidence=job.observation.clue_evidence,
     )
-    try:
-        solved = solve_observation(corrected)
-        if not solved.result.exhausted or len(solved.result.solutions) != 1:
-            raise ValueError("The reviewed puzzle could not be certified with one unique solution")
-    except (CdbrCoreError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     playable_grid = [[None if value == BLOCK else int(value) for value in row] for row in corrected.grid]
     used_symbols = sorted({symbol for row in playable_grid for symbol in row if symbol is not None})
@@ -603,8 +656,7 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
         "used_symbols": used_symbols,
         "provenance": "photo",
     }
-    solution = _complete_mapping(playable_grid, solved.mapping)
-    session = _create_session(puzzle, solution).public()
+    session = _create_session(puzzle, observation=corrected).public()
     _scan_jobs.pop(job_id, None)
     shutil.rmtree(job.work_dir, ignore_errors=True)
     return session

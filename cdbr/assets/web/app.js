@@ -65,8 +65,7 @@ const workingStages = [
   'Finding the puzzle grid…',
   'Reading the numbered cells…',
   'Checking the reference clues…',
-  'Cracking the letter code…',
-  'Preparing your playable puzzle…',
+  'Preparing your review…',
 ];
 
 function showMode(mode) {
@@ -188,8 +187,21 @@ async function referenceClick(symbol) {
     renderGame();
     return;
   }
+  gameGuidance.textContent = 'Looking for a reliable hint…';
   const response = await fetch(`/api/sessions/${game.session_id}/reveal/${symbol}`, { method: 'POST' });
-  if (!response.ok) return;
+  if (!response.ok) {
+    let message = 'No reliable hint is available yet. You can keep playing.';
+    try {
+      const data = await response.json();
+      if (data.detail) message = data.detail;
+    } catch (_) {
+      // Keep the friendly fallback.
+    }
+    gameGuidance.textContent = message;
+    selectedSymbol = undefined;
+    renderReference();
+    return;
+  }
   const hint = await response.json();
   revealed.set(symbol, hint.letter);
   propagated.add(symbol);
@@ -232,12 +244,23 @@ document.querySelector('#reset-game').addEventListener('click', loadGame);
 document.querySelector('#reveal-all').addEventListener('click', async () => {
   if (!game || !window.confirm('Reveal the complete puzzle?')) return;
   const response = await fetch(`/api/sessions/${game.session_id}/reveal`, { method: 'POST' });
-  if (!response.ok) return;
+  if (!response.ok) {
+    gameGuidance.textContent = 'The solution is unavailable, but you can keep playing.';
+    return;
+  }
   const data = await response.json();
-  revealed = new Map(Object.entries(data.mapping).map(([symbol, letter]) => [Number(symbol), letter]));
+  Object.entries(data.mapping).forEach(([symbol, letter]) => revealed.set(Number(symbol), letter));
   propagated = new Set(revealed.keys());
   selectedSymbol = undefined;
-  gameGuidance.textContent = 'Complete solution revealed.';
+  if (data.solution_status === 'certified') {
+    gameGuidance.textContent = 'Complete, uniquely certified solution revealed.';
+  } else if (data.solution_status === 'candidate') {
+    gameGuidance.textContent = 'Best complete candidate revealed; uniqueness was not certified.';
+  } else if (data.solution_status === 'partial') {
+    gameGuidance.textContent = 'Best partial solution revealed. You can keep working from here.';
+  } else {
+    gameGuidance.textContent = 'No further solution could be found. You can keep playing.';
+  }
   renderGame();
   renderReference();
 });

@@ -88,7 +88,7 @@ def test_corpus_session_converges_on_private_playable_state():
     resumed = client.get(f"/api/sessions/{session_id}")
     revealed = client.post(f"/api/sessions/{session_id}/reveal/20")
     assert resumed.json() == prepared
-    assert revealed.json() == {"symbol": 20, "letter": "N"}
+    assert revealed.json() == {"symbol": 20, "letter": "N", "solution_status": "certified"}
 
 
 def test_photo_session_converges_on_same_playable_state(monkeypatch):
@@ -112,12 +112,13 @@ def test_photo_session_converges_on_same_playable_state(monkeypatch):
     assert prepared["title"] == "Scanned puzzle"
     assert prepared["provenance"] == "photo"
     assert prepared["clues"] == {"1": "A"}
+    assert prepared["solution_status"] == "certified"
     assert "solution" not in prepared
     revealed = client.post(f"/api/sessions/{prepared['session_id']}/reveal/4")
-    assert revealed.json() == {"symbol": 4, "letter": "D"}
+    assert revealed.json() == {"symbol": 4, "letter": "D", "solution_status": "certified"}
 
 
-def test_scan_job_pauses_for_human_review_before_solving(monkeypatch):
+def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatch):
     observation = PuzzleObservation(
         source=server_module.Path("upload.jpg"),
         source_format="JPEG",
@@ -141,7 +142,13 @@ def test_scan_job_pauses_for_human_review_before_solving(monkeypatch):
     monkeypatch.setattr(server_module, "detect_photo_format", lambda _: PhotoFormat.JPEG)
     monkeypatch.setattr(server_module, "recognize_photo", lambda _source, _work_dir: observation)
     monkeypatch.setattr(server_module.cv2, "imread", lambda _: np.full((1500, 1500, 3), 255, dtype=np.uint8))
-    monkeypatch.setattr(server_module, "solve_observation", lambda corrected: solved)
+    solved_observations = []
+
+    def fake_solve_observation(corrected):
+        solved_observations.append(corrected)
+        return solved
+
+    monkeypatch.setattr(server_module, "solve_observation", fake_solve_observation)
 
     scanned = client.post(
         "/api/scan-jobs",
@@ -189,6 +196,51 @@ def test_scan_job_pauses_for_human_review_before_solving(monkeypatch):
     assert completed.status_code == 201
     assert completed.json()["grid"] == [[1, 2], [3, 4]]
     assert completed.json()["provenance"] == "photo"
+    assert completed.json()["solution_status"] == "not_requested"
+    assert solved_observations == []
+
+    hint = client.post(f"/api/sessions/{completed.json()['session_id']}/reveal/4")
+
+    assert hint.json() == {"symbol": 4, "letter": "D", "solution_status": "certified"}
+    assert len(solved_observations) == 1
+
+
+def test_failed_lazy_solution_keeps_scanned_session_playable(monkeypatch):
+    observation = PuzzleObservation(
+        source=server_module.Path("discarded-upload.jpg"),
+        source_format="JPEG",
+        grid=((1, 2), (3, 4)),
+        clues={1: "A"},
+        uncertainties=(),
+    )
+    puzzle = {
+        "title": "Scanned puzzle",
+        "grid": [[1, 2], [3, 4]],
+        "clues": {1: "A"},
+        "symbols": list(range(1, 27)),
+        "used_symbols": [1, 2, 3, 4],
+        "provenance": "photo",
+    }
+    session = server_module._create_session(puzzle, observation=observation)
+    monkeypatch.setattr(
+        server_module,
+        "solve_observation",
+        lambda _observation: (_ for _ in ()).throw(ValueError("no solution")),
+    )
+
+    hint = client.post(f"/api/sessions/{session.session_id}/reveal/2")
+    resumed = client.get(f"/api/sessions/{session.session_id}")
+    revealed = client.post(f"/api/sessions/{session.session_id}/reveal")
+
+    assert hint.status_code == 409
+    assert "keep playing" in hint.json()["detail"]
+    assert resumed.status_code == 200
+    assert resumed.json()["solution_status"] == "unavailable"
+    assert revealed.json() == {
+        "mapping": {"1": "A"},
+        "solution_status": "unavailable",
+        "complete": False,
+    }
 
 
 def test_photo_preview_converts_upload_to_browser_image(monkeypatch):
