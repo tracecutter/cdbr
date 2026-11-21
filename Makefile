@@ -6,6 +6,7 @@
 		docs docs-% docs-%-% \
 		dist release \
 		pub-gh pub-docs pub-pypi pub-brew pub-container \
+		preview \
 		container-build container-check container-run container-push \
 		status corpus
 
@@ -50,6 +51,7 @@ IS_PACKAGE			:= $(if $(filter package,$(NPKG_ROLE)),1,0)
 WEB_ENABLED			:= $(if $(filter true True 1 yes,$(shell pfig get key tool.npkg.web.enabled 2>/dev/null)),1,0)
 WEB_COMMAND			:= $(or $(shell pfig get key tool.npkg.web.command 2>/dev/null),$(PROJECT_NAME)d)
 WEB_PORT			:= $(or $(shell pfig get key tool.npkg.web.port 2>/dev/null),8000)
+WEB_PREVIEW_HOST	:= $(or $(shell pfig get key tool.npkg.web.preview-host 2>/dev/null),127.0.0.1)
 WEB_HEALTH_PATH		:= $(or $(shell pfig get key tool.npkg.web.health-path 2>/dev/null),/health)
 WEB_DEPLOY_ON			:= $(or $(shell pfig get key tool.npkg.web.deploy-on 2>/dev/null),manual)
 CONTAINER_FILE		:= $(or $(shell pfig get key tool.npkg.web.container-file 2>/dev/null),Dockerfile)
@@ -84,9 +86,13 @@ endef
 
 define ensure-web-enabled
 	@if [ "$(WEB_ENABLED)" != "1" ]; then \
-		echo "❌ Web/container support is not enabled in [tool.npkg.web]."; \
+		echo "❌ Web support is not enabled in [tool.npkg.web]."; \
 		exit 1; \
 	fi
+endef
+
+define ensure-container-enabled
+	$(call ensure-web-enabled)
 	@if ! command -v docker >/dev/null 2>&1; then \
 		echo "❌ Docker is required for this target."; \
 		exit 1; \
@@ -134,6 +140,7 @@ help:
 	@echo "pub-docs - publish documents on GitHub.io"
 	@echo "pub-pypi - publish release on PyPi"
 	@echo "pub-brew - publish release on GitHub as homebrew tap"
+	@echo "preview - run the configured web daemon locally without a container"
 	@echo "container-build - build the configured web container locally"
 	@echo "container-check - build and health-check the web container"
 	@echo "container-run - run the local web container in the foreground"
@@ -459,14 +466,21 @@ test-one:
 # 🐳 Optional web daemon / container workflow
 # ------------------------------------------------------------
 
-container-build:
+preview:
 	$(ensure-web-enabled)
+	$(call ensure-venv-active)
+	$(call ensure-correct-venv)
+	@echo "🌐 Previewing $(WEB_COMMAND) on http://$(WEB_PREVIEW_HOST):$(WEB_PORT)…"
+	$(WEB_COMMAND) --host "$(WEB_PREVIEW_HOST)" --port "$(WEB_PORT)"
+
+container-build:
+	$(ensure-container-enabled)
 	@echo "🐳 Building $(CONTAINER_IMAGE):$(CONTAINER_DEV_TAG)…"
 	docker build --file "$(CONTAINER_FILE)" \
 		--tag "$(CONTAINER_IMAGE):$(CONTAINER_DEV_TAG)" .
 
 container-run: container-build
-	$(ensure-web-enabled)
+	$(ensure-container-enabled)
 	@echo "🌐 Running $(WEB_COMMAND) on http://127.0.0.1:$(WEB_PORT)…"
 	docker run --rm \
 		--env PORT="$(WEB_PORT)" \
@@ -474,7 +488,7 @@ container-run: container-build
 		"$(CONTAINER_IMAGE):$(CONTAINER_DEV_TAG)"
 
 container-check: container-build
-	$(ensure-web-enabled)
+	$(ensure-container-enabled)
 	@echo "🩺 Checking $(CONTAINER_IMAGE):$(CONTAINER_DEV_TAG)$(WEB_HEALTH_PATH)…"
 	@name="$(PROJECT_NAME)-check-$$$$"; \
 		docker run --detach --rm --name "$$name" \
@@ -494,14 +508,14 @@ container-check: container-build
 	@echo "✅ Container health check passed."
 
 container-push:
-	$(ensure-web-enabled)
+	$(ensure-container-enabled)
 	@echo "📦 Publishing $(CONTAINER_IMAGE):$(CONTAINER_RELEASE_TAG)…"
 	docker tag "$(CONTAINER_IMAGE):$(CONTAINER_DEV_TAG)" \
 		"$(CONTAINER_IMAGE):$(CONTAINER_RELEASE_TAG)"
 	docker push "$(CONTAINER_IMAGE):$(CONTAINER_RELEASE_TAG)"
 
 pub-container: release-guard
-	$(ensure-web-enabled)
+	$(ensure-container-enabled)
 	@if ! git tag --points-at HEAD | grep -Fxq "$(CONTAINER_RELEASE_TAG)"; then \
 		echo "❌ Container publishing is release-only."; \
 		echo "   HEAD must carry tag $(CONTAINER_RELEASE_TAG)."; \
