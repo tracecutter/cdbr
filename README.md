@@ -191,7 +191,10 @@ scan a photograph into the playable board, or create a new puzzle. Uploaded
 photographs and game sessions are currently held only for the lifetime of the
 service; no database is required. Photograph recognition enters play after
 human review; the lexical solver runs only when a hint or solution reveal is
-requested.
+requested. During play, select any numbered cell and type a letter to preview
+that entry everywhere the number occurs. Enter or selecting another number
+commits it, Escape cancels it, and Backspace clears a player-entered letter.
+The original reference clues remain visibly distinct and cannot be changed.
 
 `cdbrd --reload` is intended for local development. Container deployments should
 set `PORT` and run a single service process.

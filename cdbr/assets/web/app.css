@@ -127,6 +127,11 @@ body[data-mode] .creator-workspace { padding: clamp(20px, 2.5vw, 30px); }
 .puzzle-cell small { position: absolute; top: 4%; left: 7%; font: 650 clamp(.48rem, 1vw, .7rem)/1 ui-monospace, monospace; }
 .puzzle-cell strong { font: 600 clamp(.9rem, 1.8vw, 1.4rem)/1 "Chalkboard SE", "Chalkboard", sans-serif; transform: translateY(5%); }
 .puzzle-cell.is-filled { color: #174c91; }
+.puzzle-cell.is-original-entry, .reference-cell.is-original-entry { color: var(--green); background: #eff8f4; }
+.puzzle-cell.is-solver-entry, .reference-cell.is-solver-entry { color: var(--red-dark); background: #fff4f1; }
+.puzzle-cell.is-player-entry, .reference-cell.is-player-entry { color: #174c91; background: #f4f8ff; }
+.puzzle-cell.is-preview-entry, .reference-cell.is-preview-entry { color: var(--red-dark); background: #fff8f6; }
+.puzzle-cell.is-locked, .reference-cell.is-locked { cursor: not-allowed; }
 .puzzle-cell.is-selected { z-index: 1; outline: 3px solid var(--red); outline-offset: -2px; }
 .reference-section { margin: 0; }
 .reference-heading { align-items: flex-start; flex-direction: column; gap: 10px; margin-bottom: 16px; }
@@ -136,8 +141,6 @@ body[data-mode] .creator-workspace { padding: clamp(20px, 2.5vw, 30px); }
 .reference-cell { position: relative; aspect-ratio: 1.1; min-width: 0; display: grid; place-items: center; border: 0; padding: 0; background: #fffefa; cursor: pointer; }
 .reference-cell small { position: absolute; top: 7%; left: 8%; color: var(--muted); font: 650 clamp(.42rem, .75vw, .58rem)/1 ui-monospace, monospace; }
 .reference-cell strong { font: 650 clamp(.8rem, 1.35vw, 1.18rem)/1 "Chalkboard SE", "Chalkboard", sans-serif; transform: translateY(8%); }
-.reference-cell.is-revealed { color: var(--red-dark); background: #fff4f1; }
-.reference-cell.is-propagated { color: #174c91; background: #f4f8ff; }
 .reference-cell.is-unused { cursor: default; opacity: .38; background: #e9e7e0; }
 .reference-cell.is-selected { z-index: 1; outline: 4px solid var(--red); outline-offset: -3px; }
 .game-actions { display: flex; align-items: stretch; flex-direction: column; gap: 10px; margin-top: 20px; }

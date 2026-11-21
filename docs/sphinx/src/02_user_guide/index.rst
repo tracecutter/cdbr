@@ -41,7 +41,7 @@ Start the local web application with:
 
    cdbrd --host 127.0.0.1 --port 8000
 
-Then open http://127.0.0.1:8000/. The web interface can play a corpus puzzle, scan a photograph into the playable board, or create a new puzzle. Uploaded photographs and game sessions are currently held only for the lifetime of the service; no database is required. Photograph recognition enters play after human review; the lexical solver runs only when a hint or solution reveal is requested.
+Then open http://127.0.0.1:8000/. The web interface can play a corpus puzzle, scan a photograph into the playable board, or create a new puzzle. Uploaded photographs and game sessions are currently held only for the lifetime of the service; no database is required. Photograph recognition enters play after human review; the lexical solver runs only when a hint or solution reveal is requested. During play, select any numbered cell and type a letter to preview that entry everywhere the number occurs. Enter or selecting another number commits it, Escape cancels it, and Backspace clears a player-entered letter. The original reference clues remain visibly distinct and cannot be changed.
 
 ``cdbrd --reload`` is intended for local development. Container deployments should set ``PORT`` and run a single service process.
 

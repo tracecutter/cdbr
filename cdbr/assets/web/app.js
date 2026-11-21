@@ -55,11 +55,12 @@ let stageTimer;
 let scanJob;
 let game;
 let selectedSymbol;
-let selectedPuzzleCell;
+let draftLetter;
 let generationJob;
 let generationPoll;
 let revealed = new Map();
-let propagated = new Set();
+let entrySources = new Map();
+let originalHints = new Set();
 
 const workingStages = [
   'Finding the puzzle grid…',
@@ -96,6 +97,58 @@ async function startCorpusGame() {
   if (await loadGame()) showMode('game');
 }
 
+function letterFor(symbol) {
+  return selectedSymbol === symbol && draftLetter ? draftLetter : revealed.get(symbol);
+}
+
+function sourceFor(symbol) {
+  return selectedSymbol === symbol && draftLetter ? 'preview' : entrySources.get(symbol);
+}
+
+function decorateEntry(cell, symbol) {
+  const letter = letterFor(symbol);
+  const source = sourceFor(symbol);
+  if (letter) {
+    const glyph = document.createElement('strong');
+    glyph.textContent = letter;
+    cell.append(glyph);
+    cell.classList.add('is-filled', `is-${source}-entry`);
+  }
+  if (selectedSymbol === symbol) cell.classList.add('is-selected');
+}
+
+function commitSelection() {
+  if (selectedSymbol === undefined) return;
+  if (draftLetter) {
+    revealed.set(selectedSymbol, draftLetter);
+    entrySources.set(selectedSymbol, 'player');
+  }
+  selectedSymbol = undefined;
+  draftLetter = undefined;
+}
+
+function cancelSelection() {
+  selectedSymbol = undefined;
+  draftLetter = undefined;
+}
+
+function selectSymbol(symbol) {
+  const alreadySelected = selectedSymbol === symbol;
+  if (!alreadySelected) commitSelection();
+  if (originalHints.has(symbol)) {
+    gameGuidance.textContent = `${symbol}=${revealed.get(symbol)} is an original clue and cannot be changed.`;
+    renderGame();
+    renderReference();
+    return false;
+  }
+  selectedSymbol = symbol;
+  if (!alreadySelected) draftLetter = undefined;
+  gameGuidance.textContent = `Type a letter for ${symbol}. Enter commits; Escape cancels; Backspace clears your entry.`;
+  renderGame();
+  renderReference();
+  return true;
+}
+
 function renderGame() {
   if (!game) return;
   puzzleShell.style.setProperty('--grid-size', game.grid[0].length);
@@ -112,28 +165,20 @@ function renderGame() {
         const number = document.createElement('small');
         number.textContent = String(symbol);
         cell.append(number);
-        if (propagated.has(symbol)) {
-          const letter = document.createElement('strong');
-          letter.textContent = revealed.get(symbol);
-          cell.append(letter);
-          cell.classList.add('is-filled');
+        decorateEntry(cell, symbol);
+        if (originalHints.has(symbol)) {
+          cell.classList.add('is-locked');
+          cell.setAttribute('aria-label', `Puzzle cell ${symbol}, original clue ${revealed.get(symbol)}`);
         }
-        if (selectedPuzzleCell === cell.dataset.position) cell.classList.add('is-selected');
         cell.addEventListener('click', () => {
-          selectedPuzzleCell = selectedPuzzleCell === cell.dataset.position ? undefined : cell.dataset.position;
-          selectedSymbol = undefined;
-          gameGuidance.textContent = selectedPuzzleCell
-            ? 'Letter entry comes next. For now, choose hints from the reference grid.'
-            : 'Select a numbered reference cell, then click it again to reveal it throughout the puzzle.';
-          renderGame();
-          renderReference();
+          selectSymbol(symbol);
         });
       }
       puzzleShell.append(cell);
     });
   });
   const used = new Set(game.used_symbols);
-  const known = [...propagated].filter((symbol) => used.has(symbol)).length;
+  const known = [...revealed.keys()].filter((symbol) => used.has(symbol)).length;
   gameStatus.textContent = `${known} letter${known === 1 ? '' : 's'} known · ${used.size - known} remaining`;
 }
 
@@ -153,36 +198,28 @@ function renderReference() {
     const number = document.createElement('small');
     number.textContent = symbol;
     cell.append(number);
-    if (revealed.has(symbol)) {
-      const letter = document.createElement('strong');
-      letter.textContent = revealed.get(symbol);
-      cell.append(letter);
-      cell.classList.add(propagated.has(symbol) ? 'is-propagated' : 'is-revealed');
+    decorateEntry(cell, symbol);
+    if (originalHints.has(symbol)) {
+      cell.classList.add('is-locked');
+      cell.setAttribute('aria-label', `Reference symbol ${symbol}, original clue ${revealed.get(symbol)}`);
     }
-    if (selectedSymbol === symbol) cell.classList.add('is-selected');
     cell.addEventListener('click', () => referenceClick(symbol));
     referenceGrid.append(cell);
   });
 }
 
 async function referenceClick(symbol) {
-  selectedPuzzleCell = undefined;
-  if (revealed.has(symbol)) {
-    if (!propagated.has(symbol)) {
-      propagated.add(symbol);
-      selectedSymbol = undefined;
-      gameGuidance.textContent = `${symbol}=${revealed.get(symbol)} has been written throughout the puzzle.`;
-    } else {
-      selectedSymbol = selectedSymbol === symbol ? undefined : symbol;
-      gameGuidance.textContent = `${symbol}=${revealed.get(symbol)} is already on the board.`;
-    }
-    renderReference();
-    renderGame();
+  if (originalHints.has(symbol)) {
+    selectSymbol(symbol);
     return;
   }
   if (selectedSymbol !== symbol) {
-    selectedSymbol = symbol;
-    gameGuidance.textContent = `Click ${symbol} again to spend one hint and reveal its letter.`;
+    selectSymbol(symbol);
+    return;
+  }
+  if (draftLetter) {
+    commitSelection();
+    gameGuidance.textContent = `${symbol}=${revealed.get(symbol)} committed.`;
     renderReference();
     renderGame();
     return;
@@ -204,8 +241,9 @@ async function referenceClick(symbol) {
   }
   const hint = await response.json();
   revealed.set(symbol, hint.letter);
-  propagated.add(symbol);
+  entrySources.set(symbol, 'solver');
   selectedSymbol = undefined;
+  draftLetter = undefined;
   gameGuidance.textContent = `${symbol}=${hint.letter} revealed and written throughout the puzzle.`;
   renderReference();
   renderGame();
@@ -215,10 +253,11 @@ function installGame(prepared) {
   game = prepared;
   gameTitle.textContent = game.title;
   revealed = new Map(Object.entries(game.clues).map(([symbol, letter]) => [Number(symbol), letter]));
-  propagated = new Set(revealed.keys());
+  originalHints = new Set(revealed.keys());
+  entrySources = new Map([...revealed.keys()].map((symbol) => [symbol, 'original']));
   selectedSymbol = undefined;
-  selectedPuzzleCell = undefined;
-  gameGuidance.textContent = 'Select a numbered cell, then click it again to reveal it throughout the puzzle.';
+  draftLetter = undefined;
+  gameGuidance.textContent = 'Select any numbered cell and type a letter, or click a reference cell twice for a hint.';
   renderGame();
   renderReference();
 }
@@ -241,6 +280,47 @@ showCreatorButton.addEventListener('click', () => showMode('creator'));
 document.querySelector('#scan-from-game').addEventListener('click', () => showMode('scanner'));
 document.querySelector('#quit-game').addEventListener('click', () => showMode('idle'));
 document.querySelector('#reset-game').addEventListener('click', loadGame);
+document.addEventListener('keydown', (event) => {
+  if (document.body.dataset.mode !== 'game' || selectedSymbol === undefined) return;
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+  if (/^[a-z]$/i.test(event.key)) {
+    event.preventDefault();
+    draftLetter = event.key.toUpperCase();
+    gameGuidance.textContent = `${selectedSymbol}=${draftLetter} previewed. Enter commits; Escape cancels.`;
+    renderGame();
+    renderReference();
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    const symbol = selectedSymbol;
+    commitSelection();
+    gameGuidance.textContent = revealed.has(symbol)
+      ? `${symbol}=${revealed.get(symbol)} committed.`
+      : `No letter entered for ${symbol}.`;
+    renderGame();
+    renderReference();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    cancelSelection();
+    gameGuidance.textContent = 'Entry cancelled.';
+    renderGame();
+    renderReference();
+  } else if (event.key === 'Backspace') {
+    event.preventDefault();
+    const symbol = selectedSymbol;
+    if (entrySources.get(symbol) === 'player') {
+      revealed.delete(symbol);
+      entrySources.delete(symbol);
+      gameGuidance.textContent = `Your entry for ${symbol} was cleared.`;
+    } else {
+      gameGuidance.textContent = 'Selection cleared.';
+    }
+    cancelSelection();
+    renderGame();
+    renderReference();
+  }
+});
 document.querySelector('#reveal-all').addEventListener('click', async () => {
   if (!game || !window.confirm('Reveal the complete puzzle?')) return;
   const response = await fetch(`/api/sessions/${game.session_id}/reveal`, { method: 'POST' });
@@ -249,9 +329,15 @@ document.querySelector('#reveal-all').addEventListener('click', async () => {
     return;
   }
   const data = await response.json();
-  Object.entries(data.mapping).forEach(([symbol, letter]) => revealed.set(Number(symbol), letter));
-  propagated = new Set(revealed.keys());
+  Object.entries(data.mapping).forEach(([symbol, letter]) => {
+    const numericSymbol = Number(symbol);
+    if (!originalHints.has(numericSymbol)) {
+      revealed.set(numericSymbol, letter);
+      entrySources.set(numericSymbol, 'solver');
+    }
+  });
   selectedSymbol = undefined;
+  draftLetter = undefined;
   if (data.solution_status === 'certified') {
     gameGuidance.textContent = 'Complete, uniquely certified solution revealed.';
   } else if (data.solution_status === 'candidate') {
