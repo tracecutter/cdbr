@@ -3,7 +3,13 @@
 import cv2
 import numpy as np
 
-from cdbr.core.recognition import _block_mask, _coarse_glyph_feature, _foreground_binary
+from cdbr.core.recognition import (
+    _block_mask,
+    _coarse_glyph_feature,
+    _digit_glyphs,
+    _foreground_binary,
+    _select_clue,
+)
 
 
 def test_foreground_binary_rejects_smooth_shadow() -> None:
@@ -42,3 +48,18 @@ def test_block_mask_tolerates_page_brightness_gradient() -> None:
         cells.append((row, column, np.full((100, 100, 3), brightness, dtype=np.uint8)))
 
     assert _block_mask(cells) == expected
+
+
+def test_digit_glyphs_reassembles_fragmented_one() -> None:
+    cell = np.full((100, 100, 3), 255, dtype=np.uint8)
+    cv2.rectangle(cell, (15, 10), (26, 23), (0, 0, 0), -1)
+    cv2.rectangle(cell, (21, 30), (26, 36), (0, 0, 0), -1)
+    cv2.putText(cell, "9", (38, 36), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 2)
+
+    assert len(_digit_glyphs(cell)) == 2
+
+
+def test_select_clue_prefers_agreement_across_ocr_modes() -> None:
+    assert _select_clue(["", "PO", "P"]) == "P"
+    assert _select_clue(["", "OP", ""]) == "P"
+    assert _select_clue(["", "BB", "B"]) == "B"

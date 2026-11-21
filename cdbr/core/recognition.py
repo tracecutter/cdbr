@@ -376,7 +376,7 @@ def _digit_glyphs(cell: np.ndarray, *, suppress_illumination: bool = False) -> l
     components: list[tuple[int, int, int, int, int, int]] = []
     for index in range(1, count):
         x, y, width, height, area = (int(value) for value in statistics[index])
-        if 5 <= width <= 48 and 8 <= height <= 42 and 50 <= area <= 800:
+        if 5 <= width <= 48 and 5 <= height <= 42 and 20 <= area <= 800:
             components.append((index, x, y, width, height, area))
 
     merged: list[tuple[int, int, int, int, np.ndarray]] = []
@@ -392,7 +392,7 @@ def _digit_glyphs(cell: np.ndarray, *, suppress_illumination: bool = False) -> l
             overlap = min(x + width, other_x + other_width) - max(x, other_x)
             vertical_gap = max(y, other_y) - min(y + height, other_y + other_height)
             combined_height = max(y + height, other_y + other_height) - min(y, other_y)
-            if overlap >= min(width, other_width) // 2 and vertical_gap <= 2 and combined_height <= 42:
+            if overlap >= min(width, other_width) // 2 and vertical_gap <= 7 and combined_height <= 42:
                 matching = second
                 break
         indices = [components[first][0]]
@@ -494,6 +494,15 @@ def _classify_digit(glyph: np.ndarray, templates: dict[str, list[np.ndarray]]) -
     return digit, margin
 
 
+def _select_clue(attempts: list[str]) -> str | None:
+    candidates = [text[-1] for text in attempts if text and text[-1].isalpha()]
+    if not candidates:
+        return None
+    appearances = Counter(character for text in attempts for character in set(text) if character.isalpha())
+    winner, votes = appearances.most_common(1)[0]
+    return winner if votes > 1 else candidates[0]
+
+
 def extract_clues(reference_grid: np.ndarray, work_dir: Path) -> dict[int, str]:
     """Read the large handwritten letters from the numbered reference cells."""
 
@@ -522,27 +531,30 @@ def extract_clues(reference_grid: np.ndarray, work_dir: Path) -> dict[int, str]:
         cleaned = cv2.resize(cleaned, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST)
         image_path = work_dir / f"clue-{value}.png"
         cv2.imwrite(str(image_path), cleaned)
-        attempts = [
-            _run(
-                [
-                    "tesseract",
-                    str(image_path),
-                    "stdout",
-                    "--psm",
-                    str(mode),
-                    "-l",
-                    "eng",
-                    "-c",
-                    "tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-                ]
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            attempts = list(
+                executor.map(
+                    lambda mode, image_path=image_path: _run(
+                        [
+                            "tesseract",
+                            str(image_path),
+                            "stdout",
+                            "--psm",
+                            str(mode),
+                            "-l",
+                            "eng",
+                            "-c",
+                            "tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                        ]
+                    )
+                    .stdout.strip()
+                    .upper(),
+                    (10, 13, 6),
+                )
             )
-            .stdout.strip()
-            .upper()
-            for mode in (10, 13, 6)
-        ]
-        candidates = [text[-1] for text in attempts if text and text[-1].isalpha()]
-        if candidates:
-            clues[value] = Counter(candidates).most_common(1)[0][0]
+        clue = _select_clue(attempts)
+        if clue is not None:
+            clues[value] = clue
     if len(set(clues.values())) != len(clues):
         raise ValueError("Recognised reference clues violate the letter bijection")
     return clues
@@ -555,7 +567,6 @@ def _classify_from_reference(
     minimum_margin: float = MIN_TEMPLATE_MARGIN,
 ) -> CellReading:
     row, column, cell = item
-    cv2.imwrite(str(work_dir / f"cell-{row + 1}-{column + 1}.png"), _clean_number(cell))
     glyphs = _digit_glyphs(cell)
     if not 1 <= len(glyphs) <= 2:
         return CellReading(row=row, column=column, text="", confidence=0.0)
@@ -629,21 +640,28 @@ def _audit_confident_readings(
     reference_templates: dict[str, list[np.ndarray]],
 ) -> list[CellReading]:
     samples: dict[str, list[tuple[tuple[int, int], np.ndarray]]] = {str(digit): [] for digit in range(10)}
+    glyphs_by_position: dict[tuple[int, int], list[np.ndarray]] = {}
     for reading in readings:
         if not reading.trusted:
             continue
         position = (reading.row, reading.column)
         glyphs = _digit_glyphs(cells_by_position[position])
+        glyphs_by_position[position] = glyphs
         if len(glyphs) == len(reading.text):
             for digit, glyph in zip(reading.text, glyphs, strict=True):
-                samples[digit].append((position, glyph))
+                samples[digit].append((position, _coarse_glyph_feature(glyph)))
+
+    reference_features = {
+        digit: [_coarse_glyph_feature(sample) for sample in digit_samples]
+        for digit, digit_samples in reference_templates.items()
+    }
 
     replacements: dict[tuple[int, int], CellReading] = {}
     for reading in readings:
         if not reading.trusted:
             continue
         position = (reading.row, reading.column)
-        glyphs = _digit_glyphs(cells_by_position[position])
+        glyphs = glyphs_by_position[position]
         if len(glyphs) != len(reading.text):
             continue
         candidate_digits: list[str] = []
@@ -653,8 +671,8 @@ def _audit_confident_readings(
             board_scores = sorted(
                 (
                     min(
-                        float(np.mean((feature - _coarse_glyph_feature(sample)) ** 2))
-                        for sample_position, sample in digit_samples
+                        float(np.mean((feature - sample_feature) ** 2))
+                        for sample_position, sample_feature in digit_samples
                         if sample_position != position
                     ),
                     digit,
@@ -662,7 +680,14 @@ def _audit_confident_readings(
                 for digit, digit_samples in samples.items()
                 if len(digit_samples) >= 5 and any(sample_position != position for sample_position, _ in digit_samples)
             )
-            reference_scores = _coarse_scores(glyph, reference_templates)
+            reference_scores = sorted(
+                (
+                    min(float(np.mean((feature - sample_feature) ** 2)) for sample_feature in digit_samples),
+                    digit,
+                )
+                for digit, digit_samples in reference_features.items()
+                if digit_samples
+            )
             if len(board_scores) < 2:
                 break
             margin = (board_scores[1][0] - board_scores[0][0]) / board_scores[1][0]
