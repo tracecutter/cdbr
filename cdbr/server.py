@@ -32,7 +32,7 @@ from cdbr.core.photo import PhotoFormat, detect_photo_format
 from cdbr.core.pipeline import solve_observation, solve_photo
 from cdbr.core.puzzle import BLOCK, PuzzleObservation
 from cdbr.core.presentation import write_solution_photo
-from cdbr.core.recognition import CELL_SIZE, normalize_photo, recognize_photo
+from cdbr.core.recognition import normalize_photo, recognize_photo
 
 DEFAULT_MAX_UPLOAD_MIB = 25
 CHUNK_SIZE = 1024 * 1024
@@ -517,9 +517,11 @@ async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, o
                 continue
             row = item.row - 1
             column = item.column - 1
+            cell_height = grid_image.shape[0] / observation.height
+            cell_width = grid_image.shape[1] / observation.width
             cell = grid_image[
-                row * CELL_SIZE : (row + 1) * CELL_SIZE,
-                column * CELL_SIZE : (column + 1) * CELL_SIZE,
+                round(row * cell_height) : round((row + 1) * cell_height),
+                round(column * cell_width) : round((column + 1) * cell_width),
             ]
             cv2.imwrite(str(work_dir / f"review-{item.row}-{item.column}.jpg"), cell)
     except (CdbrCoreError, ValueError) as exc:

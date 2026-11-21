@@ -99,6 +99,7 @@ async function startCorpusGame() {
 
 function renderGame() {
   if (!game) return;
+  puzzleShell.style.setProperty('--grid-size', game.grid[0].length);
   puzzleShell.replaceChildren();
   game.grid.forEach((row, rowIndex) => {
     row.forEach((symbol, columnIndex) => {

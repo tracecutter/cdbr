@@ -18,8 +18,8 @@ from cdbr.core.puzzle import BLOCK, UNKNOWN, CellEvidence, CellUncertainty, Clue
 
 
 GRID_SIZE = 15
+SUPPORTED_GRID_SIZES = (13, 15)
 WARP_SIZE = 1500
-CELL_SIZE = WARP_SIZE // GRID_SIZE
 MIN_OCR_CONFIDENCE = 80.0
 MIN_TEMPLATE_MARGIN = 0.15
 MIN_WHOLE_NUMBER_MARGIN = 0.20
@@ -127,30 +127,60 @@ def extract_grid(image: np.ndarray) -> np.ndarray:
     return cv2.warpPerspective(image, transform, (WARP_SIZE, WARP_SIZE))
 
 
-def _grid_line_positions(binary: np.ndarray, *, vertical: bool) -> list[int] | None:
+def _grid_line_positions(binary: np.ndarray, *, vertical: bool, grid_size: int = GRID_SIZE) -> list[int] | None:
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40) if vertical else (40, 1))
     lines = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
     scores = lines.sum(axis=0 if vertical else 1)
     positions: list[int] = []
-    for index in range(GRID_SIZE + 1):
-        expected = round(index * (WARP_SIZE - 1) / GRID_SIZE)
-        low = max(0, expected - 25)
-        high = min(WARP_SIZE, expected + 26)
+    spacing = (WARP_SIZE - 1) / grid_size
+    tolerance = round(spacing * 0.25)
+    for index in range(grid_size + 1):
+        expected = round(index * spacing)
+        low = max(0, expected - tolerance)
+        high = min(WARP_SIZE, expected + tolerance + 1)
         positions.append(low + int(np.argmax(scores[low:high])))
     gaps = np.diff(positions)
-    if np.any(gaps < 85) or np.any(gaps > 115) or float(np.std(gaps)) >= 5.0:
+    if np.any(gaps < 0.75 * spacing) or np.any(gaps > 1.25 * spacing) or float(np.std(gaps)) >= 0.16 * spacing:
         return None
     return positions
 
 
-def normalize_grid_lattice(grid: np.ndarray) -> np.ndarray:
+def detect_grid_size(grid: np.ndarray) -> int:
+    """Infer a supported square-grid size from its internal rule lines."""
+
+    gray = cv2.cvtColor(grid, cv2.COLOR_BGR2GRAY)
+    binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    candidates: list[tuple[float, int]] = []
+    for grid_size in SUPPORTED_GRID_SIZES:
+        x_positions = _grid_line_positions(binary, vertical=True, grid_size=grid_size)
+        y_positions = _grid_line_positions(binary, vertical=False, grid_size=grid_size)
+        if x_positions is None or y_positions is None:
+            continue
+        vertical_lines = cv2.morphologyEx(
+            binary,
+            cv2.MORPH_OPEN,
+            cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40)),
+        ).sum(axis=0)
+        horizontal_lines = cv2.morphologyEx(
+            binary,
+            cv2.MORPH_OPEN,
+            cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1)),
+        ).sum(axis=1)
+        score = float(np.mean(vertical_lines[x_positions]) + np.mean(horizontal_lines[y_positions]))
+        candidates.append((score, grid_size))
+    if not candidates:
+        raise ValueError("Could not determine whether the puzzle grid is 13×13 or 15×15")
+    return max(candidates)[1]
+
+
+def normalize_grid_lattice(grid: np.ndarray, grid_size: int = GRID_SIZE) -> np.ndarray:
     """Map measured internal grid lines onto an exact square lattice."""
 
     gray = cv2.cvtColor(grid, cv2.COLOR_BGR2GRAY)
     binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-    x_positions = _grid_line_positions(binary, vertical=True)
-    y_positions = _grid_line_positions(binary, vertical=False)
-    target = np.linspace(0, WARP_SIZE - 1, GRID_SIZE + 1)
+    x_positions = _grid_line_positions(binary, vertical=True, grid_size=grid_size)
+    y_positions = _grid_line_positions(binary, vertical=False, grid_size=grid_size)
+    target = np.linspace(0, WARP_SIZE - 1, grid_size + 1)
     coordinates = np.arange(WARP_SIZE, dtype=np.float32)
     source_x = (
         np.interp(coordinates, target, x_positions).astype(np.float32) if x_positions is not None else coordinates
@@ -168,25 +198,28 @@ def normalize_grid_lattice(grid: np.ndarray) -> np.ndarray:
     )
 
 
-def _cell_images(grid: np.ndarray) -> list[tuple[int, int, np.ndarray]]:
+def _cell_images(grid: np.ndarray, grid_size: int = GRID_SIZE) -> list[tuple[int, int, np.ndarray]]:
+    y_edges = np.linspace(0, grid.shape[0], grid_size + 1).round().astype(int)
+    x_edges = np.linspace(0, grid.shape[1], grid_size + 1).round().astype(int)
     return [
         (
             row,
             column,
             grid[
-                row * CELL_SIZE : (row + 1) * CELL_SIZE,
-                column * CELL_SIZE : (column + 1) * CELL_SIZE,
+                y_edges[row] : y_edges[row + 1],
+                x_edges[column] : x_edges[column + 1],
             ],
         )
-        for row in range(GRID_SIZE)
-        for column in range(GRID_SIZE)
+        for row in range(grid_size)
+        for column in range(grid_size)
     ]
 
 
-def _block_mask(cells: list[tuple[int, int, np.ndarray]]) -> list[bool]:
-    medians = np.array([np.median(cell[15:92, 15:92]) for _, _, cell in cells], dtype=np.float32).reshape(
-        GRID_SIZE, GRID_SIZE
-    )
+def _block_mask(cells: list[tuple[int, int, np.ndarray]], grid_size: int = GRID_SIZE) -> list[bool]:
+    medians = np.array(
+        [np.median(cell[15 : cell.shape[0] - 8, 15 : cell.shape[1] - 8]) for _, _, cell in cells],
+        dtype=np.float32,
+    ).reshape(grid_size, grid_size)
     local_paper = cv2.dilate(medians, np.ones((3, 3), dtype=np.uint8))
     relative = np.clip(255.0 * medians / np.maximum(local_paper, 1.0), 0, 255).astype(np.uint8)
     threshold, _ = cv2.threshold(relative, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -742,6 +775,7 @@ def create_review_sheet(
     grid_image: np.ndarray,
     uncertainties: list[CellUncertainty],
     work_dir: Path,
+    grid_size: int = GRID_SIZE,
 ) -> Path:
     """Create a coordinate-labelled contact sheet for unresolved cells."""
 
@@ -753,10 +787,9 @@ def create_review_sheet(
     for index, item in enumerate(uncertainties):
         row = item.row - 1
         column = item.column - 1
-        original = grid_image[
-            row * CELL_SIZE : (row + 1) * CELL_SIZE,
-            column * CELL_SIZE : (column + 1) * CELL_SIZE,
-        ]
+        y_edges = np.linspace(0, grid_image.shape[0], grid_size + 1).round().astype(int)
+        x_edges = np.linspace(0, grid_image.shape[1], grid_size + 1).round().astype(int)
+        original = grid_image[y_edges[row] : y_edges[row + 1], x_edges[column] : x_edges[column + 1]]
         original = cv2.resize(original, (190, 190), interpolation=cv2.INTER_CUBIC)
         cleaned = cv2.imread(str(work_dir / f"cell-{item.row}-{item.column}.png"))
         if cleaned is None:
@@ -781,7 +814,7 @@ def recognize_photo(
     *,
     trace: RecognitionTrace | None = None,
 ) -> PuzzleObservation:
-    """Convert a photographed 15×15 puzzle into a conservative observation."""
+    """Convert a supported square photographed puzzle into a conservative observation."""
 
     recognition_started = time.perf_counter()
     started = time.perf_counter()
@@ -794,7 +827,9 @@ def recognize_photo(
         trace.record("decode", started)
 
     started = time.perf_counter()
-    grid_image = normalize_grid_lattice(extract_grid(image))
+    extracted_grid = extract_grid(image)
+    grid_size = detect_grid_size(extracted_grid)
+    grid_image = normalize_grid_lattice(extracted_grid, grid_size)
     cv2.imwrite(str(work_dir / "grid.png"), grid_image)
     if trace is not None:
         trace.record("grid", started)
@@ -817,8 +852,8 @@ def recognize_photo(
         trace.record("reference", started)
 
     started = time.perf_counter()
-    cells = _cell_images(grid_image)
-    blocks = _block_mask(cells)
+    cells = _cell_images(grid_image, grid_size)
+    blocks = _block_mask(cells, grid_size)
     playable = [cell for cell, blocked in zip(cells, blocks, strict=True) if not blocked]
     if trace is not None:
         trace.record("topology", started)
@@ -982,10 +1017,10 @@ def recognize_photo(
 
     rows: list[tuple[int | str, ...]] = []
     uncertainties: list[CellUncertainty] = []
-    for row in range(GRID_SIZE):
+    for row in range(grid_size):
         values: list[int | str] = []
-        for column in range(GRID_SIZE):
-            index = row * GRID_SIZE + column
+        for column in range(grid_size):
+            index = row * grid_size + column
             if blocks[index]:
                 values.append(BLOCK)
                 continue
@@ -1011,7 +1046,7 @@ def recognize_photo(
                 )
         rows.append(tuple(values))
 
-    create_review_sheet(grid_image, uncertainties, work_dir)
+    create_review_sheet(grid_image, uncertainties, work_dir, grid_size)
     photo_format = detect_photo_format(source)
     observation = PuzzleObservation(
         source=source,

@@ -121,7 +121,7 @@ body[data-mode] .creator-workspace { padding: clamp(20px, 2.5vw, 30px); }
 .game-heading h2, .reference-heading h2 { margin: 0; font-size: clamp(1.8rem, 4vw, 3rem); letter-spacing: -.035em; }
 .game-status { margin: 0; color: var(--muted); font-size: .86rem; white-space: nowrap; }
 .game-play-area { display: grid; grid-template-columns: minmax(0, 520px) minmax(380px, 430px); align-items: start; justify-content: center; gap: clamp(18px, 2vw, 28px); }
-.puzzle-shell { display: grid; grid-template-columns: repeat(15, 1fr); width: 100%; max-width: 520px; border: 2px solid var(--ink); background: var(--ink); gap: 1px; }
+.puzzle-shell { display: grid; grid-template-columns: repeat(var(--grid-size, 15), 1fr); width: 100%; max-width: 520px; border: 2px solid var(--ink); background: var(--ink); gap: 1px; }
 .puzzle-cell { position: relative; aspect-ratio: 1; min-width: 0; display: grid; place-items: center; border: 0; padding: 0; color: var(--ink); background: #fffefa; cursor: pointer; }
 .puzzle-cell.is-block { background: #696b67; cursor: default; }
 .puzzle-cell small { position: absolute; top: 4%; left: 7%; font: 650 clamp(.48rem, 1vw, .7rem)/1 ui-monospace, monospace; }

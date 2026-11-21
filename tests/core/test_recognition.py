@@ -5,12 +5,25 @@ import numpy as np
 
 from cdbr.core.recognition import (
     _block_mask,
+    _cell_images,
     _coarse_glyph_feature,
     _digit_glyphs,
     _foreground_binary,
     _relative_margin,
     _select_clue,
+    detect_grid_size,
 )
+
+
+def test_grid_geometry_adapts_to_supported_square_sizes() -> None:
+    for grid_size in (13, 15):
+        grid = np.full((1500, 1500, 3), 245, dtype=np.uint8)
+        for position in np.linspace(0, 1499, grid_size + 1).round().astype(int):
+            cv2.line(grid, (position, 0), (position, 1499), (0, 0, 0), 3)
+            cv2.line(grid, (0, position), (1499, position), (0, 0, 0), 3)
+
+        assert detect_grid_size(grid) == grid_size
+        assert len(_cell_images(grid, grid_size)) == grid_size**2
 
 
 def test_foreground_binary_rejects_smooth_shadow() -> None:

@@ -42,13 +42,13 @@ def solution_rows(puzzle: CodewordPuzzle, mapping: dict[int, str]) -> tuple[str,
     return tuple("".join("#" if symbol is None else mapping.get(symbol, "?") for symbol in row) for row in puzzle.grid)
 
 
-def _measured_lines(grid: np.ndarray) -> tuple[list[int], list[int]]:
+def _measured_lines(grid: np.ndarray, grid_size: int = GRID_SIZE) -> tuple[list[int], list[int]]:
     gray = cv2.cvtColor(grid, cv2.COLOR_BGR2GRAY)
     binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-    fallback = [round(index * (WARP_SIZE - 1) / GRID_SIZE) for index in range(GRID_SIZE + 1)]
+    fallback = [round(index * (WARP_SIZE - 1) / grid_size) for index in range(grid_size + 1)]
     return (
-        _grid_line_positions(binary, vertical=True) or fallback,
-        _grid_line_positions(binary, vertical=False) or fallback,
+        _grid_line_positions(binary, vertical=True, grid_size=grid_size) or fallback,
+        _grid_line_positions(binary, vertical=False, grid_size=grid_size) or fallback,
     )
 
 
@@ -215,11 +215,15 @@ def write_solution_photo(
     )
     forward = cv2.getPerspectiveTransform(corners, canonical_corners)
     rectified = cv2.warpPerspective(original, forward, (WARP_SIZE, WARP_SIZE))
-    x_lines, y_lines = _measured_lines(rectified)
+    grid_height = len(puzzle.grid)
+    grid_width = len(puzzle.grid[0])
+    if grid_height != grid_width:
+        raise ValueError("Photographic presentation requires a square puzzle grid")
+    x_lines, y_lines = _measured_lines(rectified, grid_width)
 
     board_cells: list[tuple[str, float, float, int]] = []
-    for row in range(GRID_SIZE):
-        for column in range(GRID_SIZE):
+    for row in range(grid_height):
+        for column in range(grid_width):
             symbol = puzzle.grid[row][column]
             if symbol is None or symbol not in mapping:
                 continue

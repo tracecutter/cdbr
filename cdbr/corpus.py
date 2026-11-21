@@ -17,14 +17,7 @@ import cdbr.ui as click
 import cv2
 
 from cdbr import __version__
-from cdbr.core.recognition import (
-    GRID_SIZE,
-    WARP_SIZE,
-    RecognitionTrace,
-    _block_mask,
-    _cell_images,
-    recognize_photo,
-)
+from cdbr.core.recognition import WARP_SIZE, RecognitionTrace, _block_mask, _cell_images, recognize_photo
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -79,12 +72,12 @@ def _review_reasons(*, trusted: bool, confidence: float, threshold: float) -> li
     return reasons
 
 
-def _solution_blocks(source: Path) -> tuple[bool, ...]:
+def _solution_blocks(source: Path, grid_size: int) -> tuple[bool, ...]:
     image = cv2.imread(str(source))
     if image is None:
         raise ValueError(f"Could not decode solution grid: {source}")
     normalized = cv2.resize(image, (WARP_SIZE, WARP_SIZE), interpolation=cv2.INTER_CUBIC)
-    return tuple(_block_mask(_cell_images(normalized)))
+    return tuple(_block_mask(_cell_images(normalized, grid_size), grid_size))
 
 
 def benchmark_entry(
@@ -99,7 +92,7 @@ def benchmark_entry(
     trace = RecognitionTrace()
     try:
         observation = recognize_photo(entry.photo, work_dir, trace=trace)
-        expected_blocks = _solution_blocks(entry.solution)
+        expected_blocks = _solution_blocks(entry.solution, observation.width)
     except Exception as exc:  # noqa: BLE001 - one failed photograph must not stop a corpus run
         return {
             "puzzle_id": entry.puzzle_id,
@@ -142,7 +135,7 @@ def benchmark_entry(
     blocks = sum(value == "." for row in observation.grid for value in row)
     predicted_blocks = tuple(value == "." for row in observation.grid for value in row)
     topology_mismatches = [
-        {"row": index // GRID_SIZE + 1, "column": index % GRID_SIZE + 1}
+        {"row": index // observation.width + 1, "column": index % observation.width + 1}
         for index, (predicted, expected) in enumerate(zip(predicted_blocks, expected_blocks, strict=True))
         if predicted != expected
     ]
@@ -173,7 +166,7 @@ def benchmark_entry(
             },
         },
         "topology": {
-            "correct": 225 - len(topology_mismatches),
+            "correct": observation.width * observation.height - len(topology_mismatches),
             "mismatches": topology_mismatches,
         },
         "clues": observation.clues,

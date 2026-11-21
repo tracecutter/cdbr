@@ -19,9 +19,10 @@ Copyright (c) 2026 John Fogelin. All rights reserved.
 MIT. See LICENSE for details.
 
 [[section.quickstart.intro]]
-Give cdbr a clear photograph containing the complete 15x15 puzzle and its
-reference grid. It corrects perspective, reads the numbered cells and supplied
-letters, then solves the substitution puzzle using a British English lexicon.
+Give cdbr a clear photograph containing the complete square puzzle and its
+reference grid. It detects supported 13x13 and 15x15 boards, corrects
+perspective, reads the numbered cells and supplied letters, then solves the
+substitution puzzle using a British English lexicon.
 
 [[section.quickstart.install]]
 Install the command from the public Git repository into an isolated environment:
