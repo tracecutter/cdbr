@@ -9,6 +9,7 @@ from dataclasses import field
 import os
 from pathlib import Path
 import secrets
+import shutil
 import tempfile
 import threading
 import time
@@ -16,6 +17,7 @@ import tomllib
 from typing import Annotated
 
 import cdbr.ui as click
+import cv2
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -27,9 +29,10 @@ from cdbr.core.exceptions import CdbrCoreError
 from cdbr.core.generator import GeneratedPuzzle, GenerationLimits, generate_puzzle
 from cdbr.core.lexicon import english_lexicon
 from cdbr.core.photo import PhotoFormat, detect_photo_format
-from cdbr.core.pipeline import solve_photo
+from cdbr.core.pipeline import solve_observation, solve_photo
+from cdbr.core.puzzle import BLOCK, PuzzleObservation
 from cdbr.core.presentation import write_solution_photo
-from cdbr.core.recognition import normalize_photo
+from cdbr.core.recognition import CELL_SIZE, normalize_photo, recognize_photo
 
 DEFAULT_MAX_UPLOAD_MIB = 25
 CHUNK_SIZE = 1024 * 1024
@@ -37,6 +40,7 @@ WEB_ROOT = Path(__file__).parent / "assets" / "web"
 PUZZLE_ROOT = Path(__file__).parent / "assets" / "puzzles"
 MAX_SESSIONS = 100
 MAX_GENERATION_JOBS = 20
+MAX_SCAN_JOBS = 20
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -53,6 +57,23 @@ class CreatePuzzleRequest(BaseModel):
     required_words: list[str] = Field(min_length=1, max_length=8)
     excluded_words: list[str] = Field(default_factory=list, max_length=30)
     minutes: float = Field(default=5, ge=0.25, le=30)
+
+
+class CellCorrection(BaseModel):
+    row: int = Field(ge=1, le=15)
+    column: int = Field(ge=1, le=15)
+    value: int = Field(ge=1, le=26)
+
+
+class ScanCorrectionRequest(BaseModel):
+    cells: list[CellCorrection] = Field(default_factory=list, max_length=225)
+
+
+@dataclass(frozen=True, kw_only=True)
+class ScanJob:
+    job_id: str
+    work_dir: Path
+    observation: PuzzleObservation
 
 
 @dataclass(kw_only=True)
@@ -74,6 +95,7 @@ class GenerationJob:
 _sessions: OrderedDict[str, PuzzleSession] = OrderedDict()
 _runtime_corpus: dict[int, tuple[dict[str, object], dict[int, str]]] = {}
 _generation_jobs: OrderedDict[str, GenerationJob] = OrderedDict()
+_scan_jobs: OrderedDict[str, ScanJob] = OrderedDict()
 _generation_lock = threading.Lock()
 _generation_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cdbr-generator")
 
@@ -152,6 +174,45 @@ def _session(session_id: str) -> PuzzleSession:
         return _sessions[session_id]
     except KeyError:
         raise HTTPException(status_code=404, detail="Puzzle session not found or expired") from None
+
+
+def _scan_job(job_id: str) -> ScanJob:
+    try:
+        return _scan_jobs[job_id]
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Scan review not found or expired") from None
+
+
+def _remember_scan(job: ScanJob) -> None:
+    _scan_jobs[job.job_id] = job
+    while len(_scan_jobs) > MAX_SCAN_JOBS:
+        _, expired = _scan_jobs.popitem(last=False)
+        shutil.rmtree(expired.work_dir, ignore_errors=True)
+
+
+def _scan_public(job: ScanJob) -> dict[str, object]:
+    review = []
+    for item in job.observation.evidence:
+        if item.trusted:
+            continue
+        proposed = int(item.reading) if item.reading.isdigit() and 1 <= int(item.reading) <= 26 else None
+        review.append(
+            {
+                "row": item.row,
+                "column": item.column,
+                "proposed": proposed,
+                "confidence": round(item.confidence, 1),
+                "reason": "unrecognised" if proposed is None else "needs confirmation",
+                "image": f"/api/scan-jobs/{job.job_id}/cells/{item.row}/{item.column}",
+            }
+        )
+    return {
+        "job_id": job.job_id,
+        "status": "review" if review else "ready",
+        "grid": [list(row) for row in job.observation.grid],
+        "clues": job.observation.clues,
+        "review_cells": review,
+    }
 
 
 @app.post("/api/sessions/from-corpus/{puzzle_id}", status_code=201)
@@ -416,6 +477,99 @@ async def photo_preview_endpoint(photo: Annotated[UploadFile, File()]) -> Respon
         except (CdbrCoreError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return Response(content=destination.read_bytes(), media_type="image/jpeg")
+
+
+@app.post("/api/scan-jobs", status_code=201)
+async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, object]:
+    """Recognise a photograph and pause before solving when cells need review."""
+
+    suffix = Path(photo.filename or "upload").suffix.lower()
+    if suffix not in {".avif", ".heic", ".heif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}:
+        suffix = ".img"
+    work_dir = Path(tempfile.mkdtemp(prefix="cdbr-scan-"))
+    source = work_dir / f"upload{suffix}"
+    try:
+        await _save_upload(photo, source)
+        if detect_photo_format(source) is PhotoFormat.UNKNOWN:
+            raise ValueError("Unsupported or unrecognised image format")
+        observation = recognize_photo(source, work_dir)
+        grid_image = cv2.imread(str(work_dir / "grid.png"))
+        if grid_image is None:
+            raise ValueError("Could not prepare cell review images")
+        for item in observation.evidence:
+            if item.trusted:
+                continue
+            row = item.row - 1
+            column = item.column - 1
+            cell = grid_image[
+                row * CELL_SIZE : (row + 1) * CELL_SIZE,
+                column * CELL_SIZE : (column + 1) * CELL_SIZE,
+            ]
+            cv2.imwrite(str(work_dir / f"review-{item.row}-{item.column}.jpg"), cell)
+    except (CdbrCoreError, ValueError) as exc:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    job = ScanJob(job_id=secrets.token_urlsafe(12), work_dir=work_dir, observation=observation)
+    _remember_scan(job)
+    return _scan_public(job)
+
+
+@app.get("/api/scan-jobs/{job_id}/cells/{row}/{column}", response_class=FileResponse)
+def scan_cell_endpoint(job_id: str, row: int, column: int) -> FileResponse:
+    source = _scan_job(job_id).work_dir / f"review-{row}-{column}.jpg"
+    if not source.is_file():
+        raise HTTPException(status_code=404, detail="Review cell not found")
+    return FileResponse(source, media_type="image/jpeg")
+
+
+@app.post("/api/scan-jobs/{job_id}/complete", status_code=201)
+def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[str, object]:
+    """Apply reviewed OCR values, then solve and enter the normal play state."""
+
+    job = _scan_job(job_id)
+    required = {(item.row, item.column) for item in job.observation.evidence if not item.trusted}
+    corrections = {(item.row, item.column): item.value for item in request.cells}
+    missing = required - corrections.keys()
+    if missing:
+        coordinates = ", ".join(f"r{row:02d}c{column:02d}" for row, column in sorted(missing))
+        raise HTTPException(status_code=422, detail=f"Confirm every review cell: {coordinates}")
+
+    grid = [list(row) for row in job.observation.grid]
+    for (row, column), value in corrections.items():
+        if (row, column) not in required:
+            raise HTTPException(status_code=422, detail=f"Cell r{row:02d}c{column:02d} is not awaiting review")
+        grid[row - 1][column - 1] = value
+    corrected = PuzzleObservation(
+        source=job.observation.source,
+        source_format=job.observation.source_format,
+        grid=tuple(tuple(row) for row in grid),
+        clues=job.observation.clues,
+        uncertainties=(),
+        evidence=job.observation.evidence,
+    )
+    try:
+        solved = solve_observation(corrected)
+        if not solved.result.exhausted or len(solved.result.solutions) != 1:
+            raise ValueError("The reviewed puzzle could not be certified with one unique solution")
+    except (CdbrCoreError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    playable_grid = [[None if value == BLOCK else int(value) for value in row] for row in corrected.grid]
+    used_symbols = sorted({symbol for row in playable_grid for symbol in row if symbol is not None})
+    puzzle: dict[str, object] = {
+        "title": "Scanned puzzle",
+        "grid": playable_grid,
+        "clues": corrected.clues,
+        "symbols": list(range(1, 27)),
+        "used_symbols": used_symbols,
+        "provenance": "photo",
+    }
+    solution = _complete_mapping(playable_grid, solved.mapping)
+    session = _create_session(puzzle, solution).public()
+    _scan_jobs.pop(job_id, None)
+    shutil.rmtree(job.work_dir, ignore_errors=True)
+    return session
 
 
 @app.post("/api/sessions/from-photo", status_code=201)

@@ -243,6 +243,15 @@
                 <button class="text-button scan-quit" id="quit-scan" type="button">Back to puzzle desk</button>
               </div>
 
+              <div class="review-state" id="review-state" hidden>
+                <p class="eyebrow">Check the reading</p>
+                <h2>One quick human pass.</h2>
+                <p id="review-guidance">Confirm the cells the scanner was least certain about.</p>
+                <div class="review-cells" id="review-cells"></div>
+                <button class="solve-button" id="finish-review" type="button">Confirm and open puzzle</button>
+                <button class="text-button scan-quit" id="cancel-review" type="button">Choose another photo</button>
+              </div>
+
               <div class="error-state" id="error-state" hidden role="alert">
                 <span aria-hidden="true">!</span>
                 <div>

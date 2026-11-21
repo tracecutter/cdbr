@@ -2,12 +2,14 @@
 
 from types import SimpleNamespace
 
+import numpy as np
 from fastapi.testclient import TestClient
 
 import cdbr.server as server_module
 from cdbr import __version__
 from cdbr.core.model import CodewordPuzzle, extract_slots
 from cdbr.core.photo import PhotoFormat
+from cdbr.core.puzzle import UNKNOWN, CellEvidence, CellUncertainty, PuzzleObservation
 from cdbr.core.generator import GeneratedPuzzle
 from cdbr.server import app
 
@@ -113,6 +115,65 @@ def test_photo_session_converges_on_same_playable_state(monkeypatch):
     assert "solution" not in prepared
     revealed = client.post(f"/api/sessions/{prepared['session_id']}/reveal/4")
     assert revealed.json() == {"symbol": 4, "letter": "D"}
+
+
+def test_scan_job_pauses_for_human_review_before_solving(monkeypatch):
+    observation = PuzzleObservation(
+        source=server_module.Path("upload.jpg"),
+        source_format="JPEG",
+        grid=((1, UNKNOWN), (3, 4)),
+        clues={1: "A"},
+        uncertainties=(CellUncertainty(row=1, column=2, reading="2", confidence=43.0),),
+        evidence=(
+            CellEvidence(row=1, column=1, reading="1", confidence=90.0, trusted=True),
+            CellEvidence(row=1, column=2, reading="2", confidence=43.0, trusted=False),
+            CellEvidence(row=2, column=1, reading="3", confidence=91.0, trusted=True),
+            CellEvidence(row=2, column=2, reading="4", confidence=92.0, trusted=True),
+        ),
+    )
+    puzzle = CodewordPuzzle(grid=((1, 2), (3, 4)), clues={1: "A"}, slots=extract_slots(((1, 2), (3, 4))))
+    solved = SimpleNamespace(
+        puzzle=puzzle,
+        mapping={1: "A", 2: "B", 3: "C", 4: "D"},
+        result=SimpleNamespace(exhausted=True, solutions=(object(),)),
+    )
+    monkeypatch.setattr(server_module, "detect_photo_format", lambda _: PhotoFormat.JPEG)
+    monkeypatch.setattr(server_module, "recognize_photo", lambda _source, _work_dir: observation)
+    monkeypatch.setattr(server_module.cv2, "imread", lambda _: np.full((1500, 1500, 3), 255, dtype=np.uint8))
+    monkeypatch.setattr(server_module, "solve_observation", lambda corrected: solved)
+
+    scanned = client.post(
+        "/api/scan-jobs",
+        files={"photo": ("puzzle.jpg", b"pretend jpeg", "image/jpeg")},
+    )
+
+    assert scanned.status_code == 201
+    review = scanned.json()
+    assert review["status"] == "review"
+    assert review["review_cells"] == [
+        {
+            "row": 1,
+            "column": 2,
+            "proposed": 2,
+            "confidence": 43.0,
+            "reason": "needs confirmation",
+            "image": f"/api/scan-jobs/{review['job_id']}/cells/1/2",
+        }
+    ]
+    crop = client.get(review["review_cells"][0]["image"])
+    assert crop.status_code == 200
+    assert crop.headers["content-type"] == "image/jpeg"
+
+    incomplete = client.post(f"/api/scan-jobs/{review['job_id']}/complete", json={"cells": []})
+    assert incomplete.status_code == 422
+
+    completed = client.post(
+        f"/api/scan-jobs/{review['job_id']}/complete",
+        json={"cells": [{"row": 1, "column": 2, "value": 2}]},
+    )
+    assert completed.status_code == 201
+    assert completed.json()["grid"] == [[1, 2], [3, 4]]
+    assert completed.json()["provenance"] == "photo"
 
 
 def test_photo_preview_converts_upload_to_browser_image(monkeypatch):

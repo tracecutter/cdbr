@@ -178,6 +178,19 @@ body[data-mode="scanner"] .scanner-heading .eyebrow { margin-bottom: 8px; }
 .scan-actions .solve-button { min-height: 56px; }
 .scan-quit { align-self: center; margin-top: 4px; }
 .scan-play-area:has(.preview-state.is-working) .scan-actions { opacity: .45; pointer-events: none; }
+.review-state { display: flex; min-height: 0; flex-direction: column; }
+.review-state h2 { margin: 0 0 8px; font-size: clamp(1.55rem, 2.5vw, 2rem); letter-spacing: -.025em; }
+.review-state > p:not(.eyebrow) { margin: 0 0 12px; color: var(--muted); font-size: .82rem; line-height: 1.45; }
+.review-cells { max-height: 270px; display: grid; gap: 8px; margin-bottom: 12px; overflow: auto; padding-right: 5px; }
+.review-cell { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; gap: 10px; border: 1px solid var(--line); padding: 6px; background: white; }
+.review-cell img { width: 56px; height: 56px; display: block; border: 1px solid var(--ink); object-fit: cover; }
+.review-cell span { min-width: 0; display: grid; gap: 3px; }
+.review-cell strong { font-size: .8rem; }
+.review-cell small { color: var(--muted); font-size: .68rem; }
+.review-cell input { width: 56px; height: 42px; border: 2px solid var(--ink); padding: 4px; background: var(--paper-bright); text-align: center; font: 750 1rem/1 sans-serif; }
+.review-cell input:focus { border-color: var(--red); outline: 2px solid rgba(199, 49, 38, .18); }
+.review-state .solve-button { min-height: 52px; }
+.review-state .scan-quit { margin-top: 10px; }
 
 .empty-state,
 .working-state {

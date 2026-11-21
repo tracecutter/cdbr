@@ -29,6 +29,11 @@ const gameGuidance = document.querySelector('#game-guidance');
 const gameTitle = document.querySelector('#game-title');
 const fileMeta = document.querySelector('#file-meta');
 const solveButton = document.querySelector('#solve-button');
+const scanActions = document.querySelector('.scan-actions');
+const reviewState = document.querySelector('#review-state');
+const reviewCells = document.querySelector('#review-cells');
+const reviewGuidance = document.querySelector('#review-guidance');
+const finishReview = document.querySelector('#finish-review');
 const blankPuzzleShell = document.querySelector('#blank-puzzle-shell');
 const creatorPuzzleShell = document.querySelector('#creator-puzzle-shell');
 const blankReferenceGrid = document.querySelector('#blank-reference-grid');
@@ -44,6 +49,7 @@ let previewUrl;
 let resultUrl;
 let selectedFile;
 let stageTimer;
+let scanJob;
 let game;
 let selectedSymbol;
 let selectedPuzzleCell;
@@ -361,6 +367,9 @@ function showSelection(file) {
   solveButton.hidden = false;
   resultState.hidden = true;
   errorState.hidden = true;
+  reviewState.hidden = true;
+  scanActions.hidden = false;
+  scanJob = undefined;
   document.querySelector('#file-name').textContent = file.name || 'Puzzle photograph';
   document.querySelector('#file-size').textContent = humanSize(file.size);
 
@@ -399,6 +408,9 @@ function chooseAgain() {
   previewState.hidden = true;
   fileMeta.hidden = true;
   solveButton.hidden = true;
+  reviewState.hidden = true;
+  scanActions.hidden = false;
+  scanJob = undefined;
   emptyState.hidden = false;
   selectedFile = undefined;
   input.value = '';
@@ -431,6 +443,7 @@ dropZone.addEventListener('drop', (event) => {
 document.querySelector('#change-photo').addEventListener('click', chooseAgain);
 document.querySelector('#try-again').addEventListener('click', chooseAgain);
 document.querySelector('#solve-another').addEventListener('click', chooseAgain);
+document.querySelector('#cancel-review').addEventListener('click', chooseAgain);
 document.querySelector('#quit-scan').addEventListener('click', () => {
   clearInterval(stageTimer);
   workingState.hidden = true;
@@ -440,9 +453,83 @@ document.querySelector('#quit-scan').addEventListener('click', () => {
   solveButton.hidden = true;
   emptyState.hidden = false;
   errorState.hidden = true;
+  reviewState.hidden = true;
+  scanActions.hidden = false;
+  scanJob = undefined;
   selectedFile = undefined;
   input.value = '';
   showMode('idle');
+});
+
+function showReview(prepared) {
+  scanJob = prepared;
+  reviewCells.replaceChildren();
+  prepared.review_cells.forEach((item) => {
+    const label = document.createElement('label');
+    label.className = 'review-cell';
+    const image = document.createElement('img');
+    image.src = item.image;
+    image.alt = `Original crop at row ${item.row}, column ${item.column}`;
+    const detail = document.createElement('span');
+    const coordinate = document.createElement('strong');
+    coordinate.textContent = `Row ${item.row}, column ${item.column}`;
+    const confidence = document.createElement('small');
+    confidence.textContent = item.proposed === null
+      ? 'No reliable reading'
+      : `Scanner suggests ${item.proposed} · ${item.confidence}%`;
+    const value = document.createElement('input');
+    value.type = 'number';
+    value.min = '1';
+    value.max = '26';
+    value.required = true;
+    value.value = item.proposed ?? '';
+    value.dataset.row = item.row;
+    value.dataset.column = item.column;
+    value.setAttribute('aria-label', `Value at row ${item.row}, column ${item.column}`);
+    detail.append(coordinate, confidence);
+    label.append(image, detail, value);
+    reviewCells.append(label);
+  });
+  reviewGuidance.textContent = `${prepared.review_cells.length} cell${prepared.review_cells.length === 1 ? '' : 's'} need confirmation before solving.`;
+  scanActions.hidden = true;
+  reviewState.hidden = false;
+}
+
+async function completeScan(cells) {
+  if (!scanJob) return;
+  finishReview.disabled = true;
+  finishReview.textContent = 'Solving…';
+  try {
+    const response = await fetch(`/api/scan-jobs/${scanJob.job_id}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cells }),
+    });
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.detail || 'The reviewed puzzle could not be solved.');
+    }
+    installGame(await response.json());
+    selectedFile = undefined;
+    input.value = '';
+    showMode('game');
+  } catch (error) {
+    errorState.hidden = false;
+    errorMessage.textContent = error instanceof Error ? error.message : 'Please check the reviewed cells.';
+  } finally {
+    finishReview.disabled = false;
+    finishReview.textContent = 'Confirm and open puzzle';
+  }
+}
+
+finishReview.addEventListener('click', () => {
+  const inputs = [...reviewCells.querySelectorAll('input')];
+  if (!inputs.every((item) => item.reportValidity())) return;
+  completeScan(inputs.map((item) => ({
+    row: Number(item.dataset.row),
+    column: Number(item.dataset.column),
+    value: Number(item.value),
+  })));
 });
 
 form.addEventListener('submit', async (event) => {
@@ -465,7 +552,7 @@ form.addEventListener('submit', async (event) => {
   body.append('photo', selectedFile, selectedFile.name);
 
   try {
-    const response = await fetch('/api/sessions/from-photo', { method: 'POST', body });
+    const response = await fetch('/api/scan-jobs', { method: 'POST', body });
     if (!response.ok) {
       let message = 'Try another image with the complete puzzle in frame.';
       try {
@@ -477,12 +564,15 @@ form.addEventListener('submit', async (event) => {
       throw new Error(message);
     }
 
-    installGame(await response.json());
+    const prepared = await response.json();
     workingState.hidden = true;
     previewState.classList.remove('is-working');
-    selectedFile = undefined;
-    input.value = '';
-    showMode('game');
+    scanJob = prepared;
+    if (prepared.review_cells.length) {
+      showReview(prepared);
+    } else {
+      await completeScan([]);
+    }
   } catch (error) {
     workingState.hidden = true;
     previewState.classList.remove('is-working');
