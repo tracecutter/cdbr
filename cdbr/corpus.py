@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import statistics
+import tempfile
 import tomllib
 from typing import Any
 
@@ -204,6 +205,48 @@ def summarize(results: Iterable[dict[str, Any]]) -> dict[str, float | int]:
     }
 
 
+def summarize_classification(results: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate classification cost separately from photograph preparation."""
+
+    completed = [result for result in results if result.get("status") == "ok"]
+    stage_names = sorted(
+        {
+            name
+            for result in completed
+            for name in result.get("stage_seconds", {})
+            if name == "classify" or name.startswith("classify.")
+        }
+    )
+    stage_totals = {
+        name: round(sum(float(result.get("stage_seconds", {}).get(name, 0.0)) for result in completed), 6)
+        for name in stage_names
+    }
+    seconds = stage_totals.get("classify", 0.0)
+    cells = sum(int(result.get("cells", {}).get("playable", 0)) for result in completed)
+    return {
+        "puzzles": len(completed),
+        "playable_cells": cells,
+        "seconds": seconds,
+        "cells_per_second": round(cells / seconds, 3) if seconds else 0.0,
+        "stage_seconds": stage_totals,
+    }
+
+
+def resource_usage() -> dict[str, float]:
+    """Return portable peak resident-set measurements when available."""
+
+    try:
+        import resource
+        import sys
+    except ImportError:
+        return {}
+    divisor = 1024.0 * 1024.0 if sys.platform == "darwin" else 1024.0
+    return {
+        "main_peak_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / divisor, 3),
+        "child_peak_rss_mb": round(resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / divisor, 3),
+    }
+
+
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--manifest",
@@ -214,13 +257,13 @@ def summarize(results: Iterable[dict[str, Any]]) -> dict[str, float | int]:
 @click.option(
     "--output",
     type=click.Path(path_type=Path, dir_okay=False),
-    default=Path("/tmp/cdbr-corpus/results.jsonl"),
+    default=Path(tempfile.gettempdir()) / "cdbr-corpus" / "results.jsonl",
     show_default=True,
 )
 @click.option(
     "--work-root",
     type=click.Path(path_type=Path, file_okay=False),
-    default=Path("/tmp/cdbr-corpus/work"),
+    default=Path(tempfile.gettempdir()) / "cdbr-corpus" / "work",
     show_default=True,
 )
 @click.option("--puzzle", "puzzle_ids", type=int, multiple=True, help="Limit the run to one or more puzzle IDs.")
@@ -269,7 +312,11 @@ def main(
                 click.echo(f"puzzle {result['puzzle_id']}: {status}")
 
     latest = {int(result["puzzle_id"]): result for result in [*prior, *new_results]}
-    summary = summarize(latest.values())
+    summary: dict[str, Any] = {
+        **summarize(latest.values()),
+        "classification": summarize_classification(latest.values()),
+        "resources": resource_usage(),
+    }
     click.echo(json.dumps(summary, indent=2))
 
 

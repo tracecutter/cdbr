@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cdbr.corpus import load_manifest, summarize
+from cdbr.corpus import load_manifest, summarize, summarize_classification
 
 
 def test_load_manifest_resolves_assets_relative_to_manifest(tmp_path: Path) -> None:
@@ -59,4 +59,42 @@ def test_summarize_counts_review_load_and_failures() -> None:
         "mean_seconds": 2.0,
         "unknown_cells": 2,
         "review_cells": 8,
+    }
+
+
+def test_summarize_classification_reports_throughput_and_substages() -> None:
+    summary = summarize_classification(
+        [
+            {
+                "status": "ok",
+                "cells": {"playable": 150},
+                "stage_seconds": {
+                    "classify": 1.5,
+                    "classify.reference": 0.5,
+                    "classify.audit": 1.0,
+                },
+            },
+            {
+                "status": "ok",
+                "cells": {"playable": 100},
+                "stage_seconds": {
+                    "classify": 1.0,
+                    "classify.reference": 0.4,
+                    "classify.audit": 0.6,
+                },
+            },
+            {"status": "error"},
+        ]
+    )
+
+    assert summary == {
+        "puzzles": 2,
+        "playable_cells": 250,
+        "seconds": 2.5,
+        "cells_per_second": 100.0,
+        "stage_seconds": {
+            "classify": 2.5,
+            "classify.audit": 1.6,
+            "classify.reference": 0.9,
+        },
     }

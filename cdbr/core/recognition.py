@@ -860,6 +860,7 @@ def recognize_photo(
 
     started = time.perf_counter()
     if digit_templates is not None:
+        classification_stage = time.perf_counter()
         with ThreadPoolExecutor(max_workers=8) as executor:
             readings = list(
                 executor.map(
@@ -867,6 +868,8 @@ def recognize_photo(
                     playable,
                 )
             )
+        if trace is not None:
+            trace.record("classify.reference", classification_stage)
         cells_by_position = {(row, column): cell for row, column, cell in playable}
         expanded_templates = {digit: list(samples) for digit, samples in digit_templates.items()}
         for reading in readings:
@@ -878,6 +881,7 @@ def recognize_photo(
                     expanded_templates[digit].append(glyph)
         second_pass = [reading for reading in readings if not reading.trusted]
         if second_pass:
+            classification_stage = time.perf_counter()
             with ThreadPoolExecutor(max_workers=8) as executor:
                 reconsidered = list(
                     executor.map(
@@ -896,6 +900,9 @@ def recognize_photo(
                 )
             replacements = {(item.row, item.column): item for item in reconsidered}
             readings = [replacements.get((item.row, item.column), item) for item in readings]
+            if trace is not None:
+                trace.record("classify.expanded", classification_stage)
+        classification_stage = time.perf_counter()
         for _ in range(2):
             unresolved = [reading for reading in readings if not reading.trusted]
             if not unresolved:
@@ -922,12 +929,21 @@ def recognize_photo(
             ]
             replacements = {(item.row, item.column): item for item in reconsidered if item.trusted}
             readings = [replacements.get((item.row, item.column), item) for item in readings]
+        if trace is not None:
+            trace.record("classify.board", classification_stage)
+        classification_stage = time.perf_counter()
         readings = _audit_confident_readings(readings, cells_by_position, digit_templates)
+        if trace is not None:
+            trace.record("classify.audit", classification_stage)
     else:
+        classification_stage = time.perf_counter()
         with ThreadPoolExecutor(max_workers=8) as executor:
             readings = list(executor.map(lambda cell: _read_cell(cell, work_dir), playable))
+        if trace is not None:
+            trace.record("classify.tesseract", classification_stage)
     retry = [reading for reading in readings if not reading.trusted]
     if retry:
+        classification_stage = time.perf_counter()
         cells_by_position = {(row, column): cell for row, column, cell in playable}
         with ThreadPoolExecutor(max_workers=8) as executor:
             first_ocr = list(
@@ -981,8 +997,11 @@ def recognize_photo(
         ]
         replacements = {(item.row, item.column): item for item in retried}
         readings = [replacements.get((item.row, item.column), item) for item in readings]
+        if trace is not None:
+            trace.record("classify.tesseract", classification_stage)
 
     if templates is not None:
+        classification_stage = time.perf_counter()
         cells_by_position = {(row, column): cell for row, column, cell in playable}
         board_templates: dict[int, list[np.ndarray]] = {}
         for reading in readings:
@@ -1011,6 +1030,8 @@ def recognize_photo(
                     trusted=True,
                 )
         readings = [replacements.get((item.row, item.column), item) for item in readings]
+        if trace is not None:
+            trace.record("classify.whole", classification_stage)
     if trace is not None:
         trace.record("classify", started)
     readings_by_position = {(item.row, item.column): item for item in readings}

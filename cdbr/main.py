@@ -128,6 +128,21 @@ search returns to the unchanged game so play can continue.
 `cdbrd --reload` is intended for local development. Container deployments should
 set `PORT` and run a single service process.
 
+[[section.ocr_benchmark]]
+Run the photographed-puzzle corpus benchmark locally with:
+
+```bash
+make benchmark
+```
+
+The benchmark uses one worker by default and stores reusable images plus
+per-puzzle JSONL beneath the operating system's temporary directory. Its summary
+separates total recognition time from cell-classification throughput, individual
+classification passes, review load, and peak resident memory. Limit a tuning run
+with `make benchmark BENCHMARK_ARGS="--puzzle 35"`, or deliberately test
+concurrency with `BENCHMARK_ARGS="--workers 2"`. The full corpus is an
+engineering benchmark rather than a deployment gate.
+
 [[section.status]]
 - Python 3.11+
 - British English lexical policy

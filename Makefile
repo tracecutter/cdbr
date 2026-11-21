@@ -7,6 +7,7 @@
 		dist release \
 		pub-gh pub-docs pub-pypi pub-brew pub-container \
 		preview \
+		benchmark \
 		container-build container-check container-run container-push \
 		status corpus
 
@@ -58,6 +59,11 @@ CONTAINER_FILE		:= $(or $(shell pfig get key tool.npkg.web.container-file 2>/dev
 CONTAINER_IMAGE		:= $(or $(shell pfig get key tool.npkg.web.container-image 2>/dev/null),$(PROJECT_NAME))
 CONTAINER_DEV_TAG	?= local
 CONTAINER_RELEASE_TAG	?= v$(VERSION)
+
+# Optional project benchmark. Projects opt in with
+# [tool.npkg.benchmark] command = "..."; arguments remain caller-controlled.
+BENCHMARK_COMMAND	:= $(shell pfig get key tool.npkg.benchmark.command 2>/dev/null)
+BENCHMARK_ARGS		?=
 
 INIT_STAMP			= .init_stamp
 
@@ -461,6 +467,16 @@ test-verbose:
 
 test-one:
 	pytest -q $(TEST)
+
+benchmark:
+	$(call ensure-venv-active)
+	$(call ensure-correct-venv)
+	@if [ -z "$(BENCHMARK_COMMAND)" ]; then \
+		echo "❌ No benchmark is configured in [tool.npkg.benchmark]."; \
+		exit 1; \
+	fi
+	@echo "🔬 Running benchmark for $(PROJECT_NAME)…"
+	$(BENCHMARK_COMMAND) $(BENCHMARK_ARGS)
 
 # ------------------------------------------------------------
 # 🐳 Optional web daemon / container workflow

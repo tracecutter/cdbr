@@ -106,6 +106,9 @@ container-file = "Dockerfile"
 container-image = "ghcr.io/tracecutter/cdbr"
 deploy-on = "release"
 
+[tool.npkg.benchmark]
+command = "python -m cdbr.corpus --no-resume"
+
 [tool.psym]
 docs-dir = "docs"
 
