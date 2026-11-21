@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path
 import subprocess
 from collections import Counter
+import time
 
 import cv2
 import numpy as np
 
 from cdbr.core.photo import detect_photo_format
-from cdbr.core.puzzle import BLOCK, UNKNOWN, CellUncertainty, PuzzleObservation
+from cdbr.core.puzzle import BLOCK, UNKNOWN, CellEvidence, CellUncertainty, PuzzleObservation
 
 
 GRID_SIZE = 15
@@ -31,6 +33,15 @@ class CellReading:
     text: str
     confidence: float
     trusted: bool = False
+
+
+@dataclass(kw_only=True)
+class RecognitionTrace:
+    stage_seconds: dict[str, float] = field(default_factory=dict)
+    elapsed_seconds: float = 0.0
+
+    def record(self, stage: str, started: float) -> None:
+        self.stage_seconds[stage] = self.stage_seconds.get(stage, 0.0) + time.perf_counter() - started
 
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -362,6 +373,10 @@ def _template_scores(feature: np.ndarray, templates: dict[int, list[np.ndarray]]
     )
 
 
+def _relative_margin(best_score: float, second_score: float) -> float:
+    return (second_score - best_score) / second_score if second_score else 0.0
+
+
 def _digit_glyphs(cell: np.ndarray, *, suppress_illumination: bool = False) -> list[np.ndarray]:
     """Segment one or two glyphs, including digits joined by thresholding."""
 
@@ -478,7 +493,7 @@ def _classify_digit(glyph: np.ndarray, templates: dict[str, list[np.ndarray]]) -
     )
     best_score, digit = pixel_scores[0]
     second_score = pixel_scores[1][0]
-    margin = (second_score - best_score) / second_score if second_score else 0.0
+    margin = _relative_margin(best_score, second_score)
     if digit == "0":
         feature = _coarse_glyph_feature(glyph)
         coarse_scores = sorted(
@@ -618,7 +633,7 @@ def _classify_from_board(
             return CellReading(row=row, column=column, text="", confidence=0.0)
         best_score, digit = board_scores[0]
         second_score = board_scores[1][0]
-        margin = (second_score - best_score) / second_score if second_score else 0.0
+        margin = _relative_margin(best_score, second_score)
         if margin < MIN_TEMPLATE_MARGIN and reference_scores[0][1] != digit:
             return CellReading(row=row, column=column, text="", confidence=50.0 * margin)
         digits.append(digit)
@@ -690,7 +705,7 @@ def _audit_confident_readings(
             )
             if len(board_scores) < 2:
                 break
-            margin = (board_scores[1][0] - board_scores[0][0]) / board_scores[1][0]
+            margin = _relative_margin(board_scores[0][0], board_scores[1][0])
             if margin < MIN_TEMPLATE_MARGIN or reference_scores[0][1] != board_scores[0][1]:
                 break
             candidate_digits.append(board_scores[0][1])
@@ -746,16 +761,31 @@ def create_review_sheet(
     return destination
 
 
-def recognize_photo(source: Path, work_dir: Path) -> PuzzleObservation:
+def recognize_photo(
+    source: Path,
+    work_dir: Path,
+    *,
+    trace: RecognitionTrace | None = None,
+) -> PuzzleObservation:
     """Convert a photographed 15×15 puzzle into a conservative observation."""
 
+    recognition_started = time.perf_counter()
+    started = time.perf_counter()
     normalized_path = work_dir / "normalized.png"
     normalize_photo(source, normalized_path)
     image = cv2.imread(str(normalized_path))
     if image is None:
         raise ValueError(f"Could not decode photograph: {source}")
+    if trace is not None:
+        trace.record("decode", started)
+
+    started = time.perf_counter()
     grid_image = normalize_grid_lattice(extract_grid(image))
     cv2.imwrite(str(work_dir / "grid.png"), grid_image)
+    if trace is not None:
+        trace.record("grid", started)
+
+    started = time.perf_counter()
     try:
         reference_grid = extract_reference_grid(image)
     except ValueError:
@@ -767,10 +797,17 @@ def recognize_photo(source: Path, work_dir: Path) -> PuzzleObservation:
         templates = _reference_templates(reference_grid)
         digit_templates = _digit_templates(reference_grid)
         clues = extract_clues(reference_grid, work_dir)
+    if trace is not None:
+        trace.record("reference", started)
 
+    started = time.perf_counter()
     cells = _cell_images(grid_image)
     blocks = _block_mask(cells)
     playable = [cell for cell, blocked in zip(cells, blocks, strict=True) if not blocked]
+    if trace is not None:
+        trace.record("topology", started)
+
+    started = time.perf_counter()
     if digit_templates is not None:
         with ThreadPoolExecutor(max_workers=8) as executor:
             readings = list(
@@ -912,7 +949,7 @@ def recognize_photo(source: Path, work_dir: Path) -> PuzzleObservation:
             board_scores = _template_scores(feature, board_templates)
             if len(reference_scores) < 2 or not board_scores:
                 continue
-            reference_margin = (reference_scores[1][0] - reference_scores[0][0]) / reference_scores[1][0]
+            reference_margin = _relative_margin(reference_scores[0][0], reference_scores[1][0])
             reference_value = reference_scores[0][1]
             if reference_margin >= MIN_WHOLE_NUMBER_MARGIN and board_scores[0][1] == reference_value:
                 replacements[(reading.row, reading.column)] = CellReading(
@@ -923,6 +960,8 @@ def recognize_photo(source: Path, work_dir: Path) -> PuzzleObservation:
                     trusted=True,
                 )
         readings = [replacements.get((item.row, item.column), item) for item in readings]
+    if trace is not None:
+        trace.record("classify", started)
     readings_by_position = {(item.row, item.column): item for item in readings}
 
     rows: list[tuple[int | str, ...]] = []
@@ -958,10 +997,23 @@ def recognize_photo(source: Path, work_dir: Path) -> PuzzleObservation:
 
     create_review_sheet(grid_image, uncertainties, work_dir)
     photo_format = detect_photo_format(source)
-    return PuzzleObservation(
+    observation = PuzzleObservation(
         source=source,
         source_format=photo_format.display_name,
         grid=tuple(rows),
         clues=clues,
         uncertainties=tuple(uncertainties),
+        evidence=tuple(
+            CellEvidence(
+                row=reading.row + 1,
+                column=reading.column + 1,
+                reading=reading.text,
+                confidence=reading.confidence,
+                trusted=reading.trusted,
+            )
+            for reading in readings
+        ),
     )
+    if trace is not None:
+        trace.elapsed_seconds = time.perf_counter() - recognition_started
+    return observation

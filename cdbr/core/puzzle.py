@@ -23,12 +23,22 @@ class CellUncertainty:
 
 
 @dataclass(frozen=True, kw_only=True)
+class CellEvidence:
+    row: int
+    column: int
+    reading: str
+    confidence: float
+    trusted: bool
+
+
+@dataclass(frozen=True, kw_only=True)
 class PuzzleObservation:
     source: Path
     source_format: str
     grid: tuple[tuple[GridValue, ...], ...]
     clues: dict[int, str]
     uncertainties: tuple[CellUncertainty, ...]
+    evidence: tuple[CellEvidence, ...] = ()
 
     @property
     def width(self) -> int:

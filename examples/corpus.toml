@@ -1,0 +1,102 @@
+format_version = 1
+description = "Photographed 15x15 Code Break puzzles with published solution grids."
+
+[[puzzles]]
+id = 31
+photo = "puzzle_31.jpg"
+solution = "puzzle_31_solution.jpg"
+
+[[puzzles]]
+id = 32
+photo = "puzzle_32.jpg"
+solution = "puzzle_32_solution.jpg"
+
+[[puzzles]]
+id = 33
+photo = "puzzle_33.jpg"
+solution = "puzzle_33_solution.jpg"
+
+[[puzzles]]
+id = 34
+photo = "puzzle_34.jpg"
+solution = "puzzle_34_solution.jpg"
+
+[[puzzles]]
+id = 35
+photo = "puzzle_35.jpg"
+solution = "puzzle_35_solution.jpg"
+
+[[puzzles]]
+id = 36
+photo = "puzzle_36.jpg"
+solution = "puzzle_36_solution.jpg"
+
+[[puzzles]]
+id = 37
+photo = "puzzle_37.jpg"
+solution = "puzzle_37_solution.jpg"
+
+[[puzzles]]
+id = 38
+photo = "puzzle_38.jpg"
+solution = "puzzle_38_solution.jpg"
+
+[[puzzles]]
+id = 39
+photo = "puzzle_39.jpg"
+solution = "puzzle_39_solution.jpg"
+
+[[puzzles]]
+id = 40
+photo = "puzzle_40.jpg"
+solution = "puzzle_40_solution.jpg"
+
+[[puzzles]]
+id = 41
+photo = "puzzle_41.jpg"
+solution = "puzzle_41_solution.jpg"
+
+[[puzzles]]
+id = 42
+photo = "puzzle_42.jpg"
+solution = "puzzle_42_solution.jpg"
+
+[[puzzles]]
+id = 43
+photo = "puzzle_43.jpg"
+solution = "puzzle_43_solution.jpg"
+
+[[puzzles]]
+id = 44
+photo = "puzzle_44.jpg"
+solution = "puzzle_44_solution.jpg"
+
+[[puzzles]]
+id = 45
+photo = "puzzle_45.jpg"
+solution = "puzzle_45_solution.jpg"
+
+[[puzzles]]
+id = 46
+photo = "puzzle_46.jpg"
+solution = "puzzle_46_solution.jpg"
+
+[[puzzles]]
+id = 47
+photo = "puzzle_47.jpg"
+solution = "puzzle_47_solution.jpg"
+
+[[puzzles]]
+id = 48
+photo = "puzzle_48.jpg"
+solution = "puzzle_48_solution.jpg"
+
+[[puzzles]]
+id = 49
+photo = "puzzle_49.jpg"
+solution = "puzzle_49_solution.jpg"
+
+[[puzzles]]
+id = 50
+photo = "puzzle_50.jpg"
+solution = "puzzle_50_solution.jpg"

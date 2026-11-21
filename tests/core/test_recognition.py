@@ -8,6 +8,7 @@ from cdbr.core.recognition import (
     _coarse_glyph_feature,
     _digit_glyphs,
     _foreground_binary,
+    _relative_margin,
     _select_clue,
 )
 
@@ -63,3 +64,8 @@ def test_select_clue_prefers_agreement_across_ocr_modes() -> None:
     assert _select_clue(["", "PO", "P"]) == "P"
     assert _select_clue(["", "OP", ""]) == "P"
     assert _select_clue(["", "BB", "B"]) == "B"
+
+
+def test_relative_margin_handles_identical_perfect_matches() -> None:
+    assert _relative_margin(0.0, 0.0) == 0.0
+    assert _relative_margin(10.0, 20.0) == 0.5
