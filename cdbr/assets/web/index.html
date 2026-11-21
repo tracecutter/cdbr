@@ -140,7 +140,15 @@
         </div>
 
         <div class="game-play-area">
-          <div class="puzzle-shell" id="puzzle-shell" aria-label="Code Break puzzle grid"></div>
+          <div class="puzzle-board-wrap" id="puzzle-board-wrap">
+            <div class="puzzle-shell" id="puzzle-shell" aria-label="Code Break puzzle grid"></div>
+            <div class="solver-progress" id="solver-progress" hidden aria-live="polite">
+              <div class="progress-track"><span></span></div>
+              <p class="eyebrow">Working from your entries</p>
+              <h3 id="solver-progress-title">Solving the puzzle…</h3>
+              <p id="solver-progress-detail">Checking the crossing words.</p>
+            </div>
+          </div>
 
           <aside class="game-side" aria-label="Puzzle hints and actions">
             <div class="reference-section">

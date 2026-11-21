@@ -121,7 +121,15 @@ body[data-mode] .creator-workspace { padding: clamp(20px, 2.5vw, 30px); }
 .game-heading h2, .reference-heading h2 { margin: 0; font-size: clamp(1.8rem, 4vw, 3rem); letter-spacing: -.035em; }
 .game-status { margin: 0; color: var(--muted); font-size: .86rem; white-space: nowrap; }
 .game-play-area { display: grid; grid-template-columns: minmax(0, 520px) minmax(380px, 430px); align-items: start; justify-content: center; gap: clamp(18px, 2vw, 28px); }
-.puzzle-shell { display: grid; grid-template-columns: repeat(var(--grid-size, 15), 1fr); width: 100%; max-width: 520px; border: 2px solid var(--ink); background: var(--ink); gap: 1px; }
+.puzzle-board-wrap { position: relative; width: 100%; max-width: 520px; }
+.puzzle-shell { display: grid; grid-template-columns: repeat(var(--grid-size, 15), 1fr); width: 100%; border: 2px solid var(--ink); background: var(--ink); gap: 1px; }
+.solver-progress { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; text-align: center; }
+.solver-progress[hidden] { display: none; }
+.solver-progress::before { position: absolute; inset: 50% auto auto 50%; width: min(390px, calc(100% - 40px)); min-height: 230px; border: 1px solid rgba(37, 39, 37, .18); background: rgba(255, 254, 250, .96); box-shadow: 0 20px 60px rgba(26, 27, 26, .2); content: ""; transform: translate(-50%, -50%); }
+.solver-progress > * { position: relative; z-index: 1; }
+.solver-progress .progress-track { margin-bottom: 30px; }
+.solver-progress h3 { max-width: 340px; margin: 0; font: 500 clamp(1.45rem, 2.4vw, 2rem)/1.15 Georgia, serif; }
+.solver-progress > p:not(.eyebrow) { min-height: 3em; max-width: 340px; margin-bottom: 0; color: var(--muted); line-height: 1.45; }
 .puzzle-cell { position: relative; aspect-ratio: 1; min-width: 0; display: grid; place-items: center; border: 0; padding: 0; color: var(--ink); background: #fffefa; cursor: pointer; }
 .puzzle-cell.is-block { background: #696b67; cursor: default; }
 .puzzle-cell small { position: absolute; top: 4%; left: 7%; font: 650 clamp(.48rem, 1vw, .7rem)/1 ui-monospace, monospace; }

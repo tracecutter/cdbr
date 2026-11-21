@@ -23,6 +23,10 @@ const showGameButton = document.querySelector('#show-game');
 const showScannerButton = document.querySelector('#show-scanner');
 const showCreatorButton = document.querySelector('#show-creator');
 const puzzleShell = document.querySelector('#puzzle-shell');
+const puzzleBoardWrap = document.querySelector('#puzzle-board-wrap');
+const solverProgress = document.querySelector('#solver-progress');
+const solverProgressTitle = document.querySelector('#solver-progress-title');
+const solverProgressDetail = document.querySelector('#solver-progress-detail');
 const referenceGrid = document.querySelector('#reference-grid');
 const gameStatus = document.querySelector('#game-status');
 const gameGuidance = document.querySelector('#game-guidance');
@@ -56,6 +60,8 @@ let scanJob;
 let game;
 let selectedSymbol;
 let draftLetter;
+let solving = false;
+let solverStatusTimer;
 let generationJob;
 let generationPoll;
 let revealed = new Map();
@@ -68,6 +74,35 @@ const workingStages = [
   'Checking the reference clues…',
   'Preparing your review…',
 ];
+
+const solvingStages = [
+  'Checking the crossing words.',
+  'Consulting the British English lexicon.',
+  'Testing the strongest candidates.',
+];
+
+function beginSolving(title, detail) {
+  solving = true;
+  solverProgressTitle.textContent = title;
+  solverProgressDetail.textContent = detail;
+  solverProgress.hidden = false;
+  puzzleBoardWrap.setAttribute('aria-busy', 'true');
+  document.querySelector('#reveal-all').disabled = true;
+  let stage = 0;
+  window.clearInterval(solverStatusTimer);
+  solverStatusTimer = window.setInterval(() => {
+    solverProgressDetail.textContent = solvingStages[stage % solvingStages.length];
+    stage += 1;
+  }, 1800);
+}
+
+function endSolving() {
+  window.clearInterval(solverStatusTimer);
+  solverProgress.hidden = true;
+  puzzleBoardWrap.removeAttribute('aria-busy');
+  document.querySelector('#reveal-all').disabled = false;
+  solving = false;
+}
 
 function showMode(mode) {
   document.body.dataset.mode = mode;
@@ -133,6 +168,7 @@ function cancelSelection() {
 }
 
 function selectSymbol(symbol) {
+  if (solving) return false;
   const alreadySelected = selectedSymbol === symbol;
   if (!alreadySelected) commitSelection();
   if (originalHints.has(symbol)) {
@@ -209,6 +245,7 @@ function renderReference() {
 }
 
 async function referenceClick(symbol) {
+  if (solving) return;
   if (originalHints.has(symbol)) {
     selectSymbol(symbol);
     return;
@@ -224,19 +261,24 @@ async function referenceClick(symbol) {
     renderGame();
     return;
   }
-  gameGuidance.textContent = 'Looking for a reliable hint…';
-  const response = await fetch(`/api/sessions/${game.session_id}/reveal/${symbol}`, { method: 'POST' });
+  beginSolving('Solving the puzzle…', `Finding a reliable hint for ${symbol}.`);
+  let response;
+  try {
+    response = await fetch(`/api/sessions/${game.session_id}/reveal/${symbol}`, { method: 'POST' });
+  } catch (_) {
+    endSolving();
+    selectedSymbol = undefined;
+    gameGuidance.textContent = 'I could not reach the solver. Your entries are untouched, so you can keep playing.';
+    renderReference();
+    renderGame();
+    return;
+  }
+  endSolving();
   if (!response.ok) {
-    let message = 'No reliable hint is available yet. You can keep playing.';
-    try {
-      const data = await response.json();
-      if (data.detail) message = data.detail;
-    } catch (_) {
-      // Keep the friendly fallback.
-    }
-    gameGuidance.textContent = message;
+    gameGuidance.textContent = `I could not find a reliable hint for ${symbol}. Your entries are untouched, so you can keep playing.`;
     selectedSymbol = undefined;
     renderReference();
+    renderGame();
     return;
   }
   const hint = await response.json();
@@ -281,7 +323,7 @@ document.querySelector('#scan-from-game').addEventListener('click', () => showMo
 document.querySelector('#quit-game').addEventListener('click', () => showMode('idle'));
 document.querySelector('#reset-game').addEventListener('click', loadGame);
 document.addEventListener('keydown', (event) => {
-  if (document.body.dataset.mode !== 'game' || selectedSymbol === undefined) return;
+  if (document.body.dataset.mode !== 'game' || selectedSymbol === undefined || solving) return;
   if (event.metaKey || event.ctrlKey || event.altKey) return;
   const target = event.target;
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
@@ -322,10 +364,19 @@ document.addEventListener('keydown', (event) => {
   }
 });
 document.querySelector('#reveal-all').addEventListener('click', async () => {
-  if (!game || !window.confirm('Reveal the complete puzzle?')) return;
-  const response = await fetch(`/api/sessions/${game.session_id}/reveal`, { method: 'POST' });
+  if (!game || solving || !window.confirm('Reveal the complete puzzle?')) return;
+  beginSolving('Solving the puzzle…', 'Preparing the best available solution.');
+  let response;
+  try {
+    response = await fetch(`/api/sessions/${game.session_id}/reveal`, { method: 'POST' });
+  } catch (_) {
+    endSolving();
+    gameGuidance.textContent = 'I could not reach the solver. Your entries are untouched, so you can keep playing.';
+    return;
+  }
+  endSolving();
   if (!response.ok) {
-    gameGuidance.textContent = 'The solution is unavailable, but you can keep playing.';
+    gameGuidance.textContent = 'I could not find a usable solution. Your entries are untouched, so you can keep playing.';
     return;
   }
   const data = await response.json();

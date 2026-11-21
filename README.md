@@ -195,6 +195,8 @@ requested. During play, select any numbered cell and type a letter to preview
 that entry everywhere the number occurs. Enter or selecting another number
 commits it, Escape cancels it, and Backspace clears a player-entered letter.
 The original reference clues remain visibly distinct and cannot be changed.
+Hint and solution requests show their progress over the board; an unsuccessful
+search returns to the unchanged game so play can continue.
 
 `cdbrd --reload` is intended for local development. Container deployments should
 set `PORT` and run a single service process.
