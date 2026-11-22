@@ -1,9 +1,12 @@
 """Tests for illumination-tolerant photograph recognition helpers."""
 
+from pathlib import Path
+
 import cv2
 import numpy as np
 
 from cdbr.core.recognition import (
+    _adjudicate_counter_family,
     _block_mask,
     _cell_images,
     _coarse_glyph_feature,
@@ -12,6 +15,7 @@ from cdbr.core.recognition import (
     _relative_margin,
     _select_clue,
     detect_grid_size,
+    recognize_photo,
 )
 
 
@@ -82,3 +86,25 @@ def test_select_clue_prefers_agreement_across_ocr_modes() -> None:
 def test_relative_margin_handles_identical_perfect_matches() -> None:
     assert _relative_margin(0.0, 0.0) == 0.0
     assert _relative_margin(10.0, 20.0) == 0.5
+
+
+def test_counter_family_adjudicator_ignores_unrelated_digits() -> None:
+    glyph = np.zeros((48, 32), dtype=np.uint8)
+
+    assert _adjudicate_counter_family(glyph, "4", [(1.0, "4"), (2.0, "5")]) == "4"
+
+
+def test_puzzle_35_fragmented_eight_is_not_read_as_six(tmp_path: Path) -> None:
+    project_root = Path(__file__).parents[2]
+
+    observation = recognize_photo(project_root / "examples" / "puzzle_35.jpg", tmp_path)
+
+    assert observation.grid[7][2] == 8
+
+
+def test_puzzle_44_open_five_is_not_read_as_eight(tmp_path: Path) -> None:
+    project_root = Path(__file__).parents[2]
+
+    observation = recognize_photo(project_root / "examples" / "puzzle_44.jpg", tmp_path)
+
+    assert observation.grid[0][6] == 5

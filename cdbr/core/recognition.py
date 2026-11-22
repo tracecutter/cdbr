@@ -515,6 +515,43 @@ def _coarse_glyph_feature(glyph: np.ndarray) -> np.ndarray:
     )
 
 
+def _enclosed_counter_count(glyph: np.ndarray, close_size: int) -> int:
+    """Count substantial enclosed white regions inside a digit glyph."""
+
+    ink: np.ndarray = np.where(glyph > 127, 255, 0).astype(np.uint8)
+    if close_size:
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (close_size, close_size))
+        ink = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, kernel)
+    background = np.where(ink == 0, 255, 0).astype(np.uint8)
+    count, _, statistics, _ = cv2.connectedComponentsWithStats(background)
+    height, width = background.shape
+    enclosed = 0
+    for index in range(1, count):
+        x, y, component_width, component_height, area = (int(value) for value in statistics[index])
+        touches_edge = x == 0 or y == 0 or x + component_width == width or y + component_height == height
+        if not touches_edge and area >= 8:
+            enclosed += 1
+    return enclosed
+
+
+def _adjudicate_counter_family(
+    glyph: np.ndarray,
+    digit: str,
+    pixel_scores: list[tuple[float, str]],
+) -> str:
+    """Use stable enclosed counters to adjudicate plausible 5/6/8 readings."""
+
+    if digit not in {"5", "6", "8"}:
+        return digit
+    counters = tuple(_enclosed_counter_count(glyph, size) for size in (0, 2, 3, 4))
+    top_two = {candidate for _, candidate in pixel_scores[:2]}
+    if digit in {"6", "8"} and "5" in top_two and max(counters) == 0:
+        return "5"
+    if digit == "6" and "8" in top_two and min(counters[:3]) >= 3 and counters[3] == 2:
+        return "8"
+    return digit
+
+
 def _classify_digit(glyph: np.ndarray, templates: dict[str, list[np.ndarray]]) -> tuple[str, float]:
     glyph_float = glyph.astype(np.float32)
     pixel_scores = sorted(
@@ -539,6 +576,7 @@ def _classify_digit(glyph: np.ndarray, templates: dict[str, list[np.ndarray]]) -
         coarse_by_digit = {candidate: score for score, candidate in coarse_scores}
         if coarse_scores[0][1] == "6" and coarse_by_digit["0"] >= 2.0 * coarse_scores[0][0]:
             digit = "6"
+    digit = _adjudicate_counter_family(glyph, digit, pixel_scores)
     return digit, margin
 
 
