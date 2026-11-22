@@ -141,7 +141,7 @@ help:
 	@echo "docs-<tool>-clean - remove documentation build artifacts"
 	@echo "preflight - check everything is ready for release"
 	@echo "dist - generate full distribution and stage package for release."
-	@echo "release - tag, build, push, and perform local post-release install if applicable"
+	@echo "release - tag and push; publish GitHub release when web deployment is release-driven"
 	@echo "pub-gh - publish the tagged release and distribution artifacts to GitHub"
 	@echo "pub-docs - publish documents on GitHub.io"
 	@echo "pub-pypi - publish release on PyPi"
@@ -705,6 +705,11 @@ release: release-guard preflight
 		echo "⚠️  GitHub Pages not configured."; \
 		echo "   Go to: Settings → Pages → set source to gh-pages branch."; \
 	}
+
+	@if [ "$(WEB_ENABLED)" = "1" ] && [ "$(WEB_DEPLOY_ON)" = "release" ]; then \
+		echo "🌐 Publishing $(TAG) to trigger the configured release deployment…"; \
+		$(MAKE) --no-print-directory pub-gh; \
+	fi
 
 	@echo "🎉 Local release complete for $(PROJECT_NAME) $(VERSION)"
 
