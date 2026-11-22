@@ -59,6 +59,7 @@ jobs:
           PY
 
       - name: Run public-source checks
+        timeout-minutes: 10
         env:
           OMP_THREAD_LIMIT: "1"
         run: |
@@ -93,7 +94,7 @@ jobs:
   deploy:
     name: Deploy to DigitalOcean
     needs: verify
-    if: needs.verify.outputs.deploy-on == 'release'
+    if: github.event_name == 'release' && needs.verify.outputs.deploy-on == 'release'
     runs-on: ubuntu-latest
     environment: production
     steps:

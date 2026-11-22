@@ -10,9 +10,7 @@ INTERNAL
 from pathlib import Path
 import importlib
 
-import cv2
 from click.testing import CliRunner
-import numpy as np
 
 from cdbr.test.fs import populate_fs
 from cdbr.test.harness import run_cdbr
@@ -26,29 +24,7 @@ def test_cmd_basic(tmp_path):
     # Arrange: copy test filesystem (if needed)
     populate_fs(here / "before", tmp_path)
 
-    photo = tmp_path / "puzzle.png"
-    image = np.full((2000, 2000, 3), 240, dtype=np.uint8)
-    origin = 250
-    cell_size = 100
-    for row in range(15):
-        for column in range(15):
-            top_left = (origin + column * cell_size, origin + row * cell_size)
-            bottom_right = (top_left[0] + cell_size, top_left[1] + cell_size)
-            if (row + column) % 3 == 0:
-                cv2.rectangle(image, top_left, bottom_right, (90, 90, 90), -1)
-            else:
-                value = (row * 15 + column) % 26 + 1
-                cv2.putText(
-                    image,
-                    str(value),
-                    (top_left[0] + 10, top_left[1] + 35),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (20, 20, 20),
-                    2,
-                )
-            cv2.rectangle(image, top_left, bottom_right, (20, 20, 20), 3)
-    cv2.imwrite(str(photo), image)
+    photo = Path(__file__).parents[3] / "examples" / "puzzle_35.jpg"
 
     # Act: run cdbr with a puzzle photograph.
     result = run_cdbr(["--orig", str(photo)], cwd=tmp_path)
@@ -58,7 +34,7 @@ def test_cmd_basic(tmp_path):
 
     # Assert: basic output sanity (worker ran)
     assert 'format_version = 1' in result.stdout
-    assert 'image_format = "PNG"' in result.stdout
+    assert 'image_format = "JPEG"' in result.stdout
 
 
 def test_cmd_rejects_unknown_file_format(tmp_path):
