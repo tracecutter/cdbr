@@ -26,6 +26,7 @@ class CorpusEntry:
     puzzle_id: int
     photo: Path
     solution: Path
+    truth: Path | None = None
 
 
 def load_manifest(source: Path) -> tuple[CorpusEntry, ...]:
@@ -40,6 +41,7 @@ def load_manifest(source: Path) -> tuple[CorpusEntry, ...]:
             puzzle_id=int(item["id"]),
             photo=(source.parent / str(item["photo"])).resolve(),
             solution=(source.parent / str(item["solution"])).resolve(),
+            truth=(source.parent / str(item["truth"])).resolve() if item.get("truth") else None,
         )
         for item in document.get("puzzles", ())
     )
@@ -53,7 +55,22 @@ def load_manifest(source: Path) -> tuple[CorpusEntry, ...]:
             raise ValueError(f"Puzzle photograph does not exist: {entry.photo}")
         if not entry.solution.is_file():
             raise ValueError(f"Puzzle solution does not exist: {entry.solution}")
+        if entry.truth is not None and not entry.truth.is_file():
+            raise ValueError(f"Puzzle truth does not exist: {entry.truth}")
     return entries
+
+
+def _truth_grid(source: Path) -> tuple[tuple[int | str, ...], ...]:
+    with source.open("rb") as stream:
+        document = tomllib.load(stream)
+    if document.get("format_version") != 1:
+        raise ValueError(f"Unsupported truth format: {source}")
+    rows = []
+    for line in document.get("grid", ()):
+        rows.append(tuple("." if token == "##" else int(token) for token in str(line).split()))
+    if not rows or any(len(row) != len(rows) for row in rows):
+        raise ValueError(f"Truth grid must be non-empty and square: {source}")
+    return tuple(rows)
 
 
 def _digest(source: Path) -> str:
@@ -140,7 +157,7 @@ def benchmark_entry(
         for index, (predicted, expected) in enumerate(zip(predicted_blocks, expected_blocks, strict=True))
         if predicted != expected
     ]
-    return {
+    result = {
         "format_version": 1,
         "puzzle_id": entry.puzzle_id,
         "status": "ok",
@@ -183,6 +200,36 @@ def benchmark_entry(
         "evidence": evidence_payload,
         "review_cells": review_cells,
     }
+    if entry.truth is not None:
+        truth = _truth_grid(entry.truth)
+        if len(truth) != observation.height or len(truth[0]) != observation.width:
+            raise ValueError(f"Truth dimensions do not match puzzle {entry.puzzle_id}")
+        evidence_by_position = {(item.row, item.column): item for item in evidence}
+        mismatches = []
+        for row, (observed_row, truth_row) in enumerate(zip(observation.grid, truth, strict=True), 1):
+            for column, (observed, expected) in enumerate(zip(observed_row, truth_row, strict=True), 1):
+                if expected == "." or observed == expected:
+                    continue
+                evidence_item = evidence_by_position.get((row, column))
+                mismatches.append(
+                    {
+                        "row": row,
+                        "column": column,
+                        "observed": observed,
+                        "expected": expected,
+                        "confidence": round(evidence_item.confidence, 3) if evidence_item is not None else None,
+                        "trusted": evidence_item.trusted if evidence_item is not None else None,
+                    }
+                )
+        total = sum(expected != "." for row in truth for expected in row)
+        result["accuracy"] = {
+            "cells": total,
+            "correct": total - len(mismatches),
+            "incorrect": len(mismatches),
+            "trusted_incorrect": sum(item["trusted"] is True for item in mismatches),
+            "mismatches": mismatches,
+        }
+    return result
 
 
 def read_results(source: Path) -> list[dict[str, Any]]:
@@ -229,6 +276,23 @@ def summarize_classification(results: Iterable[dict[str, Any]]) -> dict[str, Any
         "seconds": seconds,
         "cells_per_second": round(cells / seconds, 3) if seconds else 0.0,
         "stage_seconds": stage_totals,
+    }
+
+
+def summarize_accuracy(results: Iterable[dict[str, Any]]) -> dict[str, int | float]:
+    """Aggregate exact OCR accuracy where independently transcribed truth exists."""
+
+    measured = [result["accuracy"] for result in results if result.get("status") == "ok" and "accuracy" in result]
+    cells = sum(int(item["cells"]) for item in measured)
+    correct = sum(int(item["correct"]) for item in measured)
+    incorrect = sum(int(item["incorrect"]) for item in measured)
+    return {
+        "puzzles": len(measured),
+        "cells": cells,
+        "correct": correct,
+        "incorrect": incorrect,
+        "accuracy_percent": round(100.0 * correct / cells, 3) if cells else 0.0,
+        "trusted_incorrect": sum(int(item["trusted_incorrect"]) for item in measured),
     }
 
 
@@ -314,6 +378,7 @@ def main(
     latest = {int(result["puzzle_id"]): result for result in [*prior, *new_results]}
     summary: dict[str, Any] = {
         **summarize(latest.values()),
+        "accuracy": summarize_accuracy(latest.values()),
         "classification": summarize_classification(latest.values()),
         "resources": resource_usage(),
     }

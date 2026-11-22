@@ -143,6 +143,12 @@ with `make benchmark BENCHMARK_ARGS="--puzzle 35"`, or deliberately test
 concurrency with `BENCHMARK_ARGS="--workers 2"`. The full corpus is an
 engineering benchmark rather than a deployment gate.
 
+Corpus entries may also name an independently transcribed truth grid. Where
+truth is available, the summary reports exact playable-cell accuracy and the
+number of incorrect readings that OCR nevertheless marked trusted. This truth
+coverage is deliberately incremental; published answer grids remain the source
+of record rather than the recogniser's own output.
+
 [[section.status]]
 - Python 3.11+
 - British English lexical policy

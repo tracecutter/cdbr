@@ -70,6 +70,7 @@ solution = "puzzle_43_solution.jpg"
 id = 44
 photo = "puzzle_44.jpg"
 solution = "puzzle_44_solution.jpg"
+truth = "truth/puzzle_44.toml"
 
 [[puzzles]]
 id = 45
