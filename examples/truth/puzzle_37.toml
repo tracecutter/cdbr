@@ -1,0 +1,15 @@
+format_version = 1
+accept_observed_numbers = true
+source = "Human review of puzzle 37 reference grid."
+review_status = "human-reviewed"
+
+[number_defects]
+"r01c02" = 26
+"r01c03" = 16
+"r15c04" = 6
+
+[clues]
+"7" = "W"
+"8" = "Q"
+"9" = "E"
+

@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+import cv2
 import numpy as np
 from fastapi.testclient import TestClient
 
@@ -37,6 +38,18 @@ def test_web_assets_are_served():
     assert script.headers["content-type"].startswith("text/javascript")
     assert logo.status_code == 200
     assert logo.headers["content-type"] == "image/png"
+
+
+def test_revealing_an_answer_clears_its_stale_incorrect_marker():
+    script = client.get("/static/app.js").text
+
+    single_reveal = script.index("revealed.set(symbol, hint.letter);")
+    single_render = script.index("renderReference();", single_reveal)
+    assert "incorrectSymbols.delete(symbol);" in script[single_reveal:single_render]
+
+    full_reveal = script.index("revealed.set(numericSymbol, letter);")
+    full_render = script.index("renderGame();", full_reveal)
+    assert "incorrectSymbols.clear();" in script[full_reveal:full_render]
 
 
 def test_health_reports_version():
@@ -91,6 +104,42 @@ def test_corpus_session_converges_on_private_playable_state():
     assert revealed.json() == {"symbol": 20, "letter": "N", "solution_status": "certified"}
 
 
+def test_corpus_catalog_and_random_session(monkeypatch):
+    catalog = client.get("/api/puzzles")
+
+    assert catalog.status_code == 200
+    assert {"serial": 1, "title": "Puzzle 1"} in catalog.json()["puzzles"]
+
+    monkeypatch.setattr(server_module.secrets, "choice", lambda choices: choices[0])
+    created = client.post("/api/sessions/from-corpus/random")
+
+    assert created.status_code == 201
+    assert created.json()["serial"] == 1
+    assert created.json()["title"] == "Puzzle 1"
+
+
+def test_check_marks_incorrect_symbols_without_revealing_answers():
+    created = client.post("/api/sessions/from-corpus/1").json()
+
+    wrong = client.post(
+        f"/api/sessions/{created['session_id']}/check",
+        json={"entries": {"20": "A"}},
+    )
+    correct = client.post(
+        f"/api/sessions/{created['session_id']}/check",
+        json={"entries": {"20": "N"}},
+    )
+
+    assert wrong.status_code == 200
+    assert wrong.json() == {
+        "checked_symbols": [20],
+        "incorrect_symbols": [20],
+        "solution_status": "certified",
+    }
+    assert correct.json()["incorrect_symbols"] == []
+    assert "letter" not in wrong.text
+
+
 def test_photo_session_converges_on_same_playable_state(monkeypatch):
     grid = ((1, 2), (3, 4))
     puzzle = CodewordPuzzle(grid=grid, clues={1: "A"}, slots=extract_slots(grid))
@@ -141,7 +190,23 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
     )
     monkeypatch.setattr(server_module, "detect_photo_format", lambda _: PhotoFormat.JPEG)
     monkeypatch.setattr(server_module, "recognize_photo", lambda _source, _work_dir: observation)
-    monkeypatch.setattr(server_module.cv2, "imread", lambda _: np.full((1500, 1500, 3), 255, dtype=np.uint8))
+    grid_image = np.full((1500, 1500, 3), 255, dtype=np.uint8)
+    reference_image = np.full((200, 1300, 3), 245, dtype=np.uint8)
+    cv2.putText(
+        reference_image,
+        "B",
+        (125, 82),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.8,
+        (20, 20, 20),
+        5,
+        cv2.LINE_AA,
+    )
+
+    def fake_imread(path):
+        return reference_image if str(path).endswith("reference-grid.png") else grid_image
+
+    monkeypatch.setattr(server_module.cv2, "imread", fake_imread)
     solved_observations = []
 
     def fake_solve_observation(corrected):
@@ -168,17 +233,25 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
             "image": f"/api/scan-jobs/{review['job_id']}/cells/1/2",
         }
     ]
-    assert review["review_clues"] == [
-        {
-            "symbol": 1,
-            "proposed": "A",
-            "confidence": 100.0,
-            "image": f"/api/scan-jobs/{review['job_id']}/clues/1",
-        }
-    ]
+    assert len(review["review_clues"]) == 2
+    assert review["review_clues"][0] == {
+        "symbol": 1,
+        "proposed": "A",
+        "confidence": 100.0,
+        "ink_pixels": 0,
+        "image": f"/api/scan-jobs/{review['job_id']}/clues/1",
+    }
+    assert review["review_clues"][1]["symbol"] == 2
+    assert review["review_clues"][1]["proposed"] is None
+    assert review["review_clues"][1]["confidence"] == 0.0
+    assert review["review_clues"][1]["ink_pixels"] >= 400
+    assert review["review_clues"][1]["image"] == f"/api/scan-jobs/{review['job_id']}/clues/2"
     crop = client.get(review["review_cells"][0]["image"])
     assert crop.status_code == 200
     assert crop.headers["content-type"] == "image/jpeg"
+    missed_clue_crop = client.get(review["review_clues"][1]["image"])
+    assert missed_clue_crop.status_code == 200
+    assert missed_clue_crop.headers["content-type"] == "image/jpeg"
 
     incomplete = client.post(
         f"/api/scan-jobs/{review['job_id']}/complete",
@@ -186,15 +259,26 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
     )
     assert incomplete.status_code == 422
 
-    completed = client.post(
+    missing_reference_cell = client.post(
         f"/api/scan-jobs/{review['job_id']}/complete",
         json={
             "cells": [{"row": 1, "column": 2, "value": 2}],
             "clues": [{"symbol": 1, "letter": "A"}],
         },
     )
+    assert missing_reference_cell.status_code == 422
+    assert "2" in missing_reference_cell.json()["detail"]
+
+    completed = client.post(
+        f"/api/scan-jobs/{review['job_id']}/complete",
+        json={
+            "cells": [{"row": 1, "column": 2, "value": 2}],
+            "clues": [{"symbol": 1, "letter": "A"}, {"symbol": 2, "letter": "B"}],
+        },
+    )
     assert completed.status_code == 201
     assert completed.json()["grid"] == [[1, 2], [3, 4]]
+    assert completed.json()["clues"] == {"1": "A", "2": "B"}
     assert completed.json()["provenance"] == "photo"
     assert completed.json()["solution_status"] == "not_requested"
     assert solved_observations == []
@@ -203,6 +287,7 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
 
     assert hint.json() == {"symbol": 4, "letter": "D", "solution_status": "certified"}
     assert len(solved_observations) == 1
+    assert solved_observations[0].clues == {1: "A", 2: "B"}
 
 
 def test_failed_lazy_solution_keeps_scanned_session_playable(monkeypatch):
@@ -241,6 +326,75 @@ def test_failed_lazy_solution_keeps_scanned_session_playable(monkeypatch):
         "solution_status": "unavailable",
         "complete": False,
     }
+
+
+def test_lazy_solution_uses_current_player_entries(monkeypatch):
+    observation = PuzzleObservation(
+        source=server_module.Path("discarded-upload.jpg"),
+        source_format="JPEG",
+        grid=((1, 2), (3, 4)),
+        clues={1: "A"},
+        uncertainties=(),
+    )
+    puzzle = {
+        "title": "Scanned puzzle",
+        "grid": [[1, 2], [3, 4]],
+        "clues": {1: "A"},
+        "symbols": list(range(1, 27)),
+        "used_symbols": [1, 2, 3, 4],
+        "provenance": "photo",
+    }
+    session = server_module._create_session(puzzle, observation=observation)
+    solved_observations = []
+
+    def fake_solve_observation(current):
+        solved_observations.append(current)
+        return SimpleNamespace(
+            mapping=current.clues,
+            result=SimpleNamespace(exhausted=False, solutions=()),
+        )
+
+    monkeypatch.setattr(server_module, "solve_observation", fake_solve_observation)
+
+    first = client.post(
+        f"/api/sessions/{session.session_id}/reveal",
+        json={"entries": {"2": "B"}},
+    )
+    second = client.post(
+        f"/api/sessions/{session.session_id}/reveal",
+        json={"entries": {"2": "C"}},
+    )
+
+    assert first.json()["mapping"] == {"1": "A", "2": "B"}
+    assert second.json()["mapping"] == {"1": "A", "2": "C"}
+    assert [item.clues for item in solved_observations] == [{1: "A", 2: "B"}, {1: "A", 2: "C"}]
+
+
+def test_lazy_solution_rejects_duplicate_player_letters():
+    observation = PuzzleObservation(
+        source=server_module.Path("discarded-upload.jpg"),
+        source_format="JPEG",
+        grid=((1, 2), (3, 4)),
+        clues={1: "A"},
+        uncertainties=(),
+    )
+    puzzle = {
+        "title": "Scanned puzzle",
+        "grid": [[1, 2], [3, 4]],
+        "clues": {1: "A"},
+        "symbols": list(range(1, 27)),
+        "used_symbols": [1, 2, 3, 4],
+        "provenance": "photo",
+    }
+    session = server_module._create_session(puzzle, observation=observation)
+
+    response = client.post(
+        f"/api/sessions/{session.session_id}/reveal",
+        json={"entries": {"2": "B", "3": "B"}},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Each letter may be assigned to only one symbol."
 
 
 def test_photo_preview_converts_upload_to_browser_image(monkeypatch):

@@ -116,14 +116,23 @@ cdbrd --host 127.0.0.1 --port 8000
 Then open http://127.0.0.1:8000/. The web interface can play a corpus puzzle,
 scan a photograph into the playable board, or create a new puzzle. Uploaded
 photographs and game sessions are currently held only for the lifetime of the
-service; no database is required. Photograph recognition enters play after
-human review; the lexical solver runs only when a hint or solution reveal is
-requested. During play, select any numbered cell and type a letter to preview
+service; no database is required. Photograph recognition asks for human review
+of every detected clue and any apparently blank reference cell whose measured
+ink approaches handwriting; clean blank cells are accepted automatically. This
+keeps omitted clues visible without demanding 23 routine blank confirmations.
+The lexical solver runs only when a hint or solution reveal is requested. During play, select any
+numbered cell and type a letter to preview
 that entry everywhere the number occurs. Enter or selecting another number
 commits it, Escape cancels it, and Backspace clears a player-entered letter.
-The original reference clues remain visibly distinct and cannot be changed.
-Hint and solution requests show their progress over the board; an unsuccessful
-search returns to the unchanged game so play can continue.
+The letter rails above and below the board cross out letters already assigned,
+with a compact vowel rail repeating the same state. The one-to-one code prevents
+a letter being entered for two numbers. The original reference clues remain
+visibly distinct and cannot be changed. Check highlights incorrect player entries
+throughout both the puzzle and reference grid without revealing replacements.
+Play can select a numbered corpus puzzle or ask cdbr to choose one at random.
+Hint and solution requests use the player's current entries as solver constraints
+and show their progress over the board; an unsuccessful search returns to the
+unchanged game so play can continue.
 
 `cdbrd --reload` is intended for local development. Container deployments should
 set `PORT` and run a single service process.
@@ -143,11 +152,30 @@ with `make benchmark BENCHMARK_ARGS="--puzzle 35"`, or deliberately test
 concurrency with `BENCHMARK_ARGS="--workers 2"`. The full corpus is an
 engineering benchmark rather than a deployment gate.
 
-Corpus entries may also name an independently transcribed truth grid. Where
-truth is available, the summary reports exact playable-cell accuracy and the
-number of incorrect readings that OCR nevertheless marked trusted. This truth
-coverage is deliberately incremental; published answer grids remain the source
-of record rather than the recogniser's own output.
+Corpus entries may also name independently reviewed truth. Where it is
+available, the summary scores puzzle-cell number OCR and reference-grid clue
+OCR separately. Number truth is a transcribed grid; clue truth covers all 26
+reference positions so misses and false positives are measurable. Coverage is
+deliberately incremental and never derived from the recogniser's own output.
+
+Build a human-review report from the latest resumable benchmark with:
+
+```bash
+make benchmark-audit
+```
+
+The report is written inside the project at `build/corpus-audit/index.html`.
+It provides two independent scorecards, putting confirmed errors first and then
+ordering each review tier from least to most confident. Published solution cells
+remain visible beside number crops as supporting evidence, but do not silently
+become ground truth. This makes the
+report a defect-finding instrument rather than an optimistic accuracy display.
+
+Add `BENCHMARK_ARGS="--solve"` to inventory certified, candidate, multiple,
+search-limited, contradictory, and unresolved puzzles after applying reviewed
+OCR corrections. A publisher-key comparison is reported only when the truth
+file contains a human-confirmed `[solution]` symbol-to-letter mapping; proposed
+answer-key OCR is never treated as truth automatically.
 
 [[section.status]]
 - Python 3.11+

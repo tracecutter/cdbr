@@ -1,8 +1,9 @@
 format_version = 1
 source = "Published solution grid for puzzle 44, independently transcribed."
+review_status = "human-reviewed"
 grid = [
     "05 11 16 18 22 26 05 22 ## 20 09 22 09 08 13",
-    "08 ## 08 ## 17 ## 21 ## ## ## 21 ## 21 ## 20",
+    "08 ## 08 ## 17 ## 10 ## ## ## 21 ## 21 ## 20",
     "24 08 17 09 12 07 11 06 ## 08 18 08 14 21 02",
     "07 ## 12 ## 21 ## 22 ## 14 ## 13 ## 22 ## 22",
     "06 21 09 11 05 ## 22 19 21 13 06 08 02 22 17",
@@ -17,3 +18,15 @@ grid = [
     "17 ## 05 ## 21 ## ## ## 06 ## 22 ## 20 ## 20",
     "22 26 18 20 02 22 ## 05 25 11 06 06 09 08 13",
 ]
+
+[[defects]]
+row = 2
+column = 7
+printed = 10
+intended = 21
+reason = "Published answer key assigns the same answer glyph as the cells numbered 21."
+
+[clues]
+"12" = "H"
+"22" = "E"
+"26" = "R"

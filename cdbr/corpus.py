@@ -11,14 +11,21 @@ import os
 from pathlib import Path
 import statistics
 import tempfile
+import time
 import tomllib
 from typing import Any
+import re
 
 import cdbr.ui as click
 import cv2
 
 from cdbr import __version__
+from cdbr.corpus_audit import write_audit_reports
+from cdbr.core.lexicon import english_lexicon
+from cdbr.core.model import CodewordPuzzle, extract_slots
+from cdbr.core.puzzle import BLOCK
 from cdbr.core.recognition import WARP_SIZE, RecognitionTrace, _block_mask, _cell_images, recognize_photo
+from cdbr.core.solver import solve
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -60,17 +67,160 @@ def load_manifest(source: Path) -> tuple[CorpusEntry, ...]:
     return entries
 
 
-def _truth_grid(source: Path) -> tuple[tuple[int | str, ...], ...]:
+def _truth_document(source: Path) -> dict[str, Any]:
     with source.open("rb") as stream:
         document = tomllib.load(stream)
     if document.get("format_version") != 1:
         raise ValueError(f"Unsupported truth format: {source}")
+    return document
+
+
+def _truth_grid(document: dict[str, Any], source: Path) -> tuple[tuple[int | str, ...], ...]:
     rows = []
     for line in document.get("grid", ()):
         rows.append(tuple("." if token == "##" else int(token) for token in str(line).split()))
-    if not rows or any(len(row) != len(rows) for row in rows):
+    if rows and any(len(row) != len(rows) for row in rows):
         raise ValueError(f"Truth grid must be non-empty and square: {source}")
     return tuple(rows)
+
+
+def _truth_clues(document: dict[str, Any], source: Path) -> dict[int, str]:
+    clues = {int(symbol): str(letter).upper() for symbol, letter in document.get("clues", {}).items()}
+    if any(not 1 <= symbol <= 26 or len(letter) != 1 or not letter.isalpha() for symbol, letter in clues.items()):
+        raise ValueError(f"Truth clues must map symbols 1-26 to single letters: {source}")
+    return clues
+
+
+def _truth_number_defects(document: dict[str, Any], source: Path) -> dict[tuple[int, int], int]:
+    defects = {}
+    for coordinate, expected in document.get("number_defects", {}).items():
+        match = re.fullmatch(r"r(\d{2})c(\d{2})", str(coordinate))
+        if match is None:
+            raise ValueError(f"Truth number defect must use rNNcNN coordinates: {source}")
+        row, column = (int(value) for value in match.groups())
+        symbol = int(expected)
+        if not 1 <= symbol <= 26:
+            raise ValueError(f"Truth number defects must contain symbols 1-26: {source}")
+        defects[row, column] = symbol
+    return defects
+
+
+def _truth_solution(document: dict[str, Any], source: Path) -> dict[int, str]:
+    solution = {int(symbol): str(letter).upper() for symbol, letter in document.get("solution", {}).items()}
+    if any(not 1 <= symbol <= 26 or len(letter) != 1 or not letter.isalpha() for symbol, letter in solution.items()):
+        raise ValueError(f"Truth solution must map symbols 1-26 to single letters: {source}")
+    if solution and len(set(solution.values())) != len(solution):
+        raise ValueError(f"Truth solution must preserve the letter bijection: {source}")
+    return solution
+
+
+def apply_truth(result: dict[str, Any], source: Path) -> dict[str, Any]:
+    """Recalculate accuracy from cached OCR whenever reviewed truth changes."""
+
+    document = _truth_document(source)
+    truth = _truth_grid(document, source)
+    clue_truth = _truth_clues(document, source)
+    number_defects = _truth_number_defects(document, source)
+    accept_observed_numbers = bool(document.get("accept_observed_numbers", False))
+    if truth and accept_observed_numbers:
+        raise ValueError(f"Truth cannot contain both a grid and accept_observed_numbers: {source}")
+    observed_grid = result["grid"]
+    if truth and (len(truth) != len(observed_grid) or len(truth[0]) != len(observed_grid[0])):
+        raise ValueError(f"Truth dimensions do not match puzzle {result['puzzle_id']}")
+    evidence = {(int(item["row"]), int(item["column"])): item for item in result["evidence"]}
+    mismatches = []
+    if truth:
+        for row, (observed_row, truth_row) in enumerate(zip(observed_grid, truth, strict=True), 1):
+            for column, (observed, expected) in enumerate(zip(observed_row, truth_row, strict=True), 1):
+                if expected == "." or observed == expected:
+                    continue
+                item = evidence.get((row, column))
+                mismatches.append(
+                    {
+                        "row": row,
+                        "column": column,
+                        "observed": observed,
+                        "expected": expected,
+                        "confidence": item["confidence"] if item is not None else None,
+                        "trusted": item["trusted"] if item is not None else None,
+                    }
+                )
+    refreshed = dict(result)
+    reviewed_defects: list[dict[str, Any]] = []
+    if number_defects:
+        for (row, column), expected in number_defects.items():
+            item = evidence.get((row, column))
+            if item is None:
+                raise ValueError(f"Truth number defect r{row:02d}c{column:02d} is not a playable cell: {source}")
+            observed = observed_grid[row - 1][column - 1]
+            if observed == expected:
+                continue
+            reviewed_defects.append(
+                {
+                    "row": row,
+                    "column": column,
+                    "observed": observed,
+                    "expected": expected,
+                    "confidence": item["confidence"],
+                    "trusted": item["trusted"],
+                }
+            )
+        refreshed["number_defects"] = reviewed_defects
+    if accept_observed_numbers:
+        refreshed["number_accuracy"] = {
+            "samples": len(evidence),
+            "correct": len(evidence) - len(reviewed_defects),
+            "incorrect": len(reviewed_defects),
+            "trusted_incorrect": sum(item["trusted"] is True for item in reviewed_defects),
+            "mismatches": reviewed_defects,
+        }
+    if truth:
+        total = sum(expected != "." for row in truth for expected in row)
+        refreshed["number_accuracy"] = {
+            "samples": total,
+            "correct": total - len(mismatches),
+            "incorrect": len(mismatches),
+            "trusted_incorrect": sum(item["trusted"] is True for item in mismatches),
+            "mismatches": mismatches,
+        }
+    if clue_truth:
+        observed_clues = {
+            int(item["symbol"]): {
+                "reading": str(item["reading"]).upper(),
+                "confidence": float(item["confidence"]),
+            }
+            for item in result.get("clue_evidence", ())
+        }
+        clue_mismatches = []
+        for symbol, expected in clue_truth.items():
+            observed = observed_clues.get(symbol, {"reading": "", "confidence": 0.0})
+            if observed["reading"] != expected:
+                clue_mismatches.append(
+                    {
+                        "symbol": symbol,
+                        "observed": observed["reading"],
+                        "expected": expected,
+                        "confidence": observed["confidence"],
+                    }
+                )
+        false_positives = [
+            {
+                "symbol": symbol,
+                "observed": item["reading"],
+                "expected": "",
+                "confidence": item["confidence"],
+            }
+            for symbol, item in observed_clues.items()
+            if symbol not in clue_truth
+        ]
+        refreshed["clue_accuracy"] = {
+            "samples": len(clue_truth),
+            "correct": len(clue_truth) - len(clue_mismatches),
+            "incorrect": len(clue_mismatches),
+            "false_positives": len(false_positives),
+            "mismatches": [*clue_mismatches, *false_positives],
+        }
+    return refreshed
 
 
 def _digest(source: Path) -> str:
@@ -200,36 +350,7 @@ def benchmark_entry(
         "evidence": evidence_payload,
         "review_cells": review_cells,
     }
-    if entry.truth is not None:
-        truth = _truth_grid(entry.truth)
-        if len(truth) != observation.height or len(truth[0]) != observation.width:
-            raise ValueError(f"Truth dimensions do not match puzzle {entry.puzzle_id}")
-        evidence_by_position = {(item.row, item.column): item for item in evidence}
-        mismatches = []
-        for row, (observed_row, truth_row) in enumerate(zip(observation.grid, truth, strict=True), 1):
-            for column, (observed, expected) in enumerate(zip(observed_row, truth_row, strict=True), 1):
-                if expected == "." or observed == expected:
-                    continue
-                evidence_item = evidence_by_position.get((row, column))
-                mismatches.append(
-                    {
-                        "row": row,
-                        "column": column,
-                        "observed": observed,
-                        "expected": expected,
-                        "confidence": round(evidence_item.confidence, 3) if evidence_item is not None else None,
-                        "trusted": evidence_item.trusted if evidence_item is not None else None,
-                    }
-                )
-        total = sum(expected != "." for row in truth for expected in row)
-        result["accuracy"] = {
-            "cells": total,
-            "correct": total - len(mismatches),
-            "incorrect": len(mismatches),
-            "trusted_incorrect": sum(item["trusted"] is True for item in mismatches),
-            "mismatches": mismatches,
-        }
-    return result
+    return apply_truth(result, entry.truth) if entry.truth is not None else result
 
 
 def read_results(source: Path) -> list[dict[str, Any]]:
@@ -279,20 +400,100 @@ def summarize_classification(results: Iterable[dict[str, Any]]) -> dict[str, Any
     }
 
 
-def summarize_accuracy(results: Iterable[dict[str, Any]]) -> dict[str, int | float]:
-    """Aggregate exact OCR accuracy where independently transcribed truth exists."""
+def summarize_accuracy(results: Iterable[dict[str, Any]], concern: str) -> dict[str, int | float]:
+    """Aggregate one independently reviewed OCR concern."""
 
-    measured = [result["accuracy"] for result in results if result.get("status") == "ok" and "accuracy" in result]
-    cells = sum(int(item["cells"]) for item in measured)
+    key = f"{concern}_accuracy"
+    measured = [result[key] for result in results if result.get("status") == "ok" and key in result]
+    samples = sum(int(item["samples"]) for item in measured)
     correct = sum(int(item["correct"]) for item in measured)
     incorrect = sum(int(item["incorrect"]) for item in measured)
-    return {
+    summary: dict[str, int | float] = {
         "puzzles": len(measured),
-        "cells": cells,
+        "samples": samples,
         "correct": correct,
         "incorrect": incorrect,
-        "accuracy_percent": round(100.0 * correct / cells, 3) if cells else 0.0,
-        "trusted_incorrect": sum(int(item["trusted_incorrect"]) for item in measured),
+        "accuracy_percent": round(100.0 * correct / samples, 3) if samples else 0.0,
+    }
+    if concern == "number":
+        summary["trusted_incorrect"] = sum(int(item["trusted_incorrect"]) for item in measured)
+    if concern == "clue":
+        summary["false_positives"] = sum(int(item["false_positives"]) for item in measured)
+    return summary
+
+
+def benchmark_solutions(
+    entries: Iterable[CorpusEntry],
+    results: dict[int, dict[str, Any]],
+) -> dict[str, Any]:
+    """Solve reviewed OCR grids and compare only against confirmed publisher mappings."""
+
+    outcomes = []
+    lexicon = english_lexicon()
+    for entry in entries:
+        result = results.get(entry.puzzle_id)
+        if result is None or result.get("status") != "ok" or entry.truth is None:
+            continue
+        truth = _truth_document(entry.truth)
+        grid = [list(row) for row in result["grid"]]
+        reviewed_grid = _truth_grid(truth, entry.truth)
+        if reviewed_grid:
+            grid = [list(row) for row in reviewed_grid]
+        for (row, column), expected in _truth_number_defects(truth, entry.truth).items():
+            grid[row - 1][column - 1] = expected
+        if any(value not in {BLOCK, "."} and not isinstance(value, int) for row in grid for value in row):
+            outcomes.append({"puzzle_id": entry.puzzle_id, "status": "unresolved-ocr"})
+            continue
+        normalized = tuple(tuple(None if value in {BLOCK, "."} else int(value) for value in row) for row in grid)
+        puzzle = CodewordPuzzle(
+            grid=normalized,
+            clues=_truth_clues(truth, entry.truth),
+            slots=extract_slots(normalized),
+        )
+        started = time.perf_counter()
+        solved = solve(puzzle, lexicon)
+        elapsed = time.perf_counter() - started
+        if not solved.solutions:
+            status = "contradiction" if solved.exhausted else "search-limited"
+            mapping = solved.best_mapping
+        elif solved.exhausted and len(solved.solutions) == 1:
+            status = "certified"
+            mapping = solved.solutions[0].mapping
+        elif solved.exhausted:
+            status = "multiple"
+            mapping = solved.solutions[0].mapping
+        else:
+            status = "candidate"
+            mapping = solved.solutions[0].mapping
+        solution_truth = _truth_solution(truth, entry.truth)
+        mismatches = [
+            {"symbol": symbol, "observed": mapping.get(symbol), "expected": letter}
+            for symbol, letter in sorted(solution_truth.items())
+            if mapping.get(symbol) != letter
+        ]
+        outcomes.append(
+            {
+                "puzzle_id": entry.puzzle_id,
+                "status": status,
+                "seconds": round(elapsed, 3),
+                "nodes": solved.nodes,
+                "mapped_symbols": len(mapping),
+                "publisher_scored": bool(solution_truth),
+                "publisher_match": bool(solution_truth) and not mismatches,
+                "publisher_mismatches": mismatches,
+            }
+        )
+    return {
+        "puzzles": len(outcomes),
+        "certified": sum(item["status"] == "certified" for item in outcomes),
+        "candidate": sum(item["status"] == "candidate" for item in outcomes),
+        "multiple": sum(item["status"] == "multiple" for item in outcomes),
+        "unsolved": [item["puzzle_id"] for item in outcomes if item["status"] not in {"certified", "candidate"}],
+        "publisher_scored": sum(bool(item.get("publisher_scored")) for item in outcomes),
+        "publisher_mismatches": [
+            item["puzzle_id"] for item in outcomes if item.get("publisher_scored") and not item["publisher_match"]
+        ],
+        "outcomes": outcomes,
     }
 
 
@@ -334,6 +535,14 @@ def resource_usage() -> dict[str, float]:
 @click.option("--workers", type=click.IntRange(1, 4), default=1, show_default=True)
 @click.option("--review-threshold", type=click.FloatRange(0.0, 100.0), default=70.0, show_default=True)
 @click.option("--resume/--no-resume", default=True, show_default=True)
+@click.option("--audit/--no-audit", default=False, help="Write separate number and clue OCR review reports.")
+@click.option("--solve/--no-solve", "solve_corpus", default=False, help="Solve reviewed grids and inventory outcomes.")
+@click.option(
+    "--audit-dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=Path("build/corpus-audit"),
+    show_default=True,
+)
 def main(
     manifest: Path,
     output: Path,
@@ -342,8 +551,11 @@ def main(
     workers: int,
     review_threshold: float,
     resume: bool,
+    audit: bool,
+    solve_corpus: bool,
+    audit_dir: Path,
 ) -> None:
-    """Benchmark photograph recognition without running the solver."""
+    """Benchmark photograph recognition, optionally inventorying solve outcomes."""
 
     try:
         entries = load_manifest(manifest.resolve())
@@ -375,14 +587,34 @@ def main(
                 status = "ok" if result["status"] == "ok" else result["error"]
                 click.echo(f"puzzle {result['puzzle_id']}: {status}")
 
-    latest = {int(result["puzzle_id"]): result for result in [*prior, *new_results]}
+    entry_ids = {entry.puzzle_id for entry in entries}
+    latest = {
+        int(result["puzzle_id"]): result for result in [*prior, *new_results] if int(result["puzzle_id"]) in entry_ids
+    }
+    for entry in entries:
+        if entry.truth is not None and entry.puzzle_id in latest and latest[entry.puzzle_id].get("status") == "ok":
+            latest[entry.puzzle_id] = apply_truth(latest[entry.puzzle_id], entry.truth)
     summary: dict[str, Any] = {
         **summarize(latest.values()),
-        "accuracy": summarize_accuracy(latest.values()),
+        "number_ocr": summarize_accuracy(latest.values(), "number"),
+        "clue_ocr": summarize_accuracy(latest.values(), "clue"),
         "classification": summarize_classification(latest.values()),
         "resources": resource_usage(),
     }
+    if solve_corpus:
+        summary["solutions"] = benchmark_solutions(entries, latest)
     click.echo(json.dumps(summary, indent=2))
+    if audit:
+        target = write_audit_reports(
+            entries=entries,
+            results=latest,
+            work_root=work_root,
+            destination=audit_dir,
+            review_threshold=review_threshold,
+            number_summary=summary["number_ocr"],
+            clue_summary=summary["clue_ocr"],
+        )
+        click.echo(f"Corpus audit: {target}")
 
 
 if __name__ == "__main__":

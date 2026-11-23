@@ -7,8 +7,8 @@
     <meta name="description" content="Turn a photograph of a Code Break puzzle into a solved page.">
     <title>Code Break Solver</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="/static/app.css?v=20261118-7">
-    <script src="/static/app.js?v=20261118-2" defer></script>
+    <link rel="stylesheet" href="/static/app.css?v=20261122-1">
+    <script src="/static/app.js?v=20261123-1" defer></script>
   </head>
   <body data-mode="idle">
     <header class="site-header">
@@ -52,7 +52,9 @@
 
           <div class="game-play-area">
             <div class="blank-board-wrap">
+              <div class="alphabet-spacer" aria-hidden="true"></div>
               <div class="blank-puzzle-shell" id="blank-puzzle-shell" aria-hidden="true"></div>
+              <div class="alphabet-spacer" aria-hidden="true"></div>
             </div>
 
             <aside class="game-side idle-side" aria-label="Choose a puzzle source">
@@ -70,6 +72,42 @@
           </div>
         </section>
 
+        <section class="play-workspace" id="play-workspace" aria-labelledby="play-title" hidden>
+          <div class="game-heading play-heading">
+            <div>
+              <p class="eyebrow">Choose a puzzle</p>
+              <h2 id="play-title">What shall we play?</h2>
+            </div>
+            <p class="game-status">British English · Three clues</p>
+          </div>
+
+          <div class="game-play-area">
+            <div class="blank-board-wrap">
+              <div class="alphabet-spacer" aria-hidden="true"></div>
+              <div class="blank-puzzle-shell" id="play-puzzle-shell" aria-hidden="true"></div>
+              <div class="alphabet-spacer" aria-hidden="true"></div>
+              <div class="alphabet-spacer" aria-hidden="true"></div>
+            </div>
+
+            <aside class="game-side play-side" aria-label="Choose a puzzle">
+              <div class="reference-heading">
+                <div>
+                  <p class="eyebrow">Puzzle library</p>
+                  <h2>Pick a number—or let us choose.</h2>
+                </div>
+                <p>“You Pick” chooses a puzzle at random from the current collection.</p>
+              </div>
+              <label class="puzzle-picker">
+                <span>Puzzle number</span>
+                <select id="puzzle-select">
+                  <option value="random">You Pick</option>
+                </select>
+              </label>
+              <button class="primary-button" id="start-puzzle" type="button">Play puzzle</button>
+            </aside>
+          </div>
+        </section>
+
         <section class="creator-workspace" id="creator-workspace" aria-labelledby="creator-title" hidden>
           <div class="game-heading creator-heading">
             <div>
@@ -81,7 +119,9 @@
 
           <div class="game-play-area creator-play-area">
             <div class="creator-board-wrap">
+              <div class="alphabet-spacer" aria-hidden="true"></div>
               <div class="blank-puzzle-shell creator-puzzle-shell" id="creator-puzzle-shell" aria-hidden="true"></div>
+              <div class="alphabet-spacer" aria-hidden="true"></div>
               <div class="creator-progress" id="creator-progress" hidden aria-live="polite">
                 <div class="progress-track"><span></span></div>
                 <p class="eyebrow" id="creator-progress-kicker">Building your puzzle</p>
@@ -141,13 +181,18 @@
 
         <div class="game-play-area">
           <div class="puzzle-board-wrap" id="puzzle-board-wrap">
-            <div class="puzzle-shell" id="puzzle-shell" aria-label="Code Break puzzle grid"></div>
-            <div class="solver-progress" id="solver-progress" hidden aria-live="polite">
-              <div class="progress-track"><span></span></div>
-              <p class="eyebrow">Working from your entries</p>
-              <h3 id="solver-progress-title">Solving the puzzle…</h3>
-              <p id="solver-progress-detail">Checking the crossing words.</p>
+            <div class="alphabet-rail alphabet-rail-top" id="alphabet-top" aria-label="Letters A through K"></div>
+            <div class="puzzle-board-stage">
+              <div class="puzzle-shell" id="puzzle-shell" aria-label="Code Break puzzle grid"></div>
+              <div class="solver-progress" id="solver-progress" hidden aria-live="polite">
+                <div class="progress-track"><span></span></div>
+                <p class="eyebrow">Working from your entries</p>
+                <h3 id="solver-progress-title">Solving the puzzle…</h3>
+                <p id="solver-progress-detail">Checking the crossing words.</p>
+              </div>
             </div>
+            <div class="alphabet-rail alphabet-rail-bottom" id="alphabet-bottom" aria-label="Letters L through Z"></div>
+            <div class="alphabet-rail vowel-rail" id="vowel-rail" aria-label="Vowels A, E, I, O, U"></div>
           </div>
 
           <aside class="game-side" aria-label="Puzzle hints and actions">
@@ -163,6 +208,7 @@
             </div>
 
             <div class="game-actions">
+              <button class="secondary-button" id="check-game" type="button">Check entries</button>
               <button class="primary-button" id="reveal-all" type="button">Reveal entire puzzle</button>
               <button class="secondary-button" id="reset-game" type="button">Reset puzzle</button>
               <div class="game-links">

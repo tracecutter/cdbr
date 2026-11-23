@@ -1,0 +1,10 @@
+format_version = 1
+accept_observed_numbers = true
+source = "Human review of puzzle 47 reference grid."
+review_status = "human-reviewed"
+
+[clues]
+"7" = "B"
+"14" = "X"
+"24" = "U"
+

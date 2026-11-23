@@ -1,0 +1,10 @@
+format_version = 1
+accept_observed_numbers = true
+source = "Human review of puzzle 36 reference grid."
+review_status = "human-reviewed"
+
+[clues]
+"1" = "M"
+"2" = "A"
+"3" = "X"
+

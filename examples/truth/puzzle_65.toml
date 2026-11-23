@@ -1,0 +1,13 @@
+format_version = 1
+accept_observed_numbers = true
+source = "Human review of puzzle 65 reference grid."
+review_status = "human-reviewed"
+
+[number_defects]
+"r03c04" = 17
+
+[clues]
+"6" = "F"
+"11" = "N"
+"18" = "Z"
+

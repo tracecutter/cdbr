@@ -24,6 +24,11 @@ MIN_OCR_CONFIDENCE = 80.0
 MIN_TEMPLATE_MARGIN = 0.15
 MIN_WHOLE_NUMBER_MARGIN = 0.20
 LOCAL_BACKGROUND_KERNEL = 31
+# Across 520 human-reviewed reference cells, obvious blanks contained at most
+# 387 foreground pixels while the faintest real clue contained 428.  Keep the
+# shelf slightly inside that measured gap so dirt can remain an automatic blank
+# without allowing a missed letter to pass silently.
+MIN_CLUE_REVIEW_INK_PIXELS = 400
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -249,7 +254,11 @@ def _clean_number(cell: np.ndarray, *, suppress_illumination: bool = False) -> n
     cleaned = np.full_like(binary, 255)
     for index in range(1, count):
         x, y, width, height, area = statistics[index]
-        if 5 <= width <= 25 and 15 <= height <= 42 and 50 <= area <= 500:
+        # Perspective normalization and thresholding often join the two digits
+        # of values such as 20 and 26.  Preserve that complete number for the
+        # whole-number and Tesseract fallbacks; the height limit still rejects
+        # the surrounding grid lines.
+        if 5 <= width <= 48 and 15 <= height <= 42 and 50 <= area <= 800:
             cleaned[labels == index] = 0
     cleaned = cv2.copyMakeBorder(cleaned, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
     return cv2.resize(cleaned, None, fx=5, fy=5, interpolation=cv2.INTER_NEAREST)
@@ -587,6 +596,14 @@ def _select_clue(attempts: list[str]) -> str | None:
     appearances = Counter(character for text in attempts for character in set(text) if character.isalpha())
     winner, votes = appearances.most_common(1)[0]
     return winner if votes > 1 else candidates[0]
+
+
+def clue_ink_pixels(cell: np.ndarray) -> int:
+    """Measure letter-like foreground away from reference-cell borders and numbers."""
+
+    region = cell[30:92, 8:92]
+    gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
+    return int(np.count_nonzero(_foreground_binary(gray)))
 
 
 def extract_clues(

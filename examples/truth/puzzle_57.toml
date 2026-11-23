@@ -1,0 +1,10 @@
+format_version = 1
+accept_observed_numbers = true
+source = "Human review of puzzle 57 reference grid."
+review_status = "human-reviewed"
+
+[clues]
+"5" = "F"
+"6" = "Q"
+"7" = "P"
+

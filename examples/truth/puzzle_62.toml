@@ -1,0 +1,10 @@
+format_version = 1
+accept_observed_numbers = true
+source = "Human review of puzzle 62 reference grid."
+review_status = "human-reviewed"
+
+[clues]
+"2" = "U"
+"19" = "Q"
+"21" = "X"
+

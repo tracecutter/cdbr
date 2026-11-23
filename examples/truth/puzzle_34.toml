@@ -1,0 +1,14 @@
+format_version = 1
+accept_observed_numbers = true
+source = "Human review of puzzle 34 reference grid."
+review_status = "human-reviewed"
+
+[number_defects]
+"r01c05" = 26
+"r06c01" = 26
+
+[clues]
+"4" = "S"
+"14" = "M"
+"21" = "G"
+

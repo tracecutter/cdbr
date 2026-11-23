@@ -1,0 +1,18 @@
+format_version = 1
+accept_observed_numbers = true
+source = "Human review of puzzle 48 reference grid."
+review_status = "human-reviewed"
+
+[number_defects]
+"r02c03" = 20
+"r07c06" = 20
+"r11c04" = 20
+"r13c02" = 20
+"r13c07" = 20
+"r13c08" = 20
+
+[clues]
+"4" = "U"
+"9" = "P"
+"25" = "L"
+

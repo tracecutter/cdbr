@@ -7,7 +7,7 @@
 		dist release \
 		pub-gh pub-docs pub-pypi pub-brew pub-container \
 		preview \
-		benchmark \
+		benchmark benchmark-audit \
 		container-build container-check container-run container-push \
 		status corpus
 
@@ -63,6 +63,7 @@ CONTAINER_RELEASE_TAG	?= v$(VERSION)
 # Optional project benchmark. Projects opt in with
 # [tool.npkg.benchmark] command = "..."; arguments remain caller-controlled.
 BENCHMARK_COMMAND	:= $(shell pfig get key tool.npkg.benchmark.command 2>/dev/null)
+BENCHMARK_AUDIT_COMMAND := $(shell pfig get key tool.npkg.benchmark.audit-command 2>/dev/null)
 BENCHMARK_ARGS		?=
 
 INIT_STAMP			= .init_stamp
@@ -147,6 +148,8 @@ help:
 	@echo "pub-pypi - publish release on PyPi"
 	@echo "pub-brew - publish release on GitHub as homebrew tap"
 	@echo "preview - run the configured web daemon locally without a container"
+	@echo "benchmark - run the configured project benchmark"
+	@echo "benchmark-audit - build confidence-first number and clue OCR reports"
 	@echo "container-build - build the configured web container locally"
 	@echo "container-check - build and health-check the web container"
 	@echo "container-run - run the local web container in the foreground"
@@ -477,6 +480,16 @@ benchmark:
 	fi
 	@echo "🔬 Running benchmark for $(PROJECT_NAME)…"
 	$(BENCHMARK_COMMAND) $(BENCHMARK_ARGS)
+
+benchmark-audit:
+	$(call ensure-venv-active)
+	$(call ensure-correct-venv)
+	@if [ -z "$(BENCHMARK_AUDIT_COMMAND)" ]; then \
+		echo "❌ No benchmark audit is configured in [tool.npkg.benchmark]."; \
+		exit 1; \
+	fi
+	@echo "🔎 Building benchmark audit for $(PROJECT_NAME)…"
+	$(BENCHMARK_AUDIT_COMMAND) $(BENCHMARK_ARGS)
 
 # ------------------------------------------------------------
 # 🐳 Optional web daemon / container workflow

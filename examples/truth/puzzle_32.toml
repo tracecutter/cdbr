@@ -1,0 +1,14 @@
+format_version = 1
+accept_observed_numbers = true
+source = "Human review of puzzle 32 reference grid."
+review_status = "human-reviewed"
+
+[number_defects]
+"r05c01" = 20
+"r05c03" = 20
+
+[clues]
+"2" = "H"
+"4" = "Y"
+"8" = "C"
+

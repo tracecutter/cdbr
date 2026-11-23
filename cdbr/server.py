@@ -6,6 +6,7 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from dataclasses import field
+from dataclasses import replace
 import os
 from pathlib import Path
 import secrets
@@ -32,7 +33,7 @@ from cdbr.core.photo import PhotoFormat, detect_photo_format
 from cdbr.core.pipeline import solve_observation, solve_photo
 from cdbr.core.puzzle import BLOCK, PuzzleObservation
 from cdbr.core.presentation import write_solution_photo
-from cdbr.core.recognition import normalize_photo, recognize_photo
+from cdbr.core.recognition import MIN_CLUE_REVIEW_INK_PIXELS, clue_ink_pixels, normalize_photo, recognize_photo
 
 DEFAULT_MAX_UPLOAD_MIB = 25
 CHUNK_SIZE = 1024 * 1024
@@ -50,6 +51,7 @@ class PuzzleSession:
     solution: dict[int, str] | None = None
     observation: PuzzleObservation | None = None
     solution_status: str = "not_requested"
+    solve_entries: tuple[tuple[int, str], ...] = ()
     solve_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def public(self) -> dict[str, object]:
@@ -66,6 +68,10 @@ class CreatePuzzleRequest(BaseModel):
     minutes: float = Field(default=5, ge=0.25, le=30)
 
 
+class SolveRequest(BaseModel):
+    entries: dict[int, str] = Field(default_factory=dict, max_length=26)
+
+
 class CellCorrection(BaseModel):
     row: int = Field(ge=1, le=15)
     column: int = Field(ge=1, le=15)
@@ -74,7 +80,7 @@ class CellCorrection(BaseModel):
 
 class ClueCorrection(BaseModel):
     symbol: int = Field(ge=1, le=26)
-    letter: str = Field(pattern=r"^[A-Za-z]$")
+    letter: str = Field(pattern=r"^[A-Za-z]?$", description="A confirmed letter, or blank for an empty reference cell")
 
 
 class ScanCorrectionRequest(BaseModel):
@@ -87,6 +93,7 @@ class ScanJob:
     job_id: str
     work_dir: Path
     observation: PuzzleObservation
+    review_clues: tuple[tuple[int, int], ...]
 
 
 @dataclass(kw_only=True)
@@ -200,22 +207,48 @@ def _session(session_id: str) -> PuzzleSession:
         raise HTTPException(status_code=404, detail="Puzzle session not found or expired") from None
 
 
-def _solve_session(session: PuzzleSession) -> None:
+def _solve_entries(session: PuzzleSession, entries: dict[int, str]) -> tuple[tuple[int, str], ...]:
+    normalized = tuple(sorted((symbol, letter.upper()) for symbol, letter in entries.items()))
+    if any(not 1 <= symbol <= 26 or len(letter) != 1 or not letter.isalpha() for symbol, letter in normalized):
+        raise HTTPException(status_code=422, detail="Solver entries must map symbols 1–26 to single letters.")
+    letters = [letter for _, letter in normalized]
+    if len(letters) != len(set(letters)):
+        raise HTTPException(status_code=422, detail="Each letter may be assigned to only one symbol.")
+    raw_clues = session.puzzle.get("clues", {})
+    if not isinstance(raw_clues, dict):
+        raise HTTPException(status_code=500, detail="Puzzle clues are invalid.")
+    original = {int(symbol): str(letter).upper() for symbol, letter in raw_clues.items()}
+    if any(symbol in original and original[symbol] != letter for symbol, letter in normalized):
+        raise HTTPException(status_code=422, detail="Original puzzle clues cannot be changed.")
+    if any(letter in original.values() and original.get(symbol) != letter for symbol, letter in normalized):
+        raise HTTPException(status_code=422, detail="A letter from an original clue cannot be reused.")
+    return normalized
+
+
+def _solve_session(session: PuzzleSession, entries: dict[int, str] | None = None) -> None:
     """Populate a session solution on demand without invalidating play on failure."""
 
-    if session.solution_status != "not_requested":
+    requested = _solve_entries(session, entries or {})
+    if (session.observation is None and session.solution_status == "certified") or (
+        session.solution_status != "not_requested" and requested == session.solve_entries
+    ):
         return
     with session.solve_lock:
-        if session.solution_status != "not_requested":
+        if (session.observation is None and session.solution_status == "certified") or (
+            session.solution_status != "not_requested" and requested == session.solve_entries
+        ):
             return
+        session.solve_entries = requested
         if session.observation is None:
             session.solution = {}
             session.solution_status = "unavailable"
             return
+        clues = {**session.observation.clues, **dict(requested)}
+        observation = replace(session.observation, clues=clues)
         try:
-            solved = solve_observation(session.observation)
+            solved = solve_observation(observation)
         except (CdbrCoreError, ValueError):
-            session.solution = dict(session.observation.clues)
+            session.solution = clues
             session.solution_status = "unavailable"
             return
         session.solution = dict(solved.mapping)
@@ -259,15 +292,20 @@ def _scan_public(job: ScanJob) -> dict[str, object]:
                 "image": f"/api/scan-jobs/{job.job_id}/cells/{item.row}/{item.column}",
             }
         )
-    review_clues = [
-        {
-            "symbol": item.symbol,
-            "proposed": item.reading or None,
-            "confidence": round(item.confidence, 1),
-            "image": f"/api/scan-jobs/{job.job_id}/clues/{item.symbol}",
-        }
-        for item in job.observation.clue_evidence
-    ]
+    clue_evidence = {item.symbol: item for item in job.observation.clue_evidence}
+    review_clues = []
+    review_ink = dict(job.review_clues)
+    for symbol in review_ink:
+        clue_item = clue_evidence.get(symbol)
+        review_clues.append(
+            {
+                "symbol": symbol,
+                "proposed": (clue_item.reading or None) if clue_item is not None else None,
+                "confidence": round(clue_item.confidence, 1) if clue_item is not None else 0.0,
+                "ink_pixels": review_ink[symbol],
+                "image": f"/api/scan-jobs/{job.job_id}/clues/{symbol}",
+            }
+        )
     return {
         "job_id": job.job_id,
         "status": "review" if review or review_clues else "ready",
@@ -280,6 +318,8 @@ def _scan_public(job: ScanJob) -> dict[str, object]:
 
 @app.post("/api/sessions/from-corpus/{puzzle_id}", status_code=201)
 def corpus_session_endpoint(puzzle_id: str) -> dict[str, object]:
+    if puzzle_id == "random":
+        puzzle_id = str(secrets.choice([1, *_runtime_corpus.keys()]))
     puzzle, solution = _playable_puzzle(puzzle_id)
     return _create_session({**puzzle, "provenance": "corpus"}, solution).public()
 
@@ -290,9 +330,9 @@ def session_endpoint(session_id: str) -> dict[str, object]:
 
 
 @app.post("/api/sessions/{session_id}/reveal/{symbol}")
-def session_reveal_endpoint(session_id: str, symbol: int) -> dict[str, str | int]:
+def session_reveal_endpoint(session_id: str, symbol: int, request: SolveRequest | None = None) -> dict[str, str | int]:
     session = _session(session_id)
-    _solve_session(session)
+    _solve_session(session, request.entries if request else None)
     solution = session.solution or {}
     if symbol not in solution:
         raise HTTPException(
@@ -303,13 +343,30 @@ def session_reveal_endpoint(session_id: str, symbol: int) -> dict[str, str | int
 
 
 @app.post("/api/sessions/{session_id}/reveal")
-def session_reveal_all_endpoint(session_id: str) -> dict[str, object]:
+def session_reveal_all_endpoint(session_id: str, request: SolveRequest | None = None) -> dict[str, object]:
     session = _session(session_id)
-    _solve_session(session)
+    _solve_session(session, request.entries if request else None)
     return {
         "mapping": session.solution or {},
         "solution_status": session.solution_status,
         "complete": session.solution_status == "certified",
+    }
+
+
+@app.post("/api/sessions/{session_id}/check")
+def session_check_endpoint(session_id: str, request: SolveRequest) -> dict[str, object]:
+    """Check committed player entries without revealing their replacements."""
+
+    session = _session(session_id)
+    entries = _solve_entries(session, request.entries)
+    _solve_session(session)
+    solution = session.solution or {}
+    checked = [symbol for symbol, _ in entries if symbol in solution]
+    incorrect = [symbol for symbol, letter in entries if solution.get(symbol) != letter and symbol in solution]
+    return {
+        "checked_symbols": checked,
+        "incorrect_symbols": incorrect,
+        "solution_status": session.solution_status,
     }
 
 
@@ -492,6 +549,12 @@ def publish_generation_job_endpoint(job_id: str) -> dict[str, object]:
     return _create_session({**puzzle, "provenance": "corpus"}, solution).public()
 
 
+@app.get("/api/puzzles")
+def puzzles_endpoint() -> dict[str, object]:
+    serials = [1, *sorted(_runtime_corpus)]
+    return {"puzzles": [{"serial": serial, "title": f"Puzzle {serial}"} for serial in serials]}
+
+
 @app.get("/api/puzzles/{puzzle_id}")
 def puzzle_endpoint(puzzle_id: str) -> dict[str, object]:
     puzzle, _ = _playable_puzzle(puzzle_id)
@@ -568,8 +631,11 @@ async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, o
             raise ValueError("Unsupported or unrecognised image format")
         observation = recognize_photo(source, work_dir)
         grid_image = cv2.imread(str(work_dir / "grid.png"))
+        reference_grid = cv2.imread(str(work_dir / "reference-grid.png"))
         if grid_image is None:
             raise ValueError("Could not prepare cell review images")
+        if reference_grid is None:
+            raise ValueError("Could not prepare reference-grid review images")
         for item in observation.evidence:
             if item.trusted:
                 continue
@@ -582,11 +648,26 @@ async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, o
                 round(column * cell_width) : round((column + 1) * cell_width),
             ]
             cv2.imwrite(str(work_dir / f"review-{item.row}-{item.column}.jpg"), cell)
+        clue_symbols = {item.symbol for item in observation.clue_evidence}
+        review_clues = []
+        for symbol in range(1, 27):
+            row = 0 if symbol <= 13 else 1
+            column = (symbol - 1) % 13
+            cell = reference_grid[row * 100 : (row + 1) * 100, column * 100 : (column + 1) * 100]
+            ink_pixels = clue_ink_pixels(cell)
+            if symbol in clue_symbols or ink_pixels >= MIN_CLUE_REVIEW_INK_PIXELS:
+                review_clues.append((symbol, ink_pixels))
+                cv2.imwrite(str(work_dir / f"review-clue-{symbol}.jpg"), cell)
     except (CdbrCoreError, ValueError) as exc:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    job = ScanJob(job_id=secrets.token_urlsafe(12), work_dir=work_dir, observation=observation)
+    job = ScanJob(
+        job_id=secrets.token_urlsafe(12),
+        work_dir=work_dir,
+        observation=observation,
+        review_clues=tuple(review_clues),
+    )
     _remember_scan(job)
     return _scan_public(job)
 
@@ -601,7 +682,7 @@ def scan_cell_endpoint(job_id: str, row: int, column: int) -> FileResponse:
 
 @app.get("/api/scan-jobs/{job_id}/clues/{symbol}", response_class=FileResponse)
 def scan_clue_endpoint(job_id: str, symbol: int) -> FileResponse:
-    source = _scan_job(job_id).work_dir / f"clue-source-{symbol}.jpg"
+    source = _scan_job(job_id).work_dir / f"review-clue-{symbol}.jpg"
     if not source.is_file():
         raise HTTPException(status_code=404, detail="Reference clue not found")
     return FileResponse(source, media_type="image/jpeg")
@@ -618,16 +699,17 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
     if missing:
         coordinates = ", ".join(f"r{row:02d}c{column:02d}" for row, column in sorted(missing))
         raise HTTPException(status_code=422, detail=f"Confirm every review cell: {coordinates}")
-    required_clues = {item.symbol for item in job.observation.clue_evidence}
-    clue_corrections = {item.symbol: item.letter.upper() for item in request.clues}
-    missing_clues = required_clues - clue_corrections.keys()
+    required_clues = {symbol for symbol, _ in job.review_clues}
+    reviewed_clues = {item.symbol: item.letter.upper() for item in request.clues}
+    missing_clues = required_clues - reviewed_clues.keys()
     if missing_clues:
         symbols = ", ".join(str(symbol) for symbol in sorted(missing_clues))
         raise HTTPException(status_code=422, detail=f"Confirm every reference clue: {symbols}")
-    extra_clues = clue_corrections.keys() - required_clues
+    extra_clues = reviewed_clues.keys() - required_clues
     if extra_clues:
         symbols = ", ".join(str(symbol) for symbol in sorted(extra_clues))
         raise HTTPException(status_code=422, detail=f"Unexpected reference clues: {symbols}")
+    clue_corrections = {symbol: letter for symbol, letter in reviewed_clues.items() if letter}
     if len(set(clue_corrections.values())) != len(clue_corrections):
         raise HTTPException(status_code=422, detail="Reference clues must use different letters")
 

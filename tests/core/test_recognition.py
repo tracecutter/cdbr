@@ -14,6 +14,7 @@ from cdbr.core.recognition import (
     _foreground_binary,
     _relative_margin,
     _select_clue,
+    clue_ink_pixels,
     detect_grid_size,
     recognize_photo,
 )
@@ -41,6 +42,15 @@ def test_foreground_binary_rejects_smooth_shadow() -> None:
     assert np.mean(foreground[35:70, 50:105]) > 20
     assert np.mean(foreground[:, :30]) < 5
     assert np.mean(foreground[:, 130:]) < 5
+
+
+def test_clue_ink_measure_ignores_a_clean_cell_but_keeps_handwriting() -> None:
+    blank = np.full((100, 100, 3), 245, dtype=np.uint8)
+    written = blank.copy()
+    cv2.putText(written, "A", (25, 82), cv2.FONT_HERSHEY_SIMPLEX, 1.8, (20, 20, 20), 5, cv2.LINE_AA)
+
+    assert clue_ink_pixels(blank) < 400
+    assert clue_ink_pixels(written) >= 400
 
 
 def test_coarse_glyph_feature_preserves_six_tail() -> None:

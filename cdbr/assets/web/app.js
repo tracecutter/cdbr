@@ -18,12 +18,16 @@ const errorMessage = document.querySelector('#error-message');
 const gameWorkspace = document.querySelector('#game-workspace');
 const scannerWorkspace = document.querySelector('#scanner-workspace');
 const idleWorkspace = document.querySelector('#idle-workspace');
+const playWorkspace = document.querySelector('#play-workspace');
 const creatorWorkspace = document.querySelector('#creator-workspace');
 const showGameButton = document.querySelector('#show-game');
 const showScannerButton = document.querySelector('#show-scanner');
 const showCreatorButton = document.querySelector('#show-creator');
 const puzzleShell = document.querySelector('#puzzle-shell');
 const puzzleBoardWrap = document.querySelector('#puzzle-board-wrap');
+const alphabetTop = document.querySelector('#alphabet-top');
+const alphabetBottom = document.querySelector('#alphabet-bottom');
+const vowelRail = document.querySelector('#vowel-rail');
 const solverProgress = document.querySelector('#solver-progress');
 const solverProgressTitle = document.querySelector('#solver-progress-title');
 const solverProgressDetail = document.querySelector('#solver-progress-detail');
@@ -42,6 +46,7 @@ const reviewClueGroup = document.querySelector('#review-clue-group');
 const reviewGuidance = document.querySelector('#review-guidance');
 const finishReview = document.querySelector('#finish-review');
 const blankPuzzleShell = document.querySelector('#blank-puzzle-shell');
+const playPuzzleShell = document.querySelector('#play-puzzle-shell');
 const creatorPuzzleShell = document.querySelector('#creator-puzzle-shell');
 const blankReferenceGrid = document.querySelector('#blank-reference-grid');
 const creatorForm = document.querySelector('#creator-form');
@@ -51,6 +56,9 @@ const creatorProgressTitle = document.querySelector('#creator-progress-title');
 const creatorProgressDetail = document.querySelector('#creator-progress-detail');
 const publishCreated = document.querySelector('#publish-created');
 const cancelCreated = document.querySelector('#cancel-created');
+const puzzleSelect = document.querySelector('#puzzle-select');
+const startPuzzleButton = document.querySelector('#start-puzzle');
+const checkGameButton = document.querySelector('#check-game');
 
 let previewUrl;
 let resultUrl;
@@ -67,6 +75,7 @@ let generationPoll;
 let revealed = new Map();
 let entrySources = new Map();
 let originalHints = new Set();
+let incorrectSymbols = new Set();
 
 const workingStages = [
   'Finding the puzzle grid…',
@@ -88,6 +97,7 @@ function beginSolving(title, detail) {
   solverProgress.hidden = false;
   puzzleBoardWrap.setAttribute('aria-busy', 'true');
   document.querySelector('#reveal-all').disabled = true;
+  checkGameButton.disabled = true;
   let stage = 0;
   window.clearInterval(solverStatusTimer);
   solverStatusTimer = window.setInterval(() => {
@@ -101,16 +111,18 @@ function endSolving() {
   solverProgress.hidden = true;
   puzzleBoardWrap.removeAttribute('aria-busy');
   document.querySelector('#reveal-all').disabled = false;
+  checkGameButton.disabled = false;
   solving = false;
 }
 
 function showMode(mode) {
   document.body.dataset.mode = mode;
   idleWorkspace.hidden = mode !== 'idle';
+  playWorkspace.hidden = mode !== 'play';
   gameWorkspace.hidden = mode !== 'game';
   scannerWorkspace.hidden = mode !== 'scanner';
   creatorWorkspace.hidden = mode !== 'creator';
-  showGameButton.classList.toggle('is-active', mode === 'game');
+  showGameButton.classList.toggle('is-active', mode === 'play' || mode === 'game');
   showScannerButton.classList.toggle('is-active', mode === 'scanner');
   showCreatorButton.classList.toggle('is-active', mode === 'creator');
 }
@@ -118,6 +130,7 @@ function showMode(mode) {
 function renderBlankDesk() {
   for (let index = 0; index < 225; index += 1) {
     blankPuzzleShell.append(document.createElement('span'));
+    playPuzzleShell.append(document.createElement('span'));
     creatorPuzzleShell.append(document.createElement('span'));
   }
   for (let symbol = 1; symbol <= 26; symbol += 1) {
@@ -127,9 +140,23 @@ function renderBlankDesk() {
   }
 }
 
-async function startCorpusGame() {
+async function showPuzzlePicker() {
+  showMode('play');
+  const response = await fetch('/api/puzzles');
+  if (!response.ok) return;
+  const catalog = await response.json();
+  puzzleSelect.querySelectorAll('option:not([value="random"])').forEach((option) => option.remove());
+  catalog.puzzles.forEach((puzzle) => {
+    const option = document.createElement('option');
+    option.value = puzzle.serial;
+    option.textContent = puzzle.title;
+    puzzleSelect.append(option);
+  });
+}
+
+async function startCorpusGame(puzzleId = puzzleSelect.value) {
   game = undefined;
-  if (await loadGame()) showMode('game');
+  if (await loadGame(puzzleId)) showMode('game');
 }
 
 function letterFor(symbol) {
@@ -138,6 +165,63 @@ function letterFor(symbol) {
 
 function sourceFor(symbol) {
   return selectedSymbol === symbol && draftLetter ? 'preview' : entrySources.get(symbol);
+}
+
+function usedLetters() {
+  const letters = new Set(revealed.values());
+  if (draftLetter) letters.add(draftLetter);
+  return letters;
+}
+
+function renderAlphabetRail(container, letters) {
+  const used = usedLetters();
+  container.replaceChildren();
+  [...letters].forEach((letter) => {
+    const item = document.createElement('span');
+    item.textContent = letter;
+    item.className = 'alphabet-letter';
+    if (used.has(letter)) item.classList.add('is-used');
+    item.setAttribute('aria-label', `${letter}, ${used.has(letter) ? 'used' : 'available'}`);
+    container.append(item);
+  });
+}
+
+function renderAlphabet() {
+  renderAlphabetRail(alphabetTop, 'ABCDEFGHIJK');
+  renderAlphabetRail(alphabetBottom, 'LMNOPQRSTUVWXYZ');
+  vowelRail.replaceChildren(document.createElement('span'));
+  [...'AEIOU'].forEach((letter) => {
+    const item = document.createElement('span');
+    item.textContent = letter;
+    item.className = 'alphabet-letter';
+    if (usedLetters().has(letter)) item.classList.add('is-used');
+    item.setAttribute('aria-label', `${letter}, ${usedLetters().has(letter) ? 'used' : 'available'}`);
+    vowelRail.append(item);
+  });
+  vowelRail.append(document.createElement('span'));
+}
+
+function playerEntries() {
+  return Object.fromEntries(
+    [...entrySources.entries()]
+      .filter(([, source]) => source === 'player')
+      .map(([symbol]) => [symbol, revealed.get(symbol)]),
+  );
+}
+
+function solveRequest() {
+  return {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries: playerEntries() }),
+  };
+}
+
+function symbolUsing(letter, exceptSymbol) {
+  for (const [symbol, value] of revealed.entries()) {
+    if (symbol !== exceptSymbol && value === letter) return symbol;
+  }
+  return undefined;
 }
 
 function decorateEntry(cell, symbol) {
@@ -149,6 +233,7 @@ function decorateEntry(cell, symbol) {
     cell.append(glyph);
     cell.classList.add('is-filled', `is-${source}-entry`);
   }
+  if (incorrectSymbols.has(symbol)) cell.classList.add('is-incorrect');
   if (selectedSymbol === symbol) cell.classList.add('is-selected');
 }
 
@@ -157,6 +242,7 @@ function commitSelection() {
   if (draftLetter) {
     revealed.set(selectedSymbol, draftLetter);
     entrySources.set(selectedSymbol, 'player');
+    incorrectSymbols.delete(selectedSymbol);
   }
   selectedSymbol = undefined;
   draftLetter = undefined;
@@ -216,6 +302,7 @@ function renderGame() {
   const used = new Set(game.used_symbols);
   const known = [...revealed.keys()].filter((symbol) => used.has(symbol)).length;
   gameStatus.textContent = `${known} letter${known === 1 ? '' : 's'} known · ${used.size - known} remaining`;
+  renderAlphabet();
 }
 
 function renderReference() {
@@ -264,7 +351,7 @@ async function referenceClick(symbol) {
   beginSolving('Solving the puzzle…', `Finding a reliable hint for ${symbol}.`);
   let response;
   try {
-    response = await fetch(`/api/sessions/${game.session_id}/reveal/${symbol}`, { method: 'POST' });
+    response = await fetch(`/api/sessions/${game.session_id}/reveal/${symbol}`, solveRequest());
   } catch (_) {
     endSolving();
     selectedSymbol = undefined;
@@ -284,6 +371,7 @@ async function referenceClick(symbol) {
   const hint = await response.json();
   revealed.set(symbol, hint.letter);
   entrySources.set(symbol, 'solver');
+  incorrectSymbols.delete(symbol);
   selectedSymbol = undefined;
   draftLetter = undefined;
   gameGuidance.textContent = `${symbol}=${hint.letter} revealed and written throughout the puzzle.`;
@@ -296,6 +384,7 @@ function installGame(prepared) {
   gameTitle.textContent = game.title;
   revealed = new Map(Object.entries(game.clues).map(([symbol, letter]) => [Number(symbol), letter]));
   originalHints = new Set(revealed.keys());
+  incorrectSymbols = new Set();
   entrySources = new Map([...revealed.keys()].map((symbol) => [symbol, 'original']));
   selectedSymbol = undefined;
   draftLetter = undefined;
@@ -304,10 +393,10 @@ function installGame(prepared) {
   renderReference();
 }
 
-async function loadGame() {
+async function loadGame(puzzleId) {
   const response = game?.session_id
     ? await fetch(`/api/sessions/${game.session_id}`)
-    : await fetch('/api/sessions/from-corpus/1', { method: 'POST' });
+    : await fetch(`/api/sessions/from-corpus/${puzzleId ?? '1'}`, { method: 'POST' });
   if (!response.ok) {
     gameStatus.textContent = 'Puzzle unavailable';
     return false;
@@ -316,7 +405,8 @@ async function loadGame() {
   return true;
 }
 
-showGameButton.addEventListener('click', startCorpusGame);
+showGameButton.addEventListener('click', showPuzzlePicker);
+startPuzzleButton.addEventListener('click', () => startCorpusGame());
 showScannerButton.addEventListener('click', () => showMode('scanner'));
 showCreatorButton.addEventListener('click', () => showMode('creator'));
 document.querySelector('#scan-from-game').addEventListener('click', () => showMode('scanner'));
@@ -329,7 +419,13 @@ document.addEventListener('keydown', (event) => {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
   if (/^[a-z]$/i.test(event.key)) {
     event.preventDefault();
-    draftLetter = event.key.toUpperCase();
+    const letter = event.key.toUpperCase();
+    const owner = symbolUsing(letter, selectedSymbol);
+    if (owner !== undefined) {
+      gameGuidance.textContent = `${letter} is already assigned to ${owner}. Choose an unused letter.`;
+      return;
+    }
+    draftLetter = letter;
     gameGuidance.textContent = `${selectedSymbol}=${draftLetter} previewed. Enter commits; Escape cancels.`;
     renderGame();
     renderReference();
@@ -354,6 +450,7 @@ document.addEventListener('keydown', (event) => {
     if (entrySources.get(symbol) === 'player') {
       revealed.delete(symbol);
       entrySources.delete(symbol);
+      incorrectSymbols.delete(symbol);
       gameGuidance.textContent = `Your entry for ${symbol} was cleared.`;
     } else {
       gameGuidance.textContent = 'Selection cleared.';
@@ -363,12 +460,53 @@ document.addEventListener('keydown', (event) => {
     renderReference();
   }
 });
+checkGameButton.addEventListener('click', async () => {
+  if (!game || solving) return;
+  commitSelection();
+  const entries = playerEntries();
+  if (Object.keys(entries).length === 0) {
+    incorrectSymbols.clear();
+    gameGuidance.textContent = 'Enter at least one letter before checking.';
+    renderGame();
+    renderReference();
+    return;
+  }
+  beginSolving('Checking your entries…', 'Comparing your letters without revealing the answers.');
+  let response;
+  try {
+    response = await fetch(`/api/sessions/${game.session_id}/check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries }),
+    });
+  } catch (_) {
+    endSolving();
+    gameGuidance.textContent = 'I could not check the puzzle. Your entries are untouched.';
+    return;
+  }
+  endSolving();
+  if (!response.ok) {
+    gameGuidance.textContent = 'I could not obtain a reliable answer for checking yet. Keep playing.';
+    return;
+  }
+  const result = await response.json();
+  incorrectSymbols = new Set(result.incorrect_symbols);
+  if (result.checked_symbols.length === 0) {
+    gameGuidance.textContent = 'No entries could be checked reliably yet. Keep playing.';
+  } else if (incorrectSymbols.size === 0) {
+    gameGuidance.textContent = 'No mistakes found in the entries I could check.';
+  } else {
+    gameGuidance.textContent = `${incorrectSymbols.size} incorrect letter${incorrectSymbols.size === 1 ? '' : 's'} highlighted.`;
+  }
+  renderGame();
+  renderReference();
+});
 document.querySelector('#reveal-all').addEventListener('click', async () => {
   if (!game || solving || !window.confirm('Reveal the complete puzzle?')) return;
   beginSolving('Solving the puzzle…', 'Preparing the best available solution.');
   let response;
   try {
-    response = await fetch(`/api/sessions/${game.session_id}/reveal`, { method: 'POST' });
+    response = await fetch(`/api/sessions/${game.session_id}/reveal`, solveRequest());
   } catch (_) {
     endSolving();
     gameGuidance.textContent = 'I could not reach the solver. Your entries are untouched, so you can keep playing.';
@@ -387,6 +525,7 @@ document.querySelector('#reveal-all').addEventListener('click', async () => {
       entrySources.set(numericSymbol, 'solver');
     }
   });
+  incorrectSymbols.clear();
   selectedSymbol = undefined;
   draftLetter = undefined;
   if (data.solution_status === 'certified') {
@@ -640,13 +779,12 @@ function showReview(prepared) {
     coordinate.textContent = `Reference ${item.symbol}`;
     const confidence = document.createElement('small');
     confidence.textContent = item.proposed === null
-      ? 'No reliable letter reading'
+      ? 'Scanner sees a blank cell — confirm or enter a letter'
       : `Scanner suggests ${item.proposed} · ${item.confidence}% agreement`;
     const value = document.createElement('input');
     value.type = 'text';
     value.maxLength = 1;
     value.pattern = '[A-Za-z]';
-    value.required = true;
     value.value = item.proposed ?? '';
     value.dataset.symbol = item.symbol;
     value.autocapitalize = 'characters';
@@ -684,8 +822,8 @@ function showReview(prepared) {
   reviewClueGroup.hidden = prepared.review_clues.length === 0;
   reviewCellGroup.hidden = prepared.review_cells.length === 0;
   reviewGuidance.textContent = prepared.review_cells.length
-    ? `Confirm ${prepared.review_clues.length} reference clue${prepared.review_clues.length === 1 ? '' : 's'} and ${prepared.review_cells.length} uncertain numbered cell${prepared.review_cells.length === 1 ? '' : 's'}.`
-    : `Confirm the ${prepared.review_clues.length} starting reference clue${prepared.review_clues.length === 1 ? '' : 's'} before solving.`;
+    ? `Review ${prepared.review_clues.length} reference candidate${prepared.review_clues.length === 1 ? '' : 's'} and confirm ${prepared.review_cells.length} uncertain numbered cell${prepared.review_cells.length === 1 ? '' : 's'}. Blank reference inputs mean no clue is present.`
+    : `Review ${prepared.review_clues.length} reference candidate${prepared.review_clues.length === 1 ? '' : 's'} before playing. Blank inputs mean no clue is present.`;
   scanActions.hidden = true;
   reviewState.hidden = false;
 }

@@ -5,66 +5,79 @@ description = "Photographed 15x15 Code Break puzzles with published solution gri
 id = 31
 photo = "puzzle_31.jpg"
 solution = "puzzle_31_solution.jpg"
+truth = "truth/puzzle_31.toml"
 
 [[puzzles]]
 id = 32
 photo = "puzzle_32.jpg"
 solution = "puzzle_32_solution.jpg"
+truth = "truth/puzzle_32.toml"
 
 [[puzzles]]
 id = 33
 photo = "puzzle_33.jpg"
 solution = "puzzle_33_solution.jpg"
+truth = "truth/puzzle_33.toml"
 
 [[puzzles]]
 id = 34
 photo = "puzzle_34.jpg"
 solution = "puzzle_34_solution.jpg"
+truth = "truth/puzzle_34.toml"
 
 [[puzzles]]
 id = 35
 photo = "puzzle_35.jpg"
 solution = "puzzle_35_solution.jpg"
+truth = "truth/puzzle_35.toml"
 
 [[puzzles]]
 id = 36
 photo = "puzzle_36.jpg"
 solution = "puzzle_36_solution.jpg"
+truth = "truth/puzzle_36.toml"
 
 [[puzzles]]
 id = 37
 photo = "puzzle_37.jpg"
 solution = "puzzle_37_solution.jpg"
+truth = "truth/puzzle_37.toml"
 
 [[puzzles]]
 id = 38
 photo = "puzzle_38.jpg"
 solution = "puzzle_38_solution.jpg"
+truth = "truth/puzzle_38.toml"
 
 [[puzzles]]
 id = 39
 photo = "puzzle_39.jpg"
 solution = "puzzle_39_solution.jpg"
+truth = "truth/puzzle_39.toml"
 
 [[puzzles]]
 id = 40
 photo = "puzzle_40.jpg"
 solution = "puzzle_40_solution.jpg"
+truth = "truth/puzzle_40.toml"
 
 [[puzzles]]
 id = 41
 photo = "puzzle_41.jpg"
 solution = "puzzle_41_solution.jpg"
+truth = "truth/puzzle_41.toml"
 
 [[puzzles]]
 id = 42
 photo = "puzzle_42.jpg"
 solution = "puzzle_42_solution.jpg"
+truth = "truth/puzzle_42.toml"
 
 [[puzzles]]
 id = 43
 photo = "puzzle_43.jpg"
 solution = "puzzle_43_solution.jpg"
+truth = "truth/puzzle_43.toml"
 
 [[puzzles]]
 id = 44
@@ -76,28 +89,148 @@ truth = "truth/puzzle_44.toml"
 id = 45
 photo = "puzzle_45.jpg"
 solution = "puzzle_45_solution.jpg"
+truth = "truth/puzzle_45.toml"
 
 [[puzzles]]
 id = 46
 photo = "puzzle_46.jpg"
 solution = "puzzle_46_solution.jpg"
+truth = "truth/puzzle_46.toml"
 
 [[puzzles]]
 id = 47
 photo = "puzzle_47.jpg"
 solution = "puzzle_47_solution.jpg"
+truth = "truth/puzzle_47.toml"
 
 [[puzzles]]
 id = 48
 photo = "puzzle_48.jpg"
 solution = "puzzle_48_solution.jpg"
+truth = "truth/puzzle_48.toml"
 
 [[puzzles]]
 id = 49
 photo = "puzzle_49.jpg"
 solution = "puzzle_49_solution.jpg"
+truth = "truth/puzzle_49.toml"
 
 [[puzzles]]
 id = 50
 photo = "puzzle_50.jpg"
 solution = "puzzle_50_solution.jpg"
+truth = "truth/puzzle_50.toml"
+
+[[puzzles]]
+id = 52
+photo = "puzzle_52.jpg"
+solution = "puzzle_52_solution.jpg"
+truth = "truth/puzzle_52.toml"
+
+[[puzzles]]
+id = 53
+photo = "puzzle_53.jpg"
+solution = "puzzle_53_solution.jpg"
+truth = "truth/puzzle_53.toml"
+
+[[puzzles]]
+id = 54
+photo = "puzzle_54.jpg"
+solution = "puzzle_54_solution.jpg"
+truth = "truth/puzzle_54.toml"
+
+[[puzzles]]
+id = 55
+photo = "puzzle_55.jpg"
+solution = "puzzle_55_solution.jpg"
+truth = "truth/puzzle_55.toml"
+
+[[puzzles]]
+id = 56
+photo = "puzzle_56.jpg"
+solution = "puzzle_56_solution.jpg"
+truth = "truth/puzzle_56.toml"
+
+[[puzzles]]
+id = 57
+photo = "puzzle_57.jpg"
+solution = "puzzle_57_solution.jpg"
+truth = "truth/puzzle_57.toml"
+
+[[puzzles]]
+id = 58
+photo = "puzzle_58.jpg"
+solution = "puzzle_58_solution.jpg"
+truth = "truth/puzzle_58.toml"
+
+[[puzzles]]
+id = 59
+photo = "puzzle_59.jpg"
+solution = "puzzle_59_solution.jpg"
+truth = "truth/puzzle_59.toml"
+
+[[puzzles]]
+id = 60
+photo = "puzzle_60.jpg"
+solution = "puzzle_60_solution.jpg"
+truth = "truth/puzzle_60.toml"
+
+[[puzzles]]
+id = 61
+photo = "puzzle_61.jpg"
+solution = "puzzle_61_solution.jpg"
+truth = "truth/puzzle_61.toml"
+
+[[puzzles]]
+id = 62
+photo = "puzzle_62.jpg"
+solution = "puzzle_62_solution.jpg"
+truth = "truth/puzzle_62.toml"
+
+[[puzzles]]
+id = 63
+photo = "puzzle_63.jpg"
+solution = "puzzle_63_solution.jpg"
+truth = "truth/puzzle_63.toml"
+
+[[puzzles]]
+id = 64
+photo = "puzzle_64.jpg"
+solution = "puzzle_64_solution.jpg"
+truth = "truth/puzzle_64.toml"
+
+[[puzzles]]
+id = 65
+photo = "puzzle_65.jpg"
+solution = "puzzle_65_solution.jpg"
+truth = "truth/puzzle_65.toml"
+
+[[puzzles]]
+id = 66
+photo = "puzzle_66.jpg"
+solution = "puzzle_66_solution.jpg"
+truth = "truth/puzzle_66.toml"
+
+[[puzzles]]
+id = 67
+photo = "puzzle_67.jpg"
+solution = "puzzle_67_solution.jpg"
+truth = "truth/puzzle_67.toml"
+
+[[puzzles]]
+id = 68
+photo = "puzzle_68.jpg"
+solution = "puzzle_68_solution.jpg"
+truth = "truth/puzzle_68.toml"
+
+[[puzzles]]
+id = 69
+photo = "puzzle_69.jpg"
+solution = "puzzle_69_solution.jpg"
+truth = "truth/puzzle_69.toml"
+
+[[puzzles]]
+id = 70
+photo = "puzzle_70.jpg"
+solution = "puzzle_70_solution.jpg"
+truth = "truth/puzzle_70.toml"
