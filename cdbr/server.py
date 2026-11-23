@@ -1,4 +1,61 @@
-"""HTTP service entry point for the cdbr solving pipeline."""
+"""HTTP service entry point for the cdbr solving pipeline.
+
+[[daemon.meta.title]]
+cdbrd
+
+[[daemon.meta.tagline]]
+Serve the Code Break web application and HTTP API.
+
+[[daemon.section.overview]]
+cdbrd runs the lightweight HTTP service used by the Code Break browser
+application. The service can play packaged puzzles, scan photographed puzzles,
+and construct new puzzles using the same recognition, solving, and generation
+engines as the cdbr command-line program.
+
+Sessions, uploaded photographs, scan-review jobs, and generated candidates are
+ephemeral. They remain in memory or temporary storage only for the lifetime of
+the service; cdbrd does not require a database. CLI solving does not require
+cdbrd to be running.
+
+[[daemon.section.deployment]]
+For local use, bind to the loopback interface:
+
+```bash
+cdbrd --host 127.0.0.1 --port 8000
+```
+
+Container platforms normally supply `PORT` through the environment. cdbrd runs
+one Uvicorn worker because generation jobs and puzzle sessions currently live
+inside the service process. The `--reload` option is for local development only.
+
+The `/health` endpoint reports service status and the installed cdbr version.
+
+[[daemon.environment.port]]
+HTTP port on which the service listens. An explicit `--port` value takes
+precedence. The default is 8000.
+
+[[daemon.environment.host]]
+Address on which the service listens. An explicit `--host` value takes
+precedence. The default is 0.0.0.0.
+
+[[daemon.section.examples]]
+Run a local preview restricted to the current computer:
+
+```bash
+cdbrd --host 127.0.0.1 --port 8000
+```
+
+Run with source reloading during development:
+
+```bash
+cdbrd --host 127.0.0.1 --reload
+```
+
+INTERNAL
+
+:copyright: Copyright (c) 2026 John Fogelin. All rights reserved.
+:license: MIT, see LICENSE for details.
+"""
 
 from __future__ import annotations
 
@@ -138,38 +195,58 @@ def favicon() -> FileResponse:
 
 
 def _playable_puzzle(puzzle_id: str) -> tuple[dict[str, object], dict[int, str]]:
-    if puzzle_id != "1":
-        try:
-            return _runtime_corpus[int(puzzle_id)]
-        except (KeyError, ValueError):
-            raise HTTPException(status_code=404, detail="Puzzle not found") from None
-    with (PUZZLE_ROOT / "seed-437.toml").open("rb") as stream:
+    try:
+        serial = int(puzzle_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Puzzle not found") from None
+    if serial in _runtime_corpus:
+        return _runtime_corpus[serial]
+    publisher_assets = list(PUZZLE_ROOT.glob("puzzle-*.toml"))
+    source_path = PUZZLE_ROOT / f"puzzle-{serial}.toml"
+    if serial == 1 and not publisher_assets:
+        source_path = PUZZLE_ROOT / "seed-437.toml"
+    if not source_path.is_file():
+        raise HTTPException(status_code=404, detail="Puzzle not found")
+    with source_path.open("rb") as stream:
         source = tomllib.load(stream)
     grid: list[list[int | None]] = [
         [None if value == "##" else int(value) for value in str(row).split()] for row in source["grid"]
     ]
-    answer = tuple(str(row) for row in source["answer"])
-    solution = {
-        symbol: letter
-        for symbols, letters in zip(grid, answer, strict=True)
-        for symbol, letter in zip(symbols, letters, strict=True)
-        if symbol is not None
-    }
+    if "solution" in source:
+        solution = {int(symbol): str(letter).upper() for symbol, letter in source["solution"].items()}
+    else:
+        answer = tuple(str(row) for row in source["answer"])
+        solution = {
+            symbol: letter
+            for symbols, letters in zip(grid, answer, strict=True)
+            for symbol, letter in zip(symbols, letters, strict=True)
+            if symbol is not None
+        }
     unused_symbols = sorted(set(range(1, 27)) - solution.keys())
     unused_letters = sorted(set("ABCDEFGHIJKLMNOPQRSTUVWXYZ") - set(solution.values()))
     solution.update(zip(unused_symbols, unused_letters, strict=True))
     clues = {int(symbol): str(letter) for symbol, letter in source["clues"].items()}
     used_symbols = sorted({symbol for row in grid for symbol in row if symbol is not None})
     puzzle: dict[str, object] = {
-        "id": puzzle_id,
-        "serial": 1,
-        "title": "Puzzle 1",
+        "id": str(serial),
+        "serial": serial,
+        "title": f"Puzzle {serial}",
         "grid": grid,
         "clues": clues,
         "symbols": list(range(1, 27)),
         "used_symbols": used_symbols,
     }
     return puzzle, solution
+
+
+def _packaged_corpus_ids() -> list[int]:
+    identifiers = []
+    for source in PUZZLE_ROOT.glob("puzzle-*.toml"):
+        try:
+            identifiers.append(int(source.stem.removeprefix("puzzle-")))
+        except ValueError:
+            continue
+    return sorted(set(identifiers)) or [1]
 
 
 def _complete_mapping(grid: list[list[int | None]], mapping: dict[int, str]) -> dict[int, str]:
@@ -319,7 +396,7 @@ def _scan_public(job: ScanJob) -> dict[str, object]:
 @app.post("/api/sessions/from-corpus/{puzzle_id}", status_code=201)
 def corpus_session_endpoint(puzzle_id: str) -> dict[str, object]:
     if puzzle_id == "random":
-        puzzle_id = str(secrets.choice([1, *_runtime_corpus.keys()]))
+        puzzle_id = str(secrets.choice([*_packaged_corpus_ids(), *_runtime_corpus.keys()]))
     puzzle, solution = _playable_puzzle(puzzle_id)
     return _create_session({**puzzle, "provenance": "corpus"}, solution).public()
 
@@ -530,7 +607,7 @@ def publish_generation_job_endpoint(job_id: str) -> dict[str, object]:
             job.status = "accepted"
             job.progress = "Best candidate accepted"
         if job.published_serial is None:
-            serial = max((1, *_runtime_corpus.keys())) + 1
+            serial = max((*_packaged_corpus_ids(), *_runtime_corpus.keys())) + 1
             generated = job.generated
             grid = [list(row) for row in generated.puzzle.grid]
             puzzle: dict[str, object] = {
@@ -551,7 +628,7 @@ def publish_generation_job_endpoint(job_id: str) -> dict[str, object]:
 
 @app.get("/api/puzzles")
 def puzzles_endpoint() -> dict[str, object]:
-    serials = [1, *sorted(_runtime_corpus)]
+    serials = sorted(set(_packaged_corpus_ids()) | set(_runtime_corpus))
     return {"puzzles": [{"serial": serial, "title": f"Puzzle {serial}"} for serial in serials]}
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from hashlib import sha256
@@ -512,6 +512,81 @@ def resource_usage() -> dict[str, float]:
     }
 
 
+def import_solution_approvals(source: Path, entries: Iterable[CorpusEntry]) -> int:
+    """Persist a browser-exported publisher-key approval bundle as reviewed truth."""
+
+    bundle = json.loads(source.read_text())
+    if not isinstance(bundle, dict):
+        raise ValueError("Solution approval bundle must be a JSON object")
+    by_id = {entry.puzzle_id: entry for entry in entries}
+    written = 0
+    for raw_puzzle_id, raw_mapping in bundle.items():
+        puzzle_id = int(raw_puzzle_id)
+        entry = by_id.get(puzzle_id)
+        if entry is None or entry.truth is None:
+            raise ValueError(f"Puzzle {puzzle_id} has no truth fixture in the corpus")
+        if not isinstance(raw_mapping, dict):
+            raise ValueError(f"Puzzle {puzzle_id} solution must be a JSON object")
+        mapping = {int(symbol): str(letter).upper() for symbol, letter in raw_mapping.items()}
+        if set(mapping) != set(range(1, 27)):
+            raise ValueError(f"Puzzle {puzzle_id} solution must contain symbols 1-26")
+        if any(len(letter) != 1 or not letter.isalpha() for letter in mapping.values()):
+            raise ValueError(f"Puzzle {puzzle_id} solution values must be single letters")
+        if len(set(mapping.values())) != 26:
+            raise ValueError(f"Puzzle {puzzle_id} solution must contain 26 unique letters")
+        text = entry.truth.read_text()
+        text = re.sub(r"\n\[solution\]\n(?:[^\[].*\n?)*", "\n", text, flags=re.MULTILINE)
+        block = "\n[solution]\n" + "".join(f'"{symbol}" = "{mapping[symbol]}"\n' for symbol in range(1, 27))
+        entry.truth.write_text(text.rstrip() + "\n" + block)
+        written += 1
+    return written
+
+
+def publish_corpus_assets(
+    entries: Iterable[CorpusEntry], results: Mapping[int, Mapping[str, Any]], destination: Path
+) -> list[int]:
+    """Build sparse, release-ready puzzles only from human-approved solution truth."""
+
+    destination.mkdir(parents=True, exist_ok=True)
+    published = []
+    for entry in entries:
+        result = results.get(entry.puzzle_id)
+        if result is None or result.get("status") != "ok" or entry.truth is None:
+            continue
+        truth = _truth_document(entry.truth)
+        solution = _truth_solution(truth, entry.truth)
+        if set(solution) != set(range(1, 27)):
+            continue
+        grid = [list(row) for row in result["grid"]]
+        reviewed_grid = _truth_grid(truth, entry.truth)
+        if reviewed_grid:
+            grid = [list(row) for row in reviewed_grid]
+        for (row, column), expected in _truth_number_defects(truth, entry.truth).items():
+            grid[row - 1][column - 1] = expected
+        if any(value not in {BLOCK, "."} and not isinstance(value, int) for row in grid for value in row):
+            continue
+        clues = _truth_clues(truth, entry.truth)
+        lines = [
+            "format_version = 1",
+            f"serial = {entry.puzzle_id}",
+            'origin = "publisher"',
+            "",
+            "grid = [",
+            *(f'  "{" ".join("##" if value in {BLOCK, "."} else str(value) for value in row)}",' for row in grid),
+            "]",
+            "",
+            "[clues]",
+            *(f'"{symbol}" = "{letter}"' for symbol, letter in sorted(clues.items())),
+            "",
+            "[solution]",
+            *(f'"{symbol}" = "{solution[symbol]}"' for symbol in range(1, 27)),
+            "",
+        ]
+        (destination / f"puzzle-{entry.puzzle_id}.toml").write_text("\n".join(lines))
+        published.append(entry.puzzle_id)
+    return published
+
+
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--manifest",
@@ -519,6 +594,7 @@ def resource_usage() -> dict[str, float]:
     default=Path("examples/corpus.toml"),
     show_default=True,
 )
+@click.option("--publish-assets/--no-publish-assets", default=False, help="Build packaged puzzles from approved truth.")
 @click.option(
     "--output",
     type=click.Path(path_type=Path, dir_okay=False),
@@ -538,6 +614,12 @@ def resource_usage() -> dict[str, float]:
 @click.option("--audit/--no-audit", default=False, help="Write separate number and clue OCR review reports.")
 @click.option("--solve/--no-solve", "solve_corpus", default=False, help="Solve reviewed grids and inventory outcomes.")
 @click.option(
+    "--import-solution-approvals",
+    "import_solution_approvals_path",
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    help="Import the JSON bundle downloaded from the publisher-solution approval gate.",
+)
+@click.option(
     "--audit-dir",
     type=click.Path(path_type=Path, file_okay=False),
     default=Path("build/corpus-audit"),
@@ -553,6 +635,8 @@ def main(
     resume: bool,
     audit: bool,
     solve_corpus: bool,
+    import_solution_approvals_path: Path | None,
+    publish_assets: bool,
     audit_dir: Path,
 ) -> None:
     """Benchmark photograph recognition, optionally inventorying solve outcomes."""
@@ -567,6 +651,14 @@ def main(
         missing = requested - {entry.puzzle_id for entry in entries}
         if missing:
             raise click.ClickException(f"Puzzle IDs are not in the manifest: {sorted(missing)}")
+
+    if import_solution_approvals_path is not None:
+        try:
+            count = import_solution_approvals(import_solution_approvals_path, entries)
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise click.ClickException(str(exc)) from exc
+        click.echo(f"Imported {count} approved publisher solution mappings.")
+        return
 
     output.parent.mkdir(parents=True, exist_ok=True)
     work_root.mkdir(parents=True, exist_ok=True)
@@ -603,6 +695,12 @@ def main(
     }
     if solve_corpus:
         summary["solutions"] = benchmark_solutions(entries, latest)
+    if publish_assets:
+        summary["published_assets"] = publish_corpus_assets(
+            entries,
+            latest,
+            Path(__file__).parent / "assets" / "puzzles",
+        )
     click.echo(json.dumps(summary, indent=2))
     if audit:
         target = write_audit_reports(

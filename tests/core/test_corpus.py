@@ -1,6 +1,8 @@
 """Tests for resumable local corpus benchmarking."""
 
+import json
 from pathlib import Path
+import tomllib
 from types import SimpleNamespace
 
 import cv2
@@ -12,7 +14,9 @@ from cdbr.corpus import (
     CorpusEntry,
     apply_truth,
     benchmark_solutions,
+    import_solution_approvals,
     load_manifest,
+    publish_corpus_assets,
     summarize,
     summarize_accuracy,
     summarize_classification,
@@ -321,6 +325,30 @@ def test_benchmark_solutions_scores_only_confirmed_publisher_mapping(tmp_path: P
     assert summary["publisher_scored"] == 1
     assert summary["publisher_mismatches"] == []
     assert summary["outcomes"][0]["publisher_match"] is True
+
+
+def test_solution_approval_import_and_sparse_asset_publication(tmp_path: Path) -> None:
+    truth = tmp_path / "truth.toml"
+    truth.write_text('format_version = 1\n[clues]\n"1" = "A"\n')
+    entry = CorpusEntry(puzzle_id=31, photo=tmp_path / "puzzle.jpg", solution=tmp_path / "solution.jpg", truth=truth)
+    mapping = {str(symbol): chr(64 + symbol) for symbol in range(1, 27)}
+    approvals = tmp_path / "approvals.json"
+    approvals.write_text(json.dumps({"31": mapping}))
+
+    assert import_solution_approvals(approvals, (entry,)) == 1
+    assert tomllib.loads(truth.read_text())["solution"]["26"] == "Z"
+
+    published = publish_corpus_assets(
+        (entry,),
+        {31: {"status": "ok", "grid": [[1, 2], [".", 1]]}},
+        tmp_path / "assets",
+    )
+
+    assert published == [31]
+    asset = tomllib.loads((tmp_path / "assets" / "puzzle-31.toml").read_text())
+    assert asset["serial"] == 31
+    assert asset["grid"] == ["1 2", "## 1"]
+    assert asset["solution"]["26"] == "Z"
 
 
 def test_write_audit_reports_separates_number_and_clue_queues(tmp_path: Path) -> None:

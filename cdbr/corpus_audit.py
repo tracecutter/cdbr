@@ -299,6 +299,9 @@ _SOLUTION_SCRIPT = """<script>
 document.querySelectorAll('.solution-puzzle').forEach(section => {
   const inputs = [...section.querySelectorAll('input')];
   const status = section.querySelector('.solution-actions span');
+  const storageKey = `cdbr-solution-${section.dataset.puzzle}`;
+  const saved = JSON.parse(window.localStorage.getItem(storageKey) || '{}');
+  inputs.forEach(input => { if (saved[input.dataset.symbol]) input.value = saved[input.dataset.symbol]; });
   const validate = () => {
     const letters = inputs.map(input => input.value.trim().toUpperCase());
     inputs.forEach((input, index) => input.value = letters[index]);
@@ -307,15 +310,36 @@ document.querySelectorAll('.solution-puzzle').forEach(section => {
     status.textContent = complete && unique ? '26 unique letters — ready' : 'Correct blanks or duplicate letters';
     return complete && unique;
   };
-  inputs.forEach(input => input.addEventListener('input', validate));
+  inputs.forEach(input => input.addEventListener('input', () => {
+    validate();
+    window.localStorage.setItem(storageKey, JSON.stringify(Object.fromEntries(inputs.map(item => [item.dataset.symbol, item.value]))));
+  }));
   section.querySelector('.prepare-solution').addEventListener('click', async () => {
     if (!validate()) return;
     const lines = ['[solution]', ...inputs.map(input => `"${input.dataset.symbol}" = "${input.value}"`)];
     const output = section.querySelector('.solution-output');
-    output.value = lines.join('\n'); output.hidden = false; output.select();
+    output.value = lines.join('\\n'); output.hidden = false; output.select();
     try { await navigator.clipboard.writeText(output.value); status.textContent = 'Approved TOML copied'; } catch (_) { status.textContent = 'Approved TOML selected — copy it'; }
   });
   validate();
+});
+document.querySelector('#export-solutions').addEventListener('click', () => {
+  const sections = [...document.querySelectorAll('.solution-puzzle')];
+  const bundle = {};
+  for (const section of sections) {
+    const inputs = [...section.querySelectorAll('input')];
+    const letters = inputs.map(input => input.value.trim().toUpperCase());
+    if (!letters.every(letter => /^[A-Z]$/.test(letter)) || new Set(letters).size !== 26) {
+      section.scrollIntoView({behavior: 'smooth', block: 'start'});
+      section.querySelector('.solution-actions span').textContent = 'Correct this key before exporting';
+      return;
+    }
+    bundle[section.dataset.puzzle] = Object.fromEntries(inputs.map(input => [input.dataset.symbol, input.value]));
+  }
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], {type: 'application/json'});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob); link.download = 'cdbr-solution-approvals.json'; link.click();
+  URL.revokeObjectURL(link.href);
 });
 </script>"""
 
@@ -375,7 +399,9 @@ def write_audit_reports(
     )
     solution_body = (
         '<p class="legend">The published answer photographs are authoritative; proposed letters are not. '
-        "Review each crop and copy the approved TOML into that puzzle's truth fixture.</p>"
+        "Review each crop; corrections are retained in this browser.</p>"
+        '<div class="solution-actions"><button type="button" id="export-solutions">Download all approved solutions</button>'
+        '<span>Every puzzle must contain 26 unique letters.</span></div>'
         + "".join(solution_sections)
         + _SOLUTION_SCRIPT
     )

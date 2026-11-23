@@ -1,7 +1,34 @@
-### 0.1.0 — in development
+### 0.1.4 — in development
 
-- Photograph recognition with perspective correction and conservative cell OCR
-- British English constraint solver with partial-result reporting
-- Text, TOML, and handwriting-on-photo presentation
-- Certified 15x15 puzzle generation with required and excluded words
-- Lightweight web application for scanning, creating, and playing puzzles
+- Added sparse publisher-puzzle packaging and direct book-number selection
+- Added human approval of publisher solution keys before solver scoring
+- Separated puzzle-number, reference-clue, and publisher-solution OCR audits
+- Improved mobile play with a QWERTY keyboard and board-only pinch zoom
+- Added the independently generated `cdbrd(1)` service manual
+
+### 0.1.3 — 2026-11-23
+
+- Expanded the photographed 15x15 corpus with matching publisher solutions
+- Added error-first, confidence-ordered OCR audit reports
+- Added corpus solve inventory and reviewed ground-truth correction support
+
+### 0.1.2 — 2026-11-22
+
+- Added release-driven DigitalOcean App Platform deployment
+- Measured OCR accuracy, throughput, review load, and peak memory separately
+- Added focused digit-classification benchmarks and 5/6/8 counter adjudication
+- Kept expensive corpus benchmarks out of routine deployment verification
+
+### 0.1.1 — 2026-11-20
+
+- Made release CI independent of private npkg development packages
+- Installed ImageMagick and Tesseract explicitly in release CI
+- Limited Tesseract threading for predictable hosted execution
+
+### 0.1.0 — 2026-11-20
+
+- Recognised photographed puzzles with perspective correction and conservative OCR
+- Solved against a British English lexicon with partial-result reporting
+- Produced text, TOML, and handwriting-on-photo output
+- Generated and independently certified themed 15x15 puzzles
+- Added the lightweight scan, create, and play web application

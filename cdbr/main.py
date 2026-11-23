@@ -129,6 +129,9 @@ with a compact vowel rail repeating the same state. The one-to-one code prevents
 a letter being entered for two numbers. The original reference clues remain
 visibly distinct and cannot be changed. Check highlights incorrect player entries
 throughout both the puzzle and reference grid without revealing replacements.
+On a narrow screen the puzzle, 2x13 reference grid, and an on-screen QWERTY
+keyboard form one compact play surface. Two-finger pinch gestures enlarge only
+the puzzle board, which can then be panned without losing the reference grid.
 Play can select a numbered corpus puzzle or ask cdbr to choose one at random.
 Hint and solution requests use the player's current entries as solver constraints
 and show their progress over the board; an unsuccessful search returns to the
@@ -176,6 +179,18 @@ search-limited, contradictory, and unresolved puzzles after applying reviewed
 OCR corrections. A publisher-key comparison is reported only when the truth
 file contains a human-confirmed `[solution]` symbol-to-letter mapping; proposed
 answer-key OCR is never treated as truth automatically.
+
+The audit's publisher-solution gate retains corrections in browser storage and
+downloads one validated approval bundle. Import and package it with:
+
+```bash
+python -m cdbr.corpus --import-solution-approvals ~/Downloads/cdbr-solution-approvals.json
+python -m cdbr.corpus --resume --publish-assets
+```
+
+Packaged puzzles keep their sparse book numbers (`puzzle-31.toml`, for example)
+and are included in wheels and containers. The web player accepts the printed
+puzzle number directly or chooses randomly from the packaged collection.
 
 [[section.status]]
 - Python 3.11+

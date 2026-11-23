@@ -17,12 +17,14 @@ from __future__ import annotations
 
 from pathlib import Path
 from psym import Backend, BackendContext, RenderJob, Template
+from psym.core import usage
 from .symtab import ManpageSymtab
 
 
 class ManpageBackend(Backend):
     def build(self, ctx: BackendContext):
         tpl = Template.from_file(ctx.docs_root / "templates/manpage/manpage.nr.pf")
+        daemon_tpl = Template.from_file(ctx.docs_root / "templates/manpage/cdbrd.nr.pf")
 
         base = ctx.symbols
         invocation = base.get("project.invocation").value
@@ -44,11 +46,29 @@ class ManpageBackend(Backend):
             fmt="nroff",
         )
 
+        daemon = usage.from_click("cdbrd", ctx.ctx_docs.target.info.path_pyproject)
+        if daemon is None:
+            raise ValueError("Could not derive the cdbrd command specification")
+        daemon_symtab = ManpageSymtab(
+            symbols=base,
+            cli=daemon,
+            prog="cdbrd",
+            section=1,
+            meta={},
+        ).root()
+        yield RenderJob(
+            template=daemon_tpl,
+            symbols=daemon_symtab,
+            output_path=Path("manpage/man1/cdbrd.1"),
+            fmt="nroff",
+        )
+
 
 # Announcement
 PSYM_BACKEND = ManpageBackend(
     requests=["project", "fs", "dynamic"],
     code=[
         Path("main.py"),
+        Path("server.py"),
     ],
 )

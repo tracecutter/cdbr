@@ -7,8 +7,8 @@
     <meta name="description" content="Turn a photograph of a Code Break puzzle into a solved page.">
     <title>Code Break Solver</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="/static/app.css?v=20261122-1">
-    <script src="/static/app.js?v=20261123-1" defer></script>
+    <link rel="stylesheet" href="/static/app.css?v=20261123-3">
+    <script src="/static/app.js?v=20261123-3" defer></script>
   </head>
   <body data-mode="idle">
     <header class="site-header">
@@ -95,15 +95,15 @@
                   <p class="eyebrow">Puzzle library</p>
                   <h2>Pick a number—or let us choose.</h2>
                 </div>
-                <p>“You Pick” chooses a puzzle at random from the current collection.</p>
+                <p>Use the number printed in the book, or let cdbr choose from the current collection.</p>
               </div>
               <label class="puzzle-picker">
                 <span>Puzzle number</span>
-                <select id="puzzle-select">
-                  <option value="random">You Pick</option>
-                </select>
+                <input id="puzzle-number" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 31">
               </label>
-              <button class="primary-button" id="start-puzzle" type="button">Play puzzle</button>
+              <p class="form-note" id="puzzle-picker-status"></p>
+              <button class="primary-button" id="start-puzzle" type="button">Play puzzle number</button>
+              <button class="secondary-button" id="random-puzzle" type="button">Let cdbr pick</button>
             </aside>
           </div>
         </section>
@@ -205,6 +205,14 @@
                 <p id="game-guidance">Select any numbered cell and type a letter, or click a reference cell twice for a hint.</p>
               </div>
               <div class="reference-grid" id="reference-grid" aria-label="Letter reference grid"></div>
+              <div class="game-keyboard" id="game-keyboard" aria-label="Puzzle keyboard">
+                <div class="keyboard-row" data-letters="QWERTYUIOP"></div>
+                <div class="keyboard-row" data-letters="ASDFGHJKL"></div>
+                <div class="keyboard-row keyboard-row-bottom" data-letters="ZXCVBNM">
+                  <button class="keyboard-command" type="button" data-key="Backspace" aria-label="Clear entry">⌫</button>
+                  <button class="keyboard-command" type="button" data-key="Enter" aria-label="Commit entry">Enter</button>
+                </div>
+              </div>
             </div>
 
             <div class="game-actions">

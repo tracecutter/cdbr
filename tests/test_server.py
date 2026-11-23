@@ -25,6 +25,11 @@ def test_home_serves_upload_experience():
     assert 'action="/solve"' in response.text
     assert 'id="game-workspace" aria-labelledby="game-title" hidden' in response.text
     assert ">Create</button>" in response.text
+    assert 'id="puzzle-number" type="number"' in response.text
+    assert 'id="game-keyboard"' in response.text
+    assert 'data-key="Backspace"' in response.text
+    assert 'id="random-puzzle"' in response.text
+    assert '<select id="puzzle-select">' not in response.text
 
 
 def test_web_assets_are_served():
@@ -116,6 +121,23 @@ def test_corpus_catalog_and_random_session(monkeypatch):
     assert created.status_code == 201
     assert created.json()["serial"] == 1
     assert created.json()["title"] == "Puzzle 1"
+
+
+def test_packaged_corpus_preserves_sparse_book_number(tmp_path, monkeypatch):
+    asset = tmp_path / "puzzle-31.toml"
+    asset.write_text(
+        'format_version = 1\nserial = 31\ngrid = ["1 2", "## 1"]\n'
+        '[clues]\n"1" = "A"\n[solution]\n"1" = "A"\n"2" = "B"\n'
+    )
+    monkeypatch.setattr(server_module, "PUZZLE_ROOT", tmp_path)
+
+    catalog = client.get("/api/puzzles")
+    created = client.post("/api/sessions/from-corpus/31")
+
+    assert {"serial": 31, "title": "Puzzle 31"} in catalog.json()["puzzles"]
+    assert created.status_code == 201
+    assert created.json()["serial"] == 31
+    assert created.json()["title"] == "Puzzle 31"
 
 
 def test_check_marks_incorrect_symbols_without_revealing_answers():

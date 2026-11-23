@@ -1,0 +1,43 @@
+.\" psym :: documentation rendered from source.
+.\" Do not edit this artifact directly.
+
+.TH CDBRD 1 "{{ dynamic.meta.date }}" "cdbr {{ project.version }}" "General Commands Manual"
+
+.SH NAME
+\fB{{ code.daemon.meta.title }}\fR \- {{ code.daemon.meta.tagline }}
+
+.SH SYNOPSIS
+{{ dynamic.manpage.cli.synopsis }}
+
+.SH DESCRIPTION
+{{ code.daemon.section.overview }}
+
+.SH OPTIONS
+{{ dynamic.manpage.section.options }}
+
+.SH DEPLOYMENT
+{{ code.daemon.section.deployment }}
+
+.SH ENVIRONMENT
+.TP
+.B PORT
+{{ code.daemon.environment.port }}
+.TP
+.B CDBR_HOST
+{{ code.daemon.environment.host }}
+
+.SH EXIT STATUS
+{{ dynamic.manpage.section.exit_status }}
+
+.SH EXAMPLES
+{{ code.daemon.section.examples }}
+
+.SH SEE ALSO
+.BR cdbr (1),
+.BR uvicorn (1)
+
+.SH AUTHOR
+{{ code.meta.author }}
+
+.SH COPYRIGHT
+{{ code.meta.copyright }}

@@ -32,6 +32,7 @@ const solverProgress = document.querySelector('#solver-progress');
 const solverProgressTitle = document.querySelector('#solver-progress-title');
 const solverProgressDetail = document.querySelector('#solver-progress-detail');
 const referenceGrid = document.querySelector('#reference-grid');
+const gameKeyboard = document.querySelector('#game-keyboard');
 const gameStatus = document.querySelector('#game-status');
 const gameGuidance = document.querySelector('#game-guidance');
 const gameTitle = document.querySelector('#game-title');
@@ -56,8 +57,10 @@ const creatorProgressTitle = document.querySelector('#creator-progress-title');
 const creatorProgressDetail = document.querySelector('#creator-progress-detail');
 const publishCreated = document.querySelector('#publish-created');
 const cancelCreated = document.querySelector('#cancel-created');
-const puzzleSelect = document.querySelector('#puzzle-select');
+const puzzleNumber = document.querySelector('#puzzle-number');
+const puzzlePickerStatus = document.querySelector('#puzzle-picker-status');
 const startPuzzleButton = document.querySelector('#start-puzzle');
+const randomPuzzleButton = document.querySelector('#random-puzzle');
 const checkGameButton = document.querySelector('#check-game');
 
 let previewUrl;
@@ -76,6 +79,9 @@ let revealed = new Map();
 let entrySources = new Map();
 let originalHints = new Set();
 let incorrectSymbols = new Set();
+let boardScale = 1;
+let pinchStartDistance;
+let pinchStartScale = 1;
 
 const workingStages = [
   'Finding the puzzle grid…',
@@ -145,18 +151,20 @@ async function showPuzzlePicker() {
   const response = await fetch('/api/puzzles');
   if (!response.ok) return;
   const catalog = await response.json();
-  puzzleSelect.querySelectorAll('option:not([value="random"])').forEach((option) => option.remove());
-  catalog.puzzles.forEach((puzzle) => {
-    const option = document.createElement('option');
-    option.value = puzzle.serial;
-    option.textContent = puzzle.title;
-    puzzleSelect.append(option);
-  });
+  const serials = catalog.puzzles.map((puzzle) => puzzle.serial);
+  puzzlePickerStatus.textContent = serials.length
+    ? `Available book numbers: ${serials.join(', ')}`
+    : 'No published puzzles are available yet.';
 }
 
-async function startCorpusGame(puzzleId = puzzleSelect.value) {
+async function startCorpusGame(puzzleId) {
   game = undefined;
-  if (await loadGame(puzzleId)) showMode('game');
+  if (await loadGame(puzzleId)) {
+    puzzlePickerStatus.textContent = '';
+    showMode('game');
+  } else {
+    puzzlePickerStatus.textContent = `Puzzle ${puzzleId} is not in the current collection.`;
+  }
 }
 
 function letterFor(symbol) {
@@ -329,7 +337,98 @@ function renderReference() {
     cell.addEventListener('click', () => referenceClick(symbol));
     referenceGrid.append(cell);
   });
+  renderKeyboard();
 }
+
+function renderKeyboard() {
+  if (!gameKeyboard) return;
+  const currentLetter = selectedSymbol === undefined ? undefined : draftLetter || revealed.get(selectedSymbol);
+  gameKeyboard.querySelectorAll('.keyboard-letter').forEach((button) => {
+    const letter = button.dataset.key;
+    const owner = symbolUsing(letter, selectedSymbol);
+    button.disabled = owner !== undefined;
+    button.classList.toggle('is-used', owner !== undefined);
+    button.classList.toggle('is-current', letter === currentLetter);
+  });
+}
+
+function handleGameKey(key) {
+  if (document.body.dataset.mode !== 'game' || selectedSymbol === undefined || solving) return false;
+  if (/^[a-z]$/i.test(key)) {
+    const letter = key.toUpperCase();
+    const owner = symbolUsing(letter, selectedSymbol);
+    if (owner !== undefined) {
+      gameGuidance.textContent = `${letter} is already assigned to ${owner}. Choose an unused letter.`;
+      return true;
+    }
+    draftLetter = letter;
+    gameGuidance.textContent = `${selectedSymbol}=${draftLetter} previewed. Enter commits; Escape cancels.`;
+  } else if (key === 'Enter') {
+    const symbol = selectedSymbol;
+    commitSelection();
+    gameGuidance.textContent = revealed.has(symbol)
+      ? `${symbol}=${revealed.get(symbol)} committed.`
+      : `No letter entered for ${symbol}.`;
+  } else if (key === 'Escape') {
+    cancelSelection();
+    gameGuidance.textContent = 'Entry cancelled.';
+  } else if (key === 'Backspace') {
+    const symbol = selectedSymbol;
+    if (entrySources.get(symbol) === 'player') {
+      revealed.delete(symbol);
+      entrySources.delete(symbol);
+      incorrectSymbols.delete(symbol);
+      gameGuidance.textContent = `Your entry for ${symbol} was cleared.`;
+    } else {
+      gameGuidance.textContent = 'Selection cleared.';
+    }
+    cancelSelection();
+  } else {
+    return false;
+  }
+  renderGame();
+  renderReference();
+  return true;
+}
+
+gameKeyboard.querySelectorAll('.keyboard-row').forEach((row) => {
+  [...row.dataset.letters].forEach((letter) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'keyboard-letter';
+    button.dataset.key = letter;
+    button.textContent = letter;
+    button.setAttribute('aria-label', `Enter ${letter}`);
+    row.insertBefore(button, row.querySelector('.keyboard-command'));
+  });
+});
+gameKeyboard.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-key]');
+  if (button && !button.disabled) handleGameKey(button.dataset.key);
+});
+
+function touchDistance(touches) {
+  return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+}
+
+function setBoardScale(scale) {
+  boardScale = Math.min(2.5, Math.max(1, scale));
+  puzzleShell.style.width = `${boardScale * 100}%`;
+}
+
+puzzleBoardWrap.addEventListener('touchstart', (event) => {
+  if (event.touches.length !== 2) return;
+  pinchStartDistance = touchDistance(event.touches);
+  pinchStartScale = boardScale;
+}, { passive: true });
+puzzleBoardWrap.addEventListener('touchmove', (event) => {
+  if (event.touches.length !== 2 || !pinchStartDistance) return;
+  event.preventDefault();
+  setBoardScale(pinchStartScale * touchDistance(event.touches) / pinchStartDistance);
+}, { passive: false });
+puzzleBoardWrap.addEventListener('touchend', (event) => {
+  if (event.touches.length < 2) pinchStartDistance = undefined;
+});
 
 async function referenceClick(symbol) {
   if (solving) return;
@@ -388,6 +487,7 @@ function installGame(prepared) {
   entrySources = new Map([...revealed.keys()].map((symbol) => [symbol, 'original']));
   selectedSymbol = undefined;
   draftLetter = undefined;
+  setBoardScale(1);
   gameGuidance.textContent = 'Select any numbered cell and type a letter, or click a reference cell twice for a hint.';
   renderGame();
   renderReference();
@@ -406,7 +506,15 @@ async function loadGame(puzzleId) {
 }
 
 showGameButton.addEventListener('click', showPuzzlePicker);
-startPuzzleButton.addEventListener('click', () => startCorpusGame());
+startPuzzleButton.addEventListener('click', () => {
+  const serial = puzzleNumber.value.trim();
+  if (serial) startCorpusGame(serial);
+  else puzzlePickerStatus.textContent = 'Enter the puzzle number printed in the book.';
+});
+randomPuzzleButton.addEventListener('click', () => startCorpusGame('random'));
+puzzleNumber.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') startPuzzleButton.click();
+});
 showScannerButton.addEventListener('click', () => showMode('scanner'));
 showCreatorButton.addEventListener('click', () => showMode('creator'));
 document.querySelector('#scan-from-game').addEventListener('click', () => showMode('scanner'));
@@ -417,48 +525,7 @@ document.addEventListener('keydown', (event) => {
   if (event.metaKey || event.ctrlKey || event.altKey) return;
   const target = event.target;
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
-  if (/^[a-z]$/i.test(event.key)) {
-    event.preventDefault();
-    const letter = event.key.toUpperCase();
-    const owner = symbolUsing(letter, selectedSymbol);
-    if (owner !== undefined) {
-      gameGuidance.textContent = `${letter} is already assigned to ${owner}. Choose an unused letter.`;
-      return;
-    }
-    draftLetter = letter;
-    gameGuidance.textContent = `${selectedSymbol}=${draftLetter} previewed. Enter commits; Escape cancels.`;
-    renderGame();
-    renderReference();
-  } else if (event.key === 'Enter') {
-    event.preventDefault();
-    const symbol = selectedSymbol;
-    commitSelection();
-    gameGuidance.textContent = revealed.has(symbol)
-      ? `${symbol}=${revealed.get(symbol)} committed.`
-      : `No letter entered for ${symbol}.`;
-    renderGame();
-    renderReference();
-  } else if (event.key === 'Escape') {
-    event.preventDefault();
-    cancelSelection();
-    gameGuidance.textContent = 'Entry cancelled.';
-    renderGame();
-    renderReference();
-  } else if (event.key === 'Backspace') {
-    event.preventDefault();
-    const symbol = selectedSymbol;
-    if (entrySources.get(symbol) === 'player') {
-      revealed.delete(symbol);
-      entrySources.delete(symbol);
-      incorrectSymbols.delete(symbol);
-      gameGuidance.textContent = `Your entry for ${symbol} was cleared.`;
-    } else {
-      gameGuidance.textContent = 'Selection cleared.';
-    }
-    cancelSelection();
-    renderGame();
-    renderReference();
-  }
+  if (handleGameKey(event.key)) event.preventDefault();
 });
 checkGameButton.addEventListener('click', async () => {
   if (!game || solving) return;
