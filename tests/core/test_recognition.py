@@ -195,6 +195,18 @@ def test_puzzle_35_fragmented_eight_is_not_read_as_six(tmp_path: Path) -> None:
     assert observation.grid[7][2] == 8
 
 
+def test_puzzle_36_counter_family_errors_are_corrected_without_hil(tmp_path: Path) -> None:
+    project_root = Path(__file__).parents[2]
+
+    observation = recognize_photo(project_root / "examples" / "puzzle_36.jpg", tmp_path)
+    evidence = {(item.row, item.column): item for item in observation.evidence}
+
+    assert evidence[(1, 4)].reading == "18"
+    assert not needs_hil_review(evidence[(1, 4)])
+    assert evidence[(1, 7)].reading == "8"
+    assert not needs_hil_review(evidence[(1, 7)])
+
+
 def test_puzzle_44_open_five_is_not_read_as_eight(tmp_path: Path) -> None:
     project_root = Path(__file__).parents[2]
 

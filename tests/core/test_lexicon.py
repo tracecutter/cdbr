@@ -13,6 +13,7 @@ def test_publisher_confirmed_supplemental_words_are_available() -> None:
         "ELMIEST",
         "FRIZZLIEST",
         "JUMPTHEGUN",
+        "LOCKHORNS",
         "MERCYPROOF",
         "NOHIT",
         "OXFORDBLUE",

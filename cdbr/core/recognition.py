@@ -1038,7 +1038,7 @@ def recognize_photo(
     *,
     trace: RecognitionTrace | None = None,
     template_exclusion: int | None = None,
-    ocr_pipeline: str = LEGACY_PIPELINE,
+    ocr_pipeline: str = WHOLE_TOKEN_PIPELINE,
 ) -> PuzzleObservation:
     """Convert a supported square photographed puzzle into a conservative observation."""
 

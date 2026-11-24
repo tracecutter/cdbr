@@ -18,6 +18,7 @@ SUPPLEMENTAL_BRITISH_WORDS = (
     "elmiest",
     "frizzliest",
     "jumpthegun",
+    "lockhorns",
     "mercyproof",
     "nohit",
     "oxfordblue",

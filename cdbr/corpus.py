@@ -25,8 +25,8 @@ from cdbr.core.lexicon import english_lexicon, word_pattern
 from cdbr.core.model import CodewordPuzzle, extract_slots
 from cdbr.core.puzzle import BLOCK, UNKNOWN
 from cdbr.core.recognition import (
-    LEGACY_PIPELINE,
     OCR_PIPELINES,
+    WHOLE_TOKEN_PIPELINE,
     WARP_SIZE,
     RecognitionTrace,
     _block_mask,
@@ -268,7 +268,7 @@ def benchmark_entry(
     entry: CorpusEntry,
     work_root: Path,
     review_threshold: float,
-    ocr_pipeline: str = LEGACY_PIPELINE,
+    ocr_pipeline: str = WHOLE_TOKEN_PIPELINE,
 ) -> dict[str, Any]:
     """Recognise one photograph without invoking the lexical solver."""
 
@@ -801,7 +801,7 @@ def publish_corpus_assets(
 @click.option("--puzzle", "puzzle_ids", type=int, multiple=True, help="Limit the run to one or more puzzle IDs.")
 @click.option("--workers", type=click.IntRange(1, 4), default=1, show_default=True)
 @click.option("--review-threshold", type=click.FloatRange(0.0, 100.0), default=70.0, show_default=True)
-@click.option("--ocr-pipeline", type=click.Choice(OCR_PIPELINES), default=LEGACY_PIPELINE, show_default=True)
+@click.option("--ocr-pipeline", type=click.Choice(OCR_PIPELINES), default=WHOLE_TOKEN_PIPELINE, show_default=True)
 @click.option("--summary-output", type=click.Path(path_type=Path, dir_okay=False))
 @click.option("--resume/--no-resume", default=True, show_default=True)
 @click.option("--audit/--no-audit", default=False, help="Write separate number and clue OCR review reports.")
