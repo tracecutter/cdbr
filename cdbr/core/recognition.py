@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
+from functools import lru_cache
 import subprocess
 from collections import Counter
 import time
@@ -384,6 +385,80 @@ def _number_feature(cell: np.ndarray, *, suppress_illumination: bool = False) ->
     return feature
 
 
+def _reviewed_number_feature(cell: np.ndarray) -> np.ndarray:
+    """Return the compact feature used by the reviewed ambiguity bank."""
+
+    return cv2.resize(_number_feature(cell), (20, 30), interpolation=cv2.INTER_AREA)
+
+
+@lru_cache(maxsize=1)
+def _reviewed_number_templates() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    source = Path(__file__).parents[1] / "assets" / "ocr" / "number-ambiguities.npz"
+    if not source.is_file():
+        return (
+            np.empty((0, 30, 20), dtype=np.uint8),
+            np.empty(0, dtype=np.uint8),
+            np.empty(0, dtype=np.uint8),
+        )
+    with np.load(source) as archive:
+        return archive["features"], archive["labels"], archive["puzzle_ids"]
+
+
+def _reviewed_number_vote(
+    cell: np.ndarray,
+    family: frozenset[int],
+    *,
+    excluded_puzzle_id: int | None = None,
+) -> int | None:
+    features, labels, puzzle_ids = _reviewed_number_templates()
+    eligible = np.isin(labels, tuple(family))
+    if excluded_puzzle_id is not None:
+        eligible &= puzzle_ids != excluded_puzzle_id
+    candidate_features = features[eligible]
+    candidate_labels = labels[eligible]
+    if not len(candidate_labels):
+        return None
+    feature = _reviewed_number_feature(cell).astype(np.float32)
+    distances = np.mean((candidate_features.astype(np.float32) - feature) ** 2, axis=(1, 2))
+    return int(candidate_labels[int(np.argmin(distances))])
+
+
+def _audit_reviewed_number_families(
+    readings: list[CellReading],
+    cells_by_position: dict[tuple[int, int], np.ndarray],
+    *,
+    excluded_puzzle_id: int | None = None,
+) -> list[CellReading]:
+    """Revoke trust when reviewed examples dispute a known OCR ambiguity."""
+
+    families = (frozenset((6, 8)), frozenset((16, 18)))
+    reviewed = []
+    for reading in readings:
+        if not reading.trusted or not reading.text.isdigit():
+            reviewed.append(reading)
+            continue
+        value = int(reading.text)
+        family = next((item for item in families if value in item), None)
+        if family is None:
+            reviewed.append(reading)
+            continue
+        vote = _reviewed_number_vote(
+            cells_by_position[(reading.row, reading.column)],
+            family,
+            excluded_puzzle_id=excluded_puzzle_id,
+        )
+        reviewed.append(
+            CellReading(
+                row=reading.row,
+                column=reading.column,
+                text=reading.text,
+                confidence=reading.confidence,
+                trusted=vote is None or vote == value,
+            )
+        )
+    return reviewed
+
+
 def _reference_templates(reference_grid: np.ndarray) -> dict[int, np.ndarray]:
     return {
         value: _number_feature(
@@ -559,6 +634,8 @@ def _adjudicate_counter_family(
     top_two = {candidate for _, candidate in pixel_scores[:2]}
     if digit in {"6", "8"} and "5" in top_two and max(counters) == 0:
         return "5"
+    if digit == "8" and "6" in top_two and max(counters) <= 1:
+        return "6"
     if digit == "6" and "8" in top_two and min(counters[:3]) >= 3 and counters[3] == 2:
         return "8"
     return digit
@@ -601,8 +678,26 @@ def _select_clue(attempts: list[str]) -> str | None:
     return winner if votes > 1 else candidates[0]
 
 
+def _adjudicate_clue_topology(cleaned: np.ndarray, clue: str | None) -> str | None:
+    """Correct OCR readings contradicted by simple printed-glyph topology."""
+
+    points = np.argwhere(cleaned < 128)
+    if len(points):
+        y_min, x_min = points.min(axis=0)
+        y_max, x_max = points.max(axis=0)
+        width = int(x_max - x_min + 1)
+        height = int(y_max - y_min + 1)
+        if height >= 25 and width / height <= 0.25:
+            return "I"
+    if clue != "A":
+        return clue
+    ink = 255 - cleaned
+    counters = tuple(_enclosed_counter_count(ink, size) for size in (0, 2, 3, 4))
+    return "X" if max(counters) == 0 else clue
+
+
 def clue_ink_pixels(cell: np.ndarray) -> int:
-    """Measure letter-like foreground away from reference-cell borders and numbers."""
+    """Measure printed clue-letter foreground away from borders and numbers."""
 
     region = cell[30:92, 8:92]
     gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
@@ -614,7 +709,7 @@ def extract_clues(
     work_dir: Path,
     evidence: list[ClueEvidence] | None = None,
 ) -> dict[int, str]:
-    """Read the large handwritten letters from the numbered reference cells."""
+    """Read the large printed letters from the numbered reference cells."""
 
     clues: dict[int, str] = {}
     for value in range(1, 27):
@@ -632,7 +727,7 @@ def extract_clues(
         found = False
         for index in range(1, count):
             _, _, width, height, area = statistics[index]
-            if height >= 25 and 8 <= width < 60 and area >= 100:
+            if height >= 25 and 4 <= width <= 70 and area >= 100:
                 cleaned[labels == index] = 0
                 found = True
         if not found:
@@ -663,7 +758,7 @@ def extract_clues(
                     (10, 13, 6),
                 )
             )
-        clue = _select_clue(attempts)
+        clue = _adjudicate_clue_topology(cleaned, _select_clue(attempts))
         if evidence is not None:
             agreement = sum(clue in set(attempt) for attempt in attempts) / len(attempts) if clue is not None else 0.0
             evidence.append(
@@ -871,6 +966,7 @@ def recognize_photo(
     work_dir: Path,
     *,
     trace: RecognitionTrace | None = None,
+    template_exclusion: int | None = None,
 ) -> PuzzleObservation:
     """Convert a supported square photographed puzzle into a conservative observation."""
 
@@ -1090,6 +1186,18 @@ def recognize_photo(
         readings = [replacements.get((item.row, item.column), item) for item in readings]
         if trace is not None:
             trace.record("classify.whole", classification_stage)
+    cells_by_position = {(row, column): cell for row, column, cell in playable}
+    readings = _audit_reviewed_number_families(
+        readings,
+        cells_by_position,
+        excluded_puzzle_id=template_exclusion,
+    )
+    for reading in readings:
+        if not reading.trusted:
+            cv2.imwrite(
+                str(work_dir / f"cell-{reading.row + 1}-{reading.column + 1}.png"),
+                cells_by_position[(reading.row, reading.column)],
+            )
     if trace is not None:
         trace.record("classify", started)
     readings_by_position = {(item.row, item.column): item for item in readings}

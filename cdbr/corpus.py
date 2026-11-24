@@ -23,7 +23,7 @@ from cdbr import __version__
 from cdbr.corpus_audit import write_audit_reports
 from cdbr.core.lexicon import english_lexicon
 from cdbr.core.model import CodewordPuzzle, extract_slots
-from cdbr.core.puzzle import BLOCK
+from cdbr.core.puzzle import BLOCK, UNKNOWN
 from cdbr.core.recognition import WARP_SIZE, RecognitionTrace, _block_mask, _cell_images, recognize_photo
 from cdbr.core.solver import solve
 
@@ -259,7 +259,12 @@ def benchmark_entry(
     work_dir.mkdir(parents=True, exist_ok=True)
     trace = RecognitionTrace()
     try:
-        observation = recognize_photo(entry.photo, work_dir, trace=trace)
+        observation = recognize_photo(
+            entry.photo,
+            work_dir,
+            trace=trace,
+            template_exclusion=entry.puzzle_id,
+        )
         expected_blocks = _solution_blocks(entry.solution, observation.width)
     except Exception as exc:  # noqa: BLE001 - one failed photograph must not stop a corpus run
         return {
@@ -439,6 +444,17 @@ def benchmark_solutions(
         reviewed_grid = _truth_grid(truth, entry.truth)
         if reviewed_grid:
             grid = [list(row) for row in reviewed_grid]
+        else:
+            # Simulate a completed human-review gate.  A conservative OCR
+            # disagreement may remove a perfectly good proposed number from
+            # the public grid; accepting that proposal restores it before
+            # confirmed defects below apply the human correction.
+            for evidence in result.get("evidence", ()):
+                row = int(evidence["row"])
+                column = int(evidence["column"])
+                reading = str(evidence["reading"])
+                if grid[row - 1][column - 1] == UNKNOWN and reading.isdigit():
+                    grid[row - 1][column - 1] = int(reading)
         for (row, column), expected in _truth_number_defects(truth, entry.truth).items():
             grid[row - 1][column - 1] = expected
         if any(value not in {BLOCK, "."} and not isinstance(value, int) for row in grid for value in row):

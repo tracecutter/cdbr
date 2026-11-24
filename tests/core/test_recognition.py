@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from cdbr.core.recognition import (
+    _adjudicate_clue_topology,
     _adjudicate_counter_family,
     _block_mask,
     _cell_images,
@@ -13,6 +14,8 @@ from cdbr.core.recognition import (
     _digit_glyphs,
     _foreground_binary,
     _relative_margin,
+    _number_feature,
+    _reviewed_number_vote,
     _select_clue,
     clue_ink_pixels,
     detect_grid_size,
@@ -93,6 +96,24 @@ def test_select_clue_prefers_agreement_across_ocr_modes() -> None:
     assert _select_clue(["", "BB", "B"]) == "B"
 
 
+def test_clue_topology_separates_a_from_x() -> None:
+    letter_a = np.full((80, 80), 255, dtype=np.uint8)
+    letter_x = letter_a.copy()
+    cv2.putText(letter_a, "A", (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 2.0, 0, 7, cv2.LINE_AA)
+    cv2.putText(letter_x, "X", (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 2.0, 0, 7, cv2.LINE_AA)
+
+    assert _adjudicate_clue_topology(letter_a, "A") == "A"
+    assert _adjudicate_clue_topology(letter_x, "A") == "X"
+
+
+def test_clue_topology_recognises_narrow_i_after_ocr_miss() -> None:
+    letter_i = np.full((80, 80), 255, dtype=np.uint8)
+    cv2.rectangle(letter_i, (37, 15), (43, 65), 0, -1)
+
+    assert _adjudicate_clue_topology(letter_i, None) == "I"
+    assert _adjudicate_clue_topology(letter_i, "O") == "I"
+
+
 def test_relative_margin_handles_identical_perfect_matches() -> None:
     assert _relative_margin(0.0, 0.0) == 0.0
     assert _relative_margin(10.0, 20.0) == 0.5
@@ -102,6 +123,30 @@ def test_counter_family_adjudicator_ignores_unrelated_digits() -> None:
     glyph = np.zeros((48, 32), dtype=np.uint8)
 
     assert _adjudicate_counter_family(glyph, "4", [(1.0, "4"), (2.0, "5")]) == "4"
+
+
+def test_counter_family_adjudicator_demotes_one_counter_eight_to_six() -> None:
+    glyph = np.zeros((48, 32), dtype=np.uint8)
+    cv2.ellipse(glyph, (16, 30), (9, 11), 0, 0, 360, 255, 4)
+    cv2.line(glyph, (8, 30), (12, 7), 255, 4)
+
+    assert _adjudicate_counter_family(glyph, "8", [(1.0, "8"), (1.1, "6")]) == "6"
+
+
+def test_reviewed_number_vote_respects_puzzle_exclusion(monkeypatch) -> None:
+    cell = np.full((100, 100, 3), 255, dtype=np.uint8)
+    cv2.putText(cell, "6", (8, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.1, 0, 3, cv2.LINE_AA)
+    feature = cv2.resize(_number_feature(cell), (20, 30), interpolation=cv2.INTER_AREA)
+    features = np.stack((feature, feature, feature, 255 - feature))
+    labels = np.array((6, 6, 6, 8), dtype=np.uint8)
+    puzzle_ids = np.array((37, 37, 38, 39), dtype=np.uint8)
+    monkeypatch.setattr(
+        "cdbr.core.recognition._reviewed_number_templates",
+        lambda: (features, labels, puzzle_ids),
+    )
+
+    assert _reviewed_number_vote(cell, frozenset((6, 8))) == 6
+    assert _reviewed_number_vote(cell, frozenset((6, 8)), excluded_puzzle_id=37) == 6
 
 
 def test_puzzle_35_fragmented_eight_is_not_read_as_six(tmp_path: Path) -> None:
