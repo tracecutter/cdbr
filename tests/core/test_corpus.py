@@ -305,7 +305,9 @@ def test_apply_truth_counts_a_corrected_number_defect_as_correct(tmp_path: Path)
 
 def test_benchmark_solutions_scores_only_confirmed_publisher_mapping(tmp_path: Path, monkeypatch) -> None:
     truth = tmp_path / "truth.toml"
-    truth.write_text('format_version = 1\n[clues]\n"1" = "A"\n[solution]\n"1" = "A"\n"2" = "B"\n')
+    truth.write_text(
+        'format_version = 1\n[number_defects]\n"r01c02" = 2\n[clues]\n"1" = "A"\n[solution]\n"1" = "A"\n"2" = "B"\n'
+    )
     entry = CorpusEntry(puzzle_id=1, photo=tmp_path / "puzzle.jpg", solution=tmp_path / "solution.jpg", truth=truth)
     solved = SimpleNamespace(
         solutions=(SimpleNamespace(mapping={1: "A", 2: "B"}),),
@@ -318,7 +320,17 @@ def test_benchmark_solutions_scores_only_confirmed_publisher_mapping(tmp_path: P
 
     summary = benchmark_solutions(
         (entry,),
-        {1: {"status": "ok", "grid": [[1, 2], [".", 1]]}},
+        {
+            1: {
+                "status": "ok",
+                "grid": [[1, 8], [".", 1]],
+                "evidence": [
+                    {"row": 1, "column": 1, "reading": "1", "trusted": True},
+                    {"row": 1, "column": 2, "reading": "8", "trusted": True},
+                    {"row": 2, "column": 2, "reading": "1", "trusted": True},
+                ],
+            }
+        },
     )
 
     assert summary["certified"] == 1
@@ -326,6 +338,7 @@ def test_benchmark_solutions_scores_only_confirmed_publisher_mapping(tmp_path: P
     assert summary["publisher_scored"] == 1
     assert summary["publisher_mismatches"] == []
     assert summary["outcomes"][0]["publisher_match"] is True
+    assert summary["outcomes"][0]["number_corrections"] == 1
 
 
 def test_solution_approval_import_and_sparse_asset_publication(tmp_path: Path) -> None:

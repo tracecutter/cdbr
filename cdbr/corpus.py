@@ -467,15 +467,22 @@ def benchmark_solutions(
             row = int(evidence["row"])
             column = int(evidence["column"])
             reading = str(evidence["reading"])
-            if evidence["trusted"] is True and grid[row - 1][column - 1] != UNKNOWN:
-                continue
             expected: int | None = None
             if reviewed_grid:
                 reviewed = reviewed_grid[row - 1][column - 1]
                 expected = int(reviewed) if reviewed not in {BLOCK, UNKNOWN} else None
             elif (row, column) in defects:
                 expected = defects[row, column]
-            elif reading.isdigit():
+            if expected is not None:
+                observed = int(reading) if reading.isdigit() else None
+                requires_review = evidence["trusted"] is not True or observed != expected
+                number_reviews += int(requires_review)
+                number_corrections += int(observed != expected)
+                grid[row - 1][column - 1] = expected
+                continue
+            if evidence["trusted"] is True and grid[row - 1][column - 1] != UNKNOWN:
+                continue
+            if reading.isdigit():
                 expected = int(reading)
             if expected is None:
                 continue
