@@ -6,7 +6,12 @@ review_status = "human-reviewed"
 [number_defects]
 "r01c02" = 26
 "r01c03" = 16
+"r03c11" = 16
+"r07c08" = 6
+"r12c05" = 6
+"r14c15" = 6
 "r15c04" = 6
+"r15c13" = 6
 
 [clues]
 "7" = "W"

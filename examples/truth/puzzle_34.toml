@@ -6,6 +6,7 @@ review_status = "human-reviewed"
 [number_defects]
 "r01c05" = 26
 "r06c01" = 26
+"r13c01" = 16
 
 [clues]
 "4" = "S"

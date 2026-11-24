@@ -3,6 +3,9 @@ accept_observed_numbers = true
 source = "Human review of puzzle 42 reference grid."
 review_status = "human-reviewed"
 
+[number_defects]
+"r13c11" = 16
+
 [clues]
 "2" = "X"
 "5" = "N"

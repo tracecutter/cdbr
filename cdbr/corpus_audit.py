@@ -17,16 +17,7 @@ from cdbr.core.recognition import WARP_SIZE
 
 # Provisional corrections inferred from publisher-approved solution words. They
 # remain separate from truth until a human confirms the photographed number.
-SOLUTION_DERIVED_NUMBER_SUSPECTS = {
-    (34, 13, 1): 16,
-    (37, 3, 11): 16,
-    (37, 7, 8): 6,
-    (37, 12, 5): 6,
-    (37, 14, 15): 6,
-    (37, 15, 13): 6,
-    (42, 13, 11): 16,
-    (47, 15, 6): 16,
-}
+SOLUTION_DERIVED_NUMBER_SUSPECTS: dict[tuple[int, int, int], int] = {}
 
 
 _STYLE = """
