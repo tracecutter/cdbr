@@ -140,6 +140,16 @@ body[data-mode] .creator-workspace { padding: clamp(20px, 2.5vw, 30px); }
 .solver-progress .progress-track { margin-bottom: 30px; }
 .solver-progress h3 { max-width: 340px; margin: 0; font: 500 clamp(1.45rem, 2.4vw, 2rem)/1.15 Georgia, serif; }
 .solver-progress > p:not(.eyebrow) { min-height: 3em; max-width: 340px; margin-bottom: 0; color: var(--muted); line-height: 1.45; }
+.hint-dialog { width: min(460px, calc(100% - 32px)); padding: 0; border: 1px solid rgba(37, 39, 37, .22); color: var(--ink); background: #fffefa; box-shadow: 0 24px 80px rgba(26, 27, 26, .28); }
+.hint-dialog::backdrop { background: rgba(26, 27, 26, .52); }
+.hint-dialog form { padding: clamp(24px, 5vw, 42px); }
+.hint-dialog h2 { margin: 8px 0 22px; font: 500 clamp(1.7rem, 5vw, 2.5rem)/1.05 Georgia, serif; }
+.hint-dialog-answer { min-height: 74px; display: grid; place-items: center; margin: 0 0 22px; border: 2px solid var(--ink); font: 700 2rem/1 ui-monospace, monospace; background: white; }
+.hint-dialog-answer.is-empty { border-style: dashed; }
+.hint-dialog p:not(.eyebrow) { color: var(--muted); line-height: 1.5; }
+.hint-dialog .hint-dialog-warning { color: var(--red-dark); }
+.hint-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 28px; }
+.hint-dialog-actions button { min-height: 52px; }
 .puzzle-cell { position: relative; aspect-ratio: 1; min-width: 0; display: grid; place-items: center; border: 0; padding: 0; color: var(--ink); background: #fffefa; cursor: pointer; }
 .puzzle-cell.is-block { background: #696b67; cursor: default; }
 .puzzle-cell small { position: absolute; top: 4%; left: 7%; font: 650 clamp(.48rem, 1vw, .7rem)/1 ui-monospace, monospace; }

@@ -1,0 +1,36 @@
+format_version = 1
+source = "Fresh publisher corpus; awaiting human review."
+review_status = "pending"
+
+[number_defects]
+"r04c01" = 9
+"r05c08" = 9
+"r05c10" = 9
+
+[solution]
+"1" = "W"
+"2" = "S"
+"3" = "T"
+"4" = "L"
+"5" = "U"
+"6" = "Q"
+"7" = "K"
+"8" = "B"
+"9" = "P"
+"10" = "N"
+"11" = "A"
+"12" = "D"
+"13" = "J"
+"14" = "O"
+"15" = "Z"
+"16" = "H"
+"17" = "G"
+"18" = "C"
+"19" = "E"
+"20" = "F"
+"21" = "X"
+"22" = "I"
+"23" = "R"
+"24" = "M"
+"25" = "Y"
+"26" = "V"

@@ -263,7 +263,22 @@ def test_apply_truth_records_sparse_human_confirmed_number_defects(tmp_path: Pat
 
     refreshed = apply_truth(result, truth)
 
-    assert "number_accuracy" not in refreshed
+    assert refreshed["number_accuracy"] == {
+        "samples": 1,
+        "correct": 0,
+        "incorrect": 1,
+        "trusted_incorrect": 0,
+        "mismatches": [
+            {
+                "row": 1,
+                "column": 2,
+                "observed": 18,
+                "expected": 16,
+                "confidence": 59.0,
+                "trusted": False,
+            }
+        ],
+    }
     assert refreshed["number_defects"] == [
         {
             "row": 1,
@@ -274,6 +289,29 @@ def test_apply_truth_records_sparse_human_confirmed_number_defects(tmp_path: Pat
             "trusted": False,
         }
     ]
+
+
+def test_apply_truth_scores_sparse_correct_number_confirmations(tmp_path: Path) -> None:
+    truth = tmp_path / "truth.toml"
+    truth.write_text('format_version = 1\n[number_confirmations]\n"r01c02" = 18\n')
+    result = {
+        "puzzle_id": 36,
+        "grid": [[13, 18]],
+        "evidence": [
+            {"row": 1, "column": 1, "reading": "13", "confidence": 90.0, "trusted": True},
+            {"row": 1, "column": 2, "reading": "18", "confidence": 72.0, "trusted": True},
+        ],
+    }
+
+    refreshed = apply_truth(result, truth)
+
+    assert refreshed["number_accuracy"] == {
+        "samples": 1,
+        "correct": 1,
+        "incorrect": 0,
+        "trusted_incorrect": 0,
+        "mismatches": [],
+    }
 
 
 def test_apply_truth_accepts_remaining_observed_numbers_as_reviewed(tmp_path: Path) -> None:
@@ -337,7 +375,7 @@ def test_benchmark_solutions_scores_only_confirmed_publisher_mapping(tmp_path: P
         candidates=lambda symbols: (SimpleNamespace(word=words[symbols]),) if symbols in words else ()
     )
     monkeypatch.setattr(corpus_module, "english_lexicon", lambda: lexicon)
-    monkeypatch.setattr(corpus_module, "solve", lambda _puzzle, _lexicon: solved)
+    monkeypatch.setattr(corpus_module, "solve", lambda _puzzle, _lexicon, **_kwargs: solved)
 
     summary = benchmark_solutions(
         (entry,),
@@ -390,7 +428,7 @@ def test_benchmark_solutions_scores_only_confirmed_publisher_mapping(tmp_path: P
 
 def test_solution_approval_import_and_sparse_asset_publication(tmp_path: Path) -> None:
     truth = tmp_path / "truth.toml"
-    truth.write_text('format_version = 1\naccept_observed_numbers = true\n[clues]\n"1" = "A"\n')
+    truth.write_text('format_version = 1\nreview_status = "pending"\n[clues]\n"1" = "A"\n')
     entry = CorpusEntry(puzzle_id=31, photo=tmp_path / "puzzle.jpg", solution=tmp_path / "solution.jpg", truth=truth)
     mapping = {str(symbol): chr(64 + symbol) for symbol in range(1, 27)}
     approvals = tmp_path / "approvals.json"
@@ -409,13 +447,16 @@ def test_solution_approval_import_and_sparse_asset_publication(tmp_path: Path) -
             }
         },
         tmp_path / "assets",
+        private_destination=tmp_path / "private",
     )
 
     assert published == [31]
     asset = tomllib.loads((tmp_path / "assets" / "puzzle-31.toml").read_text())
     assert asset["serial"] == 31
     assert asset["grid"] == ["1 2", "## 1"]
-    assert asset["solution"]["26"] == "Z"
+    assert "solution" not in asset
+    private = tomllib.loads((tmp_path / "private" / "puzzle-31.toml").read_text())
+    assert private["solution"]["26"] == "Z"
 
 
 def test_write_audit_reports_separates_number_and_clue_queues(tmp_path: Path) -> None:

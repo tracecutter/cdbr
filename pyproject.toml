@@ -24,10 +24,13 @@ dependencies = [
     "click>=8.4.1",
     "packaging>=26.2",
     "npkglib>=1.1.0",
+    "numpy>=2",
     "opencv-python-headless>=5.0.0.93",
+    "tomlkit",
     "wordfreq>=3.1.1",
     "Pillow>=12.0.0",
     "fastapi>=0.162.7",
+    "pydantic>=2",
     "python-multipart>=0.0.33",
     "uvicorn>=0.54.0",
 ]
@@ -35,13 +38,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     # configuration
-	"npkg-pfig>=2.0.0",
+    "npkg-pfig>=2.0.0",
 
     # docs
     "npkg-psym>=0.1.0",
     "sphinx<9.0,>=8.2.3",
     "myst-parser<5.0.0",
     "furo>=2025.12.19",
+
     # test
     "pytest>=9.0.3",
     "httpx2",
@@ -114,12 +118,18 @@ audit-command = "python -m cdbr.corpus --no-resume --audit --solve --summary-out
 docs-dir = "docs"
 
 [tool.cdbr]
+# pfig checks executable names on PATH.
 sysdeps = [
-  "git>=2.0",
-  "imagemagick>=7.0",
-  "make>=4.0",
+  # Runtime photo normalization and OCR. HEIC requires ImageMagick's HEIF delegate.
+  "magick",
   "tesseract>=5.0",
+  # Development and documentation.
+  "git>=2.0",
+  "make>=3.81",
+  "dot",  # Graphviz
 ]
+# Target-specific tools: docker (container), gh (GitHub publishing),
+# and enscript, psselect, ps2pdf (printable corpus).
 
 [[tool.cdbr.assets]]
 label = "manpage"

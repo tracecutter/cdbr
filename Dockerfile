@@ -20,6 +20,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md LICENSE ./
 COPY cdbr ./cdbr
+COPY solutions/playable ./solutions/playable
 
 RUN pip install --no-cache-dir \
         "https://github.com/tracecutter/npkglib/archive/refs/tags/v${NPKGLIB_VERSION}.tar.gz" \

@@ -18,23 +18,6 @@ grid = [
     "25 ## ## 25 ## ## ## ## ## ## 01 ## 05 ## ##",
     "## 26 20 12 25 22 25 20 12 25 20 21 25 ## ##",
 ]
-answer = [
-    "#W#K#A#GLASSES#",
-    "WINNING###I#V##",
-    "#T#O#T#PRINCESS",
-    "SHOWTIME##G#R#Y",
-    "#O##H##T##L#Y#S",
-    "#U##E#PERFECT#T",
-    "STUDY##R#L##H#E",
-    "###I###S#I#FILM",
-    "CLASS##FOR##N#A",
-    "H##C#F#I#TARGET",
-    "ACCURATE##C###I",
-    "N##S#R#LITTLE#C",
-    "CONSUMED##I#L##",
-    "E##E######O#S##",
-    "#INDEPENDENCE##",
-]
 
 [clues]
 5 = "S"

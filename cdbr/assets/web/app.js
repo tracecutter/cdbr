@@ -62,6 +62,12 @@ const puzzlePickerStatus = document.querySelector('#puzzle-picker-status');
 const startPuzzleButton = document.querySelector('#start-puzzle');
 const randomPuzzleButton = document.querySelector('#random-puzzle');
 const checkGameButton = document.querySelector('#check-game');
+const hintDialog = document.querySelector('#hint-dialog');
+const hintDialogTitle = document.querySelector('#hint-dialog-title');
+const hintDialogAnswer = document.querySelector('#hint-dialog-answer');
+const hintDialogDetail = document.querySelector('#hint-dialog-detail');
+const hintDialogWarning = document.querySelector('#hint-dialog-warning');
+const hintDialogAccept = document.querySelector('#hint-dialog-accept');
 
 let previewUrl;
 let resultUrl;
@@ -119,6 +125,27 @@ function endSolving() {
   document.querySelector('#reveal-all').disabled = false;
   checkGameButton.disabled = false;
   solving = false;
+}
+
+function previewReferenceHint(symbol, hint) {
+  const letter = hint?.letter;
+  const certified = hint?.solution_status === 'certified';
+  hintDialogTitle.textContent = letter ? `Hint for number ${symbol}` : `No hint yet for number ${symbol}`;
+  hintDialogAnswer.textContent = letter ? `${symbol} = ${letter}` : '';
+  hintDialogAnswer.classList.toggle('is-empty', !letter);
+  hintDialogDetail.textContent = letter
+    ? 'The current solution supports this reference-grid letter.'
+    : 'The puzzle is not fully solved, and the current partial solution does not know this letter.';
+  hintDialogWarning.textContent = letter && !certified
+    ? 'Caveat solver: the puzzle is not complete, so this best guess may be wrong.'
+    : letter
+      ? 'This letter comes from a complete, uniquely certified solution.'
+      : 'I cannot give you a hint yet. Add a few letters and ask again; each entry narrows the search.';
+  hintDialogAccept.hidden = !letter;
+  return new Promise((resolve) => {
+    hintDialog.addEventListener('close', () => resolve(letter && hintDialog.returnValue === 'accept'), { once: true });
+    hintDialog.showModal();
+  });
 }
 
 function showMode(mode) {
@@ -374,13 +401,13 @@ function handleGameKey(key) {
     gameGuidance.textContent = 'Entry cancelled.';
   } else if (key === 'Backspace') {
     const symbol = selectedSymbol;
-    if (entrySources.get(symbol) === 'player') {
+    if (!originalHints.has(symbol)) {
       revealed.delete(symbol);
       entrySources.delete(symbol);
       incorrectSymbols.delete(symbol);
-      gameGuidance.textContent = `Your entry for ${symbol} was cleared.`;
+      gameGuidance.textContent = `Entry for ${symbol} was cleared.`;
     } else {
-      gameGuidance.textContent = 'Selection cleared.';
+      gameGuidance.textContent = `${symbol}=${revealed.get(symbol)} is an original clue and cannot be changed.`;
     }
     cancelSelection();
   } else {
@@ -461,13 +488,25 @@ async function referenceClick(symbol) {
   }
   endSolving();
   if (!response.ok) {
-    gameGuidance.textContent = `I could not find a reliable hint for ${symbol}. Your entries are untouched, so you can keep playing.`;
+    await previewReferenceHint(symbol);
+    gameGuidance.textContent = `The partial solution does not know ${symbol} yet. Your entries are untouched.`;
     selectedSymbol = undefined;
     renderReference();
     renderGame();
     return;
   }
   const hint = await response.json();
+  const accepted = hint.solution_status === 'certified'
+    ? true
+    : await previewReferenceHint(symbol, hint);
+  if (!accepted) {
+    selectedSymbol = undefined;
+    draftLetter = undefined;
+    gameGuidance.textContent = `Hint for ${symbol} left unused.`;
+    renderReference();
+    renderGame();
+    return;
+  }
   revealed.set(symbol, hint.letter);
   entrySources.set(symbol, 'solver');
   incorrectSymbols.delete(symbol);
@@ -515,9 +554,44 @@ randomPuzzleButton.addEventListener('click', () => startCorpusGame('random'));
 puzzleNumber.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') startPuzzleButton.click();
 });
-showScannerButton.addEventListener('click', () => showMode('scanner'));
-showCreatorButton.addEventListener('click', () => showMode('creator'));
-document.querySelector('#scan-from-game').addEventListener('click', () => showMode('scanner'));
+function abandonGame() {
+  if (document.body.dataset.mode !== 'game') return true;
+  return window.confirm('Abandon game?');
+}
+
+function resetScanner() {
+  clearInterval(stageTimer);
+  resultState.hidden = true;
+  errorState.hidden = true;
+  workingState.hidden = true;
+  previewState.classList.remove('is-working');
+  previewState.hidden = true;
+  fileMeta.hidden = true;
+  solveButton.hidden = true;
+  reviewState.hidden = true;
+  scanActions.hidden = false;
+  scanJob = undefined;
+  emptyState.hidden = false;
+  selectedFile = undefined;
+  input.value = '';
+}
+
+function openScanner() {
+  if (!abandonGame()) return;
+  game = undefined;
+  resetScanner();
+  showMode('scanner');
+}
+
+function openCreator() {
+  if (!abandonGame()) return;
+  game = undefined;
+  showMode('creator');
+}
+
+showScannerButton.addEventListener('click', openScanner);
+showCreatorButton.addEventListener('click', openCreator);
+document.querySelector('#scan-from-game').addEventListener('click', openScanner);
 document.querySelector('#quit-game').addEventListener('click', () => showMode('idle'));
 document.querySelector('#reset-game').addEventListener('click', loadGame);
 document.addEventListener('keydown', (event) => {
@@ -770,20 +844,7 @@ function showSelection(file) {
 }
 
 function chooseAgain() {
-  clearInterval(stageTimer);
-  resultState.hidden = true;
-  errorState.hidden = true;
-  workingState.hidden = true;
-  previewState.classList.remove('is-working');
-  previewState.hidden = true;
-  fileMeta.hidden = true;
-  solveButton.hidden = true;
-  reviewState.hidden = true;
-  scanActions.hidden = false;
-  scanJob = undefined;
-  emptyState.hidden = false;
-  selectedFile = undefined;
-  input.value = '';
+  resetScanner();
   input.click();
 }
 

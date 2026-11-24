@@ -126,7 +126,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", type=Path, default=Path("/tmp/cdbr-corpus/results.jsonl"))
     parser.add_argument("--work-root", type=Path, default=Path("/tmp/cdbr-corpus/work"))
-    parser.add_argument("--truth-root", type=Path, default=Path("examples/truth"))
+    parser.add_argument("--truth-root", type=Path, default=Path("solutions/truth"))
     parser.add_argument(
         "--destination",
         type=Path,

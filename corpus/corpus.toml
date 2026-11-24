@@ -1,0 +1,416 @@
+format_version = 1
+description = "Photographed 15x15 Code Break puzzles with published solution grids."
+
+[[puzzles]]
+id = 31
+photo = "puzzle_31.jpg"
+solution = "../solutions/puzzle_31_solution.jpg"
+truth = "../solutions/truth/puzzle_31.toml"
+
+[[puzzles]]
+id = 32
+photo = "puzzle_32.jpg"
+solution = "../solutions/puzzle_32_solution.jpg"
+truth = "../solutions/truth/puzzle_32.toml"
+
+[[puzzles]]
+id = 33
+photo = "puzzle_33.jpg"
+solution = "../solutions/puzzle_33_solution.jpg"
+truth = "../solutions/truth/puzzle_33.toml"
+
+[[puzzles]]
+id = 34
+photo = "puzzle_34.jpg"
+solution = "../solutions/puzzle_34_solution.jpg"
+truth = "../solutions/truth/puzzle_34.toml"
+
+[[puzzles]]
+id = 35
+photo = "puzzle_35.jpg"
+solution = "../solutions/puzzle_35_solution.jpg"
+truth = "../solutions/truth/puzzle_35.toml"
+
+[[puzzles]]
+id = 36
+photo = "puzzle_36.jpg"
+solution = "../solutions/puzzle_36_solution.jpg"
+truth = "../solutions/truth/puzzle_36.toml"
+
+[[puzzles]]
+id = 37
+photo = "puzzle_37.jpg"
+solution = "../solutions/puzzle_37_solution.jpg"
+truth = "../solutions/truth/puzzle_37.toml"
+
+[[puzzles]]
+id = 38
+photo = "puzzle_38.jpg"
+solution = "../solutions/puzzle_38_solution.jpg"
+truth = "../solutions/truth/puzzle_38.toml"
+
+[[puzzles]]
+id = 39
+photo = "puzzle_39.jpg"
+solution = "../solutions/puzzle_39_solution.jpg"
+truth = "../solutions/truth/puzzle_39.toml"
+
+[[puzzles]]
+id = 40
+photo = "puzzle_40.jpg"
+solution = "../solutions/puzzle_40_solution.jpg"
+truth = "../solutions/truth/puzzle_40.toml"
+
+[[puzzles]]
+id = 41
+photo = "puzzle_41.jpg"
+solution = "../solutions/puzzle_41_solution.jpg"
+truth = "../solutions/truth/puzzle_41.toml"
+
+[[puzzles]]
+id = 42
+photo = "puzzle_42.jpg"
+solution = "../solutions/puzzle_42_solution.jpg"
+truth = "../solutions/truth/puzzle_42.toml"
+
+[[puzzles]]
+id = 43
+photo = "puzzle_43.jpg"
+solution = "../solutions/puzzle_43_solution.jpg"
+truth = "../solutions/truth/puzzle_43.toml"
+
+[[puzzles]]
+id = 44
+photo = "puzzle_44.jpg"
+solution = "../solutions/puzzle_44_solution.jpg"
+truth = "../solutions/truth/puzzle_44.toml"
+
+[[puzzles]]
+id = 45
+photo = "puzzle_45.jpg"
+solution = "../solutions/puzzle_45_solution.jpg"
+truth = "../solutions/truth/puzzle_45.toml"
+
+[[puzzles]]
+id = 46
+photo = "puzzle_46.jpg"
+solution = "../solutions/puzzle_46_solution.jpg"
+truth = "../solutions/truth/puzzle_46.toml"
+
+[[puzzles]]
+id = 47
+photo = "puzzle_47.jpg"
+solution = "../solutions/puzzle_47_solution.jpg"
+truth = "../solutions/truth/puzzle_47.toml"
+
+[[puzzles]]
+id = 48
+photo = "puzzle_48.jpg"
+solution = "../solutions/puzzle_48_solution.jpg"
+truth = "../solutions/truth/puzzle_48.toml"
+
+[[puzzles]]
+id = 49
+photo = "puzzle_49.jpg"
+solution = "../solutions/puzzle_49_solution.jpg"
+truth = "../solutions/truth/puzzle_49.toml"
+
+[[puzzles]]
+id = 50
+photo = "puzzle_50.jpg"
+solution = "../solutions/puzzle_50_solution.jpg"
+truth = "../solutions/truth/puzzle_50.toml"
+
+[[puzzles]]
+id = 52
+photo = "puzzle_52.jpg"
+solution = "../solutions/puzzle_52_solution.jpg"
+truth = "../solutions/truth/puzzle_52.toml"
+
+[[puzzles]]
+id = 53
+photo = "puzzle_53.jpg"
+solution = "../solutions/puzzle_53_solution.jpg"
+truth = "../solutions/truth/puzzle_53.toml"
+
+[[puzzles]]
+id = 54
+photo = "puzzle_54.jpg"
+solution = "../solutions/puzzle_54_solution.jpg"
+truth = "../solutions/truth/puzzle_54.toml"
+
+[[puzzles]]
+id = 55
+photo = "puzzle_55.jpg"
+solution = "../solutions/puzzle_55_solution.jpg"
+truth = "../solutions/truth/puzzle_55.toml"
+
+[[puzzles]]
+id = 56
+photo = "puzzle_56.jpg"
+solution = "../solutions/puzzle_56_solution.jpg"
+truth = "../solutions/truth/puzzle_56.toml"
+
+[[puzzles]]
+id = 57
+photo = "puzzle_57.jpg"
+solution = "../solutions/puzzle_57_solution.jpg"
+truth = "../solutions/truth/puzzle_57.toml"
+
+[[puzzles]]
+id = 58
+photo = "puzzle_58.jpg"
+solution = "../solutions/puzzle_58_solution.jpg"
+truth = "../solutions/truth/puzzle_58.toml"
+
+[[puzzles]]
+id = 59
+photo = "puzzle_59.jpg"
+solution = "../solutions/puzzle_59_solution.jpg"
+truth = "../solutions/truth/puzzle_59.toml"
+
+[[puzzles]]
+id = 60
+photo = "puzzle_60.jpg"
+solution = "../solutions/puzzle_60_solution.jpg"
+truth = "../solutions/truth/puzzle_60.toml"
+
+[[puzzles]]
+id = 61
+photo = "puzzle_61.jpg"
+solution = "../solutions/puzzle_61_solution.jpg"
+truth = "../solutions/truth/puzzle_61.toml"
+
+[[puzzles]]
+id = 62
+photo = "puzzle_62.jpg"
+solution = "../solutions/puzzle_62_solution.jpg"
+truth = "../solutions/truth/puzzle_62.toml"
+
+[[puzzles]]
+id = 63
+photo = "puzzle_63.jpg"
+solution = "../solutions/puzzle_63_solution.jpg"
+truth = "../solutions/truth/puzzle_63.toml"
+
+[[puzzles]]
+id = 64
+photo = "puzzle_64.jpg"
+solution = "../solutions/puzzle_64_solution.jpg"
+truth = "../solutions/truth/puzzle_64.toml"
+
+[[puzzles]]
+id = 65
+photo = "puzzle_65.jpg"
+solution = "../solutions/puzzle_65_solution.jpg"
+truth = "../solutions/truth/puzzle_65.toml"
+
+[[puzzles]]
+id = 66
+photo = "puzzle_66.jpg"
+solution = "../solutions/puzzle_66_solution.jpg"
+truth = "../solutions/truth/puzzle_66.toml"
+
+[[puzzles]]
+id = 67
+photo = "puzzle_67.jpg"
+solution = "../solutions/puzzle_67_solution.jpg"
+truth = "../solutions/truth/puzzle_67.toml"
+
+[[puzzles]]
+id = 68
+photo = "puzzle_68.jpg"
+solution = "../solutions/puzzle_68_solution.jpg"
+truth = "../solutions/truth/puzzle_68.toml"
+
+[[puzzles]]
+id = 69
+photo = "puzzle_69.jpg"
+solution = "../solutions/puzzle_69_solution.jpg"
+truth = "../solutions/truth/puzzle_69.toml"
+
+[[puzzles]]
+id = 70
+photo = "puzzle_70.jpg"
+solution = "../solutions/puzzle_70_solution.jpg"
+truth = "../solutions/truth/puzzle_70.toml"
+
+[[puzzles]]
+id = 71
+photo = "puzzle_71.jpg"
+solution = "../solutions/puzzle_71_solution.jpg"
+truth = "../solutions/truth/puzzle_71.toml"
+
+[[puzzles]]
+id = 72
+photo = "puzzle_72.jpg"
+solution = "../solutions/puzzle_72_solution.jpg"
+truth = "../solutions/truth/puzzle_72.toml"
+
+[[puzzles]]
+id = 73
+photo = "puzzle_73.jpg"
+solution = "../solutions/puzzle_73_solution.jpg"
+truth = "../solutions/truth/puzzle_73.toml"
+
+[[puzzles]]
+id = 74
+photo = "puzzle_74.jpg"
+solution = "../solutions/puzzle_74_solution.jpg"
+truth = "../solutions/truth/puzzle_74.toml"
+
+[[puzzles]]
+id = 75
+photo = "puzzle_75.jpg"
+solution = "../solutions/puzzle_75_solution.jpg"
+truth = "../solutions/truth/puzzle_75.toml"
+
+[[puzzles]]
+id = 76
+photo = "puzzle_76.jpg"
+solution = "../solutions/puzzle_76_solution.jpg"
+truth = "../solutions/truth/puzzle_76.toml"
+
+[[puzzles]]
+id = 77
+photo = "puzzle_77.jpg"
+solution = "../solutions/puzzle_77_solution.jpg"
+truth = "../solutions/truth/puzzle_77.toml"
+
+[[puzzles]]
+id = 78
+photo = "puzzle_78.jpg"
+solution = "../solutions/puzzle_78_solution.jpg"
+truth = "../solutions/truth/puzzle_78.toml"
+
+[[puzzles]]
+id = 79
+photo = "puzzle_79.jpg"
+solution = "../solutions/puzzle_79_solution.jpg"
+truth = "../solutions/truth/puzzle_79.toml"
+
+[[puzzles]]
+id = 80
+photo = "puzzle_80.jpg"
+solution = "../solutions/puzzle_80_solution.jpg"
+truth = "../solutions/truth/puzzle_80.toml"
+
+[[puzzles]]
+id = 81
+photo = "puzzle_81.jpg"
+solution = "../solutions/puzzle_81_solution.jpg"
+truth = "../solutions/truth/puzzle_81.toml"
+
+[[puzzles]]
+id = 82
+photo = "puzzle_82.jpg"
+solution = "../solutions/puzzle_82_solution.jpg"
+truth = "../solutions/truth/puzzle_82.toml"
+
+[[puzzles]]
+id = 83
+photo = "puzzle_83.jpg"
+solution = "../solutions/puzzle_83_solution.jpg"
+truth = "../solutions/truth/puzzle_83.toml"
+
+[[puzzles]]
+id = 84
+photo = "puzzle_84.jpg"
+solution = "../solutions/puzzle_84_solution.jpg"
+truth = "../solutions/truth/puzzle_84.toml"
+
+[[puzzles]]
+id = 85
+photo = "puzzle_85.jpg"
+solution = "../solutions/puzzle_85_solution.jpg"
+truth = "../solutions/truth/puzzle_85.toml"
+
+[[puzzles]]
+id = 86
+photo = "puzzle_86.jpg"
+solution = "../solutions/puzzle_86_solution.jpg"
+truth = "../solutions/truth/puzzle_86.toml"
+
+[[puzzles]]
+id = 87
+photo = "puzzle_87.jpg"
+solution = "../solutions/puzzle_87_solution.jpg"
+truth = "../solutions/truth/puzzle_87.toml"
+
+[[puzzles]]
+id = 88
+photo = "puzzle_88.jpg"
+solution = "../solutions/puzzle_88_solution.jpg"
+truth = "../solutions/truth/puzzle_88.toml"
+
+[[puzzles]]
+id = 89
+photo = "puzzle_89.jpg"
+solution = "../solutions/puzzle_89_solution.jpg"
+truth = "../solutions/truth/puzzle_89.toml"
+
+[[puzzles]]
+id = 90
+photo = "puzzle_90.jpg"
+solution = "../solutions/puzzle_90_solution.jpg"
+truth = "../solutions/truth/puzzle_90.toml"
+
+[[puzzles]]
+id = 91
+photo = "puzzle_91.jpg"
+solution = "../solutions/puzzle_91_solution.jpg"
+truth = "../solutions/truth/puzzle_91.toml"
+
+[[puzzles]]
+id = 92
+photo = "puzzle_92.jpg"
+solution = "../solutions/puzzle_92_solution.jpg"
+truth = "../solutions/truth/puzzle_92.toml"
+
+[[puzzles]]
+id = 93
+photo = "puzzle_93.jpg"
+solution = "../solutions/puzzle_93_solution.jpg"
+truth = "../solutions/truth/puzzle_93.toml"
+
+[[puzzles]]
+id = 94
+photo = "puzzle_94.jpg"
+solution = "../solutions/puzzle_94_solution.jpg"
+truth = "../solutions/truth/puzzle_94.toml"
+
+[[puzzles]]
+id = 95
+photo = "puzzle_95.jpg"
+solution = "../solutions/puzzle_95_solution.jpg"
+truth = "../solutions/truth/puzzle_95.toml"
+
+[[puzzles]]
+id = 96
+photo = "puzzle_96.jpg"
+solution = "../solutions/puzzle_96_solution.jpg"
+truth = "../solutions/truth/puzzle_96.toml"
+
+[[puzzles]]
+id = 97
+photo = "puzzle_97.jpg"
+solution = "../solutions/puzzle_97_solution.jpg"
+truth = "../solutions/truth/puzzle_97.toml"
+
+[[puzzles]]
+id = 98
+photo = "puzzle_98.jpg"
+solution = "../solutions/puzzle_98_solution.jpg"
+truth = "../solutions/truth/puzzle_98.toml"
+
+[[puzzles]]
+id = 99
+photo = "puzzle_99.jpg"
+solution = "../solutions/puzzle_99_solution.jpg"
+truth = "../solutions/truth/puzzle_99.toml"
+
+[[puzzles]]
+id = 100
+photo = "puzzle_100.jpg"
+solution = "../solutions/puzzle_100_solution.jpg"
+truth = "../solutions/truth/puzzle_100.toml"

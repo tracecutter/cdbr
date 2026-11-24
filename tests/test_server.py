@@ -57,6 +57,43 @@ def test_revealing_an_answer_clears_its_stale_incorrect_marker():
     assert "incorrectSymbols.clear();" in script[full_reveal:full_render]
 
 
+def test_reference_hint_is_immediate_when_certified_and_previews_partial_answers():
+    page = client.get("/").text
+    script = client.get("/static/app.js").text
+
+    assert 'id="hint-dialog"' in page
+    preview = script.index("const accepted = hint.solution_status === 'certified'")
+    commit = script.index("revealed.set(symbol, hint.letter);")
+    assert preview < commit
+    assert "await previewReferenceHint(symbol, hint)" in script[preview:commit]
+    assert "? true" in script[preview:commit]
+    assert "the puzzle is not complete, so this best guess may be wrong" in script
+    assert "I cannot give you a hint yet." in script
+
+
+def test_leaving_a_game_requires_confirmation_and_scan_starts_fresh():
+    script = client.get("/static/app.js").text
+
+    assert "window.confirm('Abandon game?')" in script
+    assert "showScannerButton.addEventListener('click', openScanner);" in script
+    assert "showCreatorButton.addEventListener('click', openCreator);" in script
+    assert "document.querySelector('#scan-from-game').addEventListener('click', openScanner);" in script
+    scanner = script[script.index("function openScanner()") : script.index("function openCreator()")]
+    assert "if (!abandonGame()) return;" in scanner
+    assert "resetScanner();" in scanner
+
+
+def test_backspace_locks_only_original_hints():
+    script = client.get("/static/app.js").text
+    backspace = script.index("} else if (key === 'Backspace') {")
+    render = script.index("renderGame();", backspace)
+    erase_flow = script[backspace:render]
+
+    assert "if (!originalHints.has(symbol))" in erase_flow
+    assert "entrySources.get(symbol) === 'player'" not in erase_flow
+    assert "revealed.delete(symbol);" in erase_flow
+
+
 def test_health_reports_version():
     response = client.get("/health")
 
@@ -86,7 +123,8 @@ def test_playable_puzzle_reveals_one_symbol():
     assert response.json() == {"symbol": 20, "letter": "N"}
 
 
-def test_playable_puzzle_can_reveal_complete_mapping():
+def test_playable_puzzle_can_reveal_complete_mapping(monkeypatch, tmp_path):
+    monkeypatch.setenv("CDBR_SOLUTIONS_DIR", str(tmp_path))
     response = client.post("/api/puzzles/1/reveal")
 
     assert response.status_code == 200

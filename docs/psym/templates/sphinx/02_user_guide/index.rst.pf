@@ -5,6 +5,15 @@ Using {{ code.meta.title }} effectively.
 
 {{ code.section.overview }}
 
+OCR Pipeline
+------------
+
+{{ code.section.ocr_pipeline }}
+
+.. graphviz:: ../../../psym/parts/diagrams/ocr_pipeline.dot
+   :caption: OCR evidence flows toward an approved playable board; uncertain evidence flows to a human, not directly to the solver.
+   :align: center
+
 Puzzle Creation
 ---------------
 

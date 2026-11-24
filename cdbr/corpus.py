@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from hashlib import sha256
@@ -57,7 +57,11 @@ def load_manifest(source: Path) -> tuple[CorpusEntry, ...]:
             puzzle_id=int(item["id"]),
             photo=(source.parent / str(item["photo"])).resolve(),
             solution=(source.parent / str(item["solution"])).resolve(),
-            truth=(source.parent / str(item["truth"])).resolve() if item.get("truth") else None,
+            truth=(
+                truth_path
+                if item.get("truth") and (truth_path := (source.parent / str(item["truth"])).resolve()).is_file()
+                else None
+            ),
         )
         for item in document.get("puzzles", ())
     )
@@ -69,10 +73,6 @@ def load_manifest(source: Path) -> tuple[CorpusEntry, ...]:
     for entry in entries:
         if not entry.photo.is_file():
             raise ValueError(f"Puzzle photograph does not exist: {entry.photo}")
-        if not entry.solution.is_file():
-            raise ValueError(f"Puzzle solution does not exist: {entry.solution}")
-        if entry.truth is not None and not entry.truth.is_file():
-            raise ValueError(f"Puzzle truth does not exist: {entry.truth}")
     return entries
 
 
@@ -114,6 +114,20 @@ def _truth_number_defects(document: dict[str, Any], source: Path) -> dict[tuple[
     return defects
 
 
+def _truth_number_confirmations(document: dict[str, Any], source: Path) -> dict[tuple[int, int], int]:
+    confirmations = {}
+    for coordinate, expected in document.get("number_confirmations", {}).items():
+        match = re.fullmatch(r"r(\d{2})c(\d{2})", str(coordinate))
+        if match is None:
+            raise ValueError(f"Truth number confirmation must use rNNcNN coordinates: {source}")
+        row, column = (int(value) for value in match.groups())
+        symbol = int(expected)
+        if not 1 <= symbol <= 26:
+            raise ValueError(f"Truth number confirmations must contain symbols 1-26: {source}")
+        confirmations[row, column] = symbol
+    return confirmations
+
+
 def _truth_solution(document: dict[str, Any], source: Path) -> dict[int, str]:
     solution = {int(symbol): str(letter).upper() for symbol, letter in document.get("solution", {}).items()}
     if any(not 1 <= symbol <= 26 or len(letter) != 1 or not letter.isalpha() for symbol, letter in solution.items()):
@@ -130,6 +144,7 @@ def apply_truth(result: dict[str, Any], source: Path) -> dict[str, Any]:
     truth = _truth_grid(document, source)
     clue_truth = _truth_clues(document, source)
     number_defects = _truth_number_defects(document, source)
+    number_confirmations = _truth_number_confirmations(document, source)
     accept_observed_numbers = bool(document.get("accept_observed_numbers", False))
     if truth and accept_observed_numbers:
         raise ValueError(f"Truth cannot contain both a grid and accept_observed_numbers: {source}")
@@ -182,6 +197,34 @@ def apply_truth(result: dict[str, Any], source: Path) -> dict[str, Any]:
                 }
             )
         refreshed["number_defects"] = reviewed_defects
+    sparse_number_truth = {**number_confirmations, **number_defects}
+    if sparse_number_truth and not truth and not accept_observed_numbers:
+        sparse_mismatches = []
+        for (row, column), expected in sparse_number_truth.items():
+            item = evidence.get((row, column))
+            if item is None:
+                raise ValueError(f"Truth number r{row:02d}c{column:02d} is not a playable cell: {source}")
+            sparse_observed: int | str = item["reading"]
+            if str(sparse_observed).isdigit():
+                sparse_observed = int(sparse_observed)
+            if sparse_observed != expected:
+                sparse_mismatches.append(
+                    {
+                        "row": row,
+                        "column": column,
+                        "observed": sparse_observed,
+                        "expected": expected,
+                        "confidence": item["confidence"],
+                        "trusted": item["trusted"],
+                    }
+                )
+        refreshed["number_accuracy"] = {
+            "samples": len(sparse_number_truth),
+            "correct": len(sparse_number_truth) - len(sparse_mismatches),
+            "incorrect": len(sparse_mismatches),
+            "trusted_incorrect": sum(item["trusted"] is True for item in sparse_mismatches),
+            "mismatches": sparse_mismatches,
+        }
     if accept_observed_numbers:
         refreshed["number_accuracy"] = {
             "samples": len(evidence),
@@ -284,7 +327,7 @@ def benchmark_entry(
             template_exclusion=entry.puzzle_id if leave_one_out else None,
             ocr_pipeline=ocr_pipeline,
         )
-        expected_blocks = _solution_blocks(entry.solution, observation.width)
+        expected_blocks = _solution_blocks(entry.solution, observation.width) if entry.solution.is_file() else ()
     except Exception as exc:  # noqa: BLE001 - one failed photograph must not stop a corpus run
         return {
             "puzzle_id": entry.puzzle_id,
@@ -338,7 +381,9 @@ def benchmark_entry(
     predicted_blocks = tuple(value == "." for row in observation.grid for value in row)
     topology_mismatches = [
         {"row": index // observation.width + 1, "column": index % observation.width + 1}
-        for index, (predicted, expected) in enumerate(zip(predicted_blocks, expected_blocks, strict=True))
+        for index, (predicted, expected) in enumerate(
+            zip(predicted_blocks if expected_blocks else (), expected_blocks, strict=True)
+        )
         if predicted != expected
     ]
     result = {
@@ -370,7 +415,7 @@ def benchmark_entry(
             },
         },
         "topology": {
-            "correct": observation.width * observation.height - len(topology_mismatches),
+            "correct": len(expected_blocks) - len(topology_mismatches),
             "mismatches": topology_mismatches,
         },
         "clues": observation.clues,
@@ -481,6 +526,10 @@ def benchmark_solutions(
     entries: Iterable[CorpusEntry],
     results: dict[int, dict[str, Any]],
     publisher_number_truth: Mapping[int, Iterable[Mapping[str, Any]]] | None = None,
+    *,
+    solve_timeout_seconds: float = 120.0,
+    on_outcome: Callable[[dict[str, Any]], None] | None = None,
+    on_lane_start: Callable[[int, str], None] | None = None,
 ) -> dict[str, Any]:
     """Measure scan/HIL and ground-truth search as strictly separate lanes."""
 
@@ -493,7 +542,7 @@ def benchmark_solutions(
         normalized = tuple(tuple(None if value in {BLOCK, "."} else int(value) for value in row) for row in grid)
         puzzle = CodewordPuzzle(grid=normalized, clues=clues, slots=extract_slots(normalized))
         started = time.perf_counter()
-        solved = solve(puzzle, lexicon)
+        solved = solve(puzzle, lexicon, deadline=time.monotonic() + solve_timeout_seconds)
         elapsed = time.perf_counter() - started
         if not solved.solutions:
             status = "no-solution-under-candidates" if solved.exhausted else "search-limited"
@@ -557,10 +606,7 @@ def benchmark_solutions(
         truth_grid = [list(row) for row in result["grid"]]
         reviewed_grid = _truth_grid(truth, entry.truth)
         defects = _truth_number_defects(truth, entry.truth)
-        publisher_truth = {
-            (int(item["row"]), int(item["column"])): int(item["expected"])
-            for item in (publisher_number_truth or {}).get(entry.puzzle_id, ())
-        }
+        confirmations = _truth_number_confirmations(truth, entry.truth)
         review_positions = {(int(item["row"]), int(item["column"])) for item in result.get("hil_review_cells", ())}
         number_reviews = 0
         number_corrections = 0
@@ -574,8 +620,8 @@ def benchmark_solutions(
                 expected = int(reviewed) if reviewed not in {BLOCK, UNKNOWN} else None
             elif (row, column) in defects:
                 expected = defects[row, column]
-            elif (row, column) in publisher_truth:
-                expected = publisher_truth[row, column]
+            elif (row, column) in confirmations:
+                expected = confirmations[row, column]
             observed = int(reading) if reading.isdigit() else None
             if expected is not None:
                 truth_grid[row - 1][column - 1] = expected
@@ -592,12 +638,15 @@ def benchmark_solutions(
             truth_grid = [list(row) for row in reviewed_grid]
         for (row, column), expected in defects.items():
             truth_grid[row - 1][column - 1] = expected
-        for item in (publisher_number_truth or {}).get(entry.puzzle_id, ()):
-            truth_grid[int(item["row"]) - 1][int(item["column"]) - 1] = int(item["expected"])
-
+        for (row, column), expected in confirmations.items():
+            truth_grid[row - 1][column - 1] = expected
         solution_truth = _truth_solution(truth, entry.truth)
         clue_truth = _truth_clues(truth, entry.truth)
+        if on_lane_start is not None:
+            on_lane_start(entry.puzzle_id, "scan/HIL")
         hil_search = run_search(hil_grid, clue_truth)
+        if on_lane_start is not None:
+            on_lane_start(entry.puzzle_id, "ground-truth")
         truth_search = run_search(truth_grid, clue_truth)
         hil_solved = hil_search["status"] in {"certified", "candidate"}
         truth_solved = truth_search["status"] in {"certified", "candidate"}
@@ -620,42 +669,42 @@ def benchmark_solutions(
             for symbol, letter in sorted(solution_truth.items())
             if truth_search["mapping"].get(symbol) != letter
         ]
-        outcomes.append(
-            {
-                "puzzle_id": entry.puzzle_id,
-                "status": hil_search["status"],
-                "seconds": hil_search["seconds"],
-                "nodes": hil_search["nodes"],
-                "mapped_symbols": len(hil_search["mapping"]),
-                "truth_status": truth_search["status"],
-                "truth_seconds": truth_search["seconds"],
-                "truth_nodes": truth_search["nodes"],
-                "truth_mapped_symbols": len(truth_search["mapping"]),
-                "publisher_scored": bool(solution_truth),
-                "publisher_playback": "available" if solution_truth else "unavailable",
-                "publisher_validation": (
-                    "accepted"
-                    if solution_truth and not publisher_rejections
-                    else "rejected" if solution_truth else "unscored"
-                ),
-                "publisher_rejections": publisher_rejections,
-                "truth_publisher_validation": (
-                    "accepted"
-                    if solution_truth and not truth_rejections
-                    else "rejected" if solution_truth else "unscored"
-                ),
-                "truth_publisher_rejections": truth_rejections,
-                "publisher_match": bool(solution_truth) and not mismatches,
-                "publisher_mismatches": mismatches,
-                "truth_publisher_match": bool(solution_truth) and not truth_mismatches,
-                "truth_publisher_mismatches": truth_mismatches,
-                "result": outcome_result,
-                "failure_layer": failure_layer,
-                "number_reviews": number_reviews,
-                "number_corrections": number_corrections,
-                "clue_corrections": clue_corrections,
-            }
-        )
+        outcome = {
+            "puzzle_id": entry.puzzle_id,
+            "status": hil_search["status"],
+            "seconds": hil_search["seconds"],
+            "nodes": hil_search["nodes"],
+            "mapped_symbols": len(hil_search["mapping"]),
+            "truth_status": truth_search["status"],
+            "truth_seconds": truth_search["seconds"],
+            "truth_nodes": truth_search["nodes"],
+            "truth_mapped_symbols": len(truth_search["mapping"]),
+            "publisher_scored": bool(solution_truth),
+            "publisher_playback": "available" if solution_truth else "unavailable",
+            "publisher_validation": (
+                "accepted"
+                if solution_truth and not publisher_rejections
+                else "rejected" if solution_truth else "unscored"
+            ),
+            "publisher_rejections": publisher_rejections,
+            "truth_publisher_validation": (
+                "accepted" if solution_truth and not truth_rejections else "rejected" if solution_truth else "unscored"
+            ),
+            "truth_publisher_rejections": truth_rejections,
+            "publisher_match": bool(solution_truth) and not mismatches,
+            "publisher_mismatches": mismatches,
+            "truth_publisher_match": bool(solution_truth) and not truth_mismatches,
+            "truth_publisher_mismatches": truth_mismatches,
+            "result": outcome_result,
+            "failure_layer": failure_layer,
+            "number_reviews": number_reviews,
+            "number_corrections": number_corrections,
+            "clue_corrections": clue_corrections,
+            "solve_timeout_seconds": solve_timeout_seconds,
+        }
+        outcomes.append(outcome)
+        if on_outcome is not None:
+            on_outcome(outcome)
     return {
         "puzzles": len(outcomes),
         "certified": sum(item["status"] == "certified" for item in outcomes),
@@ -732,7 +781,11 @@ def import_solution_approvals(source: Path, entries: Iterable[CorpusEntry]) -> i
 
 
 def publish_corpus_assets(
-    entries: Iterable[CorpusEntry], results: Mapping[int, Mapping[str, Any]], destination: Path
+    entries: Iterable[CorpusEntry],
+    results: Mapping[int, Mapping[str, Any]],
+    destination: Path,
+    *,
+    private_destination: Path | None = None,
 ) -> list[int]:
     """Build sparse, release-ready puzzles only from human-approved solution truth."""
 
@@ -750,10 +803,12 @@ def publish_corpus_assets(
         reviewed_grid = _truth_grid(truth, entry.truth)
         if reviewed_grid:
             grid = [list(row) for row in reviewed_grid]
-        elif truth.get("accept_observed_numbers") is True:
-            # Human review accepted the photographed grid except for the
-            # explicit defects below. Restore conservative OCR proposals that
-            # were withheld from the public grid solely for HIL confirmation.
+        else:
+            # Package the same grid a player receives after HIL: restore
+            # conservative OCR proposals that were withheld from the public
+            # grid, then apply every reviewed correction below. Solution
+            # approval makes the puzzle publishable; it must not disappear
+            # merely because fresh gameplay would ask about a legible cell.
             for evidence in result.get("evidence", ()):
                 row = int(evidence["row"])
                 column = int(evidence["column"])
@@ -777,11 +832,13 @@ def publish_corpus_assets(
             "[clues]",
             *(f'"{symbol}" = "{letter}"' for symbol, letter in sorted(clues.items())),
             "",
-            "[solution]",
-            *(f'"{symbol}" = "{solution[symbol]}"' for symbol in range(1, 27)),
-            "",
         ]
         (destination / f"puzzle-{entry.puzzle_id}.toml").write_text("\n".join(lines))
+        if private_destination is not None:
+            private_destination.mkdir(parents=True, exist_ok=True)
+            (private_destination / f"puzzle-{entry.puzzle_id}.toml").write_text(
+                "[solution]\n" + "".join(f'"{symbol}" = "{solution[symbol]}"\n' for symbol in range(1, 27))
+            )
         published.append(entry.puzzle_id)
     return published
 
@@ -790,7 +847,7 @@ def publish_corpus_assets(
 @click.option(
     "--manifest",
     type=click.Path(path_type=Path, exists=True, dir_okay=False),
-    default=Path("examples/corpus.toml"),
+    default=Path("corpus/corpus.toml"),
     show_default=True,
 )
 @click.option("--publish-assets/--no-publish-assets", default=False, help="Build packaged puzzles from approved truth.")
@@ -807,6 +864,7 @@ def publish_corpus_assets(
     show_default=True,
 )
 @click.option("--puzzle", "puzzle_ids", type=int, multiple=True, help="Limit the run to one or more puzzle IDs.")
+@click.option("--from-puzzle", "minimum_puzzle_id", type=int, help="Include this puzzle number and all later IDs.")
 @click.option("--workers", type=click.IntRange(1, 4), default=1, show_default=True)
 @click.option("--review-threshold", type=click.FloatRange(0.0, 100.0), default=70.0, show_default=True)
 @click.option("--ocr-pipeline", type=click.Choice(OCR_PIPELINES), default=WHOLE_TOKEN_PIPELINE, show_default=True)
@@ -820,6 +878,14 @@ def publish_corpus_assets(
 @click.option("--resume/--no-resume", default=True, show_default=True)
 @click.option("--audit/--no-audit", default=False, help="Write separate number and clue OCR review reports.")
 @click.option("--solve/--no-solve", "solve_corpus", default=False, help="Solve reviewed grids and inventory outcomes.")
+@click.option(
+    "--solve-timeout",
+    "solve_timeout_seconds",
+    type=click.FloatRange(min=1.0),
+    default=120.0,
+    show_default=True,
+    help="Maximum seconds for each gameplay and ground-truth solve lane.",
+)
 @click.option(
     "--import-solution-approvals",
     "import_solution_approvals_path",
@@ -837,6 +903,7 @@ def main(
     output: Path,
     work_root: Path,
     puzzle_ids: tuple[int, ...],
+    minimum_puzzle_id: int | None,
     workers: int,
     review_threshold: float,
     ocr_pipeline: str,
@@ -845,6 +912,7 @@ def main(
     resume: bool,
     audit: bool,
     solve_corpus: bool,
+    solve_timeout_seconds: float,
     import_solution_approvals_path: Path | None,
     publish_assets: bool,
     audit_dir: Path,
@@ -856,6 +924,8 @@ def main(
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     requested = set(puzzle_ids)
+    if minimum_puzzle_id is not None:
+        entries = tuple(entry for entry in entries if entry.puzzle_id >= minimum_puzzle_id)
     if requested:
         entries = tuple(entry for entry in entries if entry.puzzle_id in requested)
         missing = requested - {entry.puzzle_id for entry in entries}
@@ -916,8 +986,8 @@ def main(
         "resources": resource_usage(),
     }
     if solve_corpus:
-        summary["solutions"] = benchmark_solutions(entries, latest, publisher_number_truth)
-        for outcome in summary["solutions"]["outcomes"]:
+
+        def report_outcome(outcome: dict[str, Any]) -> None:
             result = latest[int(outcome["puzzle_id"])]
             cells = result["cells"]
             number_accuracy = result.get("number_accuracy", {})
@@ -931,14 +1001,28 @@ def main(
                 f"publisher validation {outcome['publisher_validation']} "
                 f"({len(outcome['publisher_rejections'])} rejected constraints); "
                 f"{'production' if evaluation_mode == 'publisher-canon' else 'leave-one-out'} "
-                f"scan/HIL search {outcome['status']}; "
-                f"ground-truth search {outcome['truth_status']}"
+                f"scan/HIL {outcome['status']} in {outcome['seconds']:.3f}s/{outcome['nodes']} nodes; "
+                f"ground-truth {outcome['truth_status']} in {outcome['truth_seconds']:.3f}s/"
+                f"{outcome['truth_nodes']} nodes"
             )
+
+        def report_lane_start(puzzle_id: int, lane: str) -> None:
+            click.echo(f"puzzle {puzzle_id}: starting {lane} solve (limit {solve_timeout_seconds:.0f}s)…")
+
+        summary["solutions"] = benchmark_solutions(
+            entries,
+            latest,
+            publisher_number_truth,
+            solve_timeout_seconds=solve_timeout_seconds,
+            on_outcome=report_outcome,
+            on_lane_start=report_lane_start,
+        )
     if publish_assets:
         summary["published_assets"] = publish_corpus_assets(
             entries,
             latest,
             Path(__file__).parent / "assets" / "puzzles",
+            private_destination=Path("solutions/playable"),
         )
     click.echo(json.dumps(summary, indent=2))
     if summary_output is not None:

@@ -200,7 +200,7 @@ def favicon() -> FileResponse:
     return FileResponse(WEB_ROOT / "f-logo.png")
 
 
-def _playable_puzzle(puzzle_id: str) -> tuple[dict[str, object], dict[int, str]]:
+def _playable_puzzle(puzzle_id: str) -> tuple[dict[str, object], dict[int, str] | None]:
     try:
         serial = int(puzzle_id)
     except ValueError:
@@ -217,19 +217,25 @@ def _playable_puzzle(puzzle_id: str) -> tuple[dict[str, object], dict[int, str]]
     grid: list[list[int | None]] = [
         [None if value == "##" else int(value) for value in str(row).split()] for row in source["grid"]
     ]
-    if "solution" in source:
-        solution = {int(symbol): str(letter).upper() for symbol, letter in source["solution"].items()}
-    else:
-        answer = tuple(str(row) for row in source["answer"])
+    private_root = Path(os.environ.get("CDBR_SOLUTIONS_DIR", "solutions/playable"))
+    private_path = private_root / source_path.name
+    answers = source
+    if private_path.is_file():
+        with private_path.open("rb") as stream:
+            answers = tomllib.load(stream)
+    solution = None
+    if "solution" in answers:
+        solution = {int(symbol): str(letter).upper() for symbol, letter in answers["solution"].items()}
+    elif "answer" in answers:
+        answer = tuple(str(row) for row in answers["answer"])
         solution = {
             symbol: letter
             for symbols, letters in zip(grid, answer, strict=True)
             for symbol, letter in zip(symbols, letters, strict=True)
             if symbol is not None
         }
-    unused_symbols = sorted(set(range(1, 27)) - solution.keys())
-    unused_letters = sorted(set("ABCDEFGHIJKLMNOPQRSTUVWXYZ") - set(solution.values()))
-    solution.update(zip(unused_symbols, unused_letters, strict=True))
+    if solution is not None:
+        solution = _complete_mapping(solution)
     clues = {int(symbol): str(letter) for symbol, letter in source["clues"].items()}
     used_symbols = sorted({symbol for row in grid for symbol in row if symbol is not None})
     puzzle: dict[str, object] = {
@@ -254,7 +260,7 @@ def _packaged_corpus_ids() -> list[int]:
     return sorted(set(identifiers))
 
 
-def _complete_mapping(grid: list[list[int | None]], mapping: dict[int, str]) -> dict[int, str]:
+def _complete_mapping(mapping: dict[int, str]) -> dict[int, str]:
     solution = dict(mapping)
     unused_symbols = sorted(set(range(1, 27)) - solution.keys())
     unused_letters = sorted(set("ABCDEFGHIJKLMNOPQRSTUVWXYZ") - set(solution.values()))
@@ -336,6 +342,8 @@ def _solve_session(session: PuzzleSession, entries: dict[int, str] | None = None
         session.solution = dict(solved.mapping)
         if solved.result.exhausted and len(solved.result.solutions) == 1:
             session.solution_status = "certified"
+            if session.puzzle.get("provenance") == "corpus":
+                session.solution = _complete_mapping(session.solution)
         elif solved.result.solutions:
             session.solution_status = "candidate"
         elif session.solution:
@@ -402,8 +410,24 @@ def _scan_public(job: ScanJob) -> dict[str, object]:
 def corpus_session_endpoint(puzzle_id: str) -> dict[str, object]:
     if puzzle_id == "random":
         puzzle_id = str(secrets.choice([*_packaged_corpus_ids(), *_runtime_corpus.keys()]))
+    return _create_corpus_session(puzzle_id).public()
+
+
+def _create_corpus_session(puzzle_id: str) -> PuzzleSession:
     puzzle, solution = _playable_puzzle(puzzle_id)
-    return _create_session({**puzzle, "provenance": "corpus"}, solution).public()
+    observation = None
+    if solution is None:
+        grid = puzzle["grid"]
+        clues = puzzle["clues"]
+        assert isinstance(grid, list) and isinstance(clues, dict)
+        observation = PuzzleObservation(
+            source=PUZZLE_ROOT / f"puzzle-{puzzle_id}.toml",
+            source_format="TOML",
+            grid=tuple(tuple(BLOCK if value is None else value for value in row) for row in grid),
+            clues=clues,
+            uncertainties=(),
+        )
+    return _create_session({**puzzle, "provenance": "corpus"}, solution, observation=observation)
 
 
 @app.get("/api/sessions/{session_id}")
@@ -625,7 +649,7 @@ def publish_generation_job_endpoint(job_id: str) -> dict[str, object]:
                 "used_symbols": sorted({symbol for row in grid for symbol in row if symbol is not None}),
                 "origin": "cdbr_generated",
             }
-            _runtime_corpus[serial] = (puzzle, _complete_mapping(grid, generated.mapping))
+            _runtime_corpus[serial] = (puzzle, _complete_mapping(generated.mapping))
             job.published_serial = serial
         puzzle, solution = _runtime_corpus[job.published_serial]
     return _create_session({**puzzle, "provenance": "corpus"}, solution).public()
@@ -645,7 +669,9 @@ def puzzle_endpoint(puzzle_id: str) -> dict[str, object]:
 
 @app.post("/api/puzzles/{puzzle_id}/reveal/{symbol}")
 def reveal_endpoint(puzzle_id: str, symbol: int) -> dict[str, str | int]:
-    _, solution = _playable_puzzle(puzzle_id)
+    session = _create_corpus_session(puzzle_id)
+    _solve_session(session)
+    solution = session.solution or {}
     if symbol not in solution:
         raise HTTPException(status_code=404, detail="Symbol not found")
     return {"symbol": symbol, "letter": solution[symbol]}
@@ -653,8 +679,9 @@ def reveal_endpoint(puzzle_id: str, symbol: int) -> dict[str, str | int]:
 
 @app.post("/api/puzzles/{puzzle_id}/reveal")
 def reveal_all_endpoint(puzzle_id: str) -> dict[str, dict[int, str]]:
-    _, solution = _playable_puzzle(puzzle_id)
-    return {"mapping": solution}
+    session = _create_corpus_session(puzzle_id)
+    _solve_session(session)
+    return {"mapping": session.solution or {}}
 
 
 def _max_upload_bytes() -> int:

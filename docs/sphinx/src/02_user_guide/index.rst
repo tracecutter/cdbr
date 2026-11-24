@@ -16,6 +16,27 @@ The companion ``cdbrd`` executable serves the same solving and generation engine
 
 OCR, lexical solving, puzzle construction, and presentation are separate stages. A complete solution is reported as unique only when the configured search is exhausted and exactly one solution remains under the active lexicon.
 
+OCR Pipeline
+------------
+
+The scan pipeline is deliberately a cascade rather than one all-powerful OCR call. Each stage either contributes evidence, lowers confidence, or hands a specific decision to a human. A weak measurement is never promoted merely because a later stage would prefer a convenient answer.
+
+**Geometry and topology.** cdbr decodes the photograph, locates the puzzle and reference grid, corrects perspective, and normalises the board to a fixed working canvas. Grid dimensions are inferred from the page format rather than assuming every publisher uses 15x15. Each cell is then classified as blocked or playable before any number recognition begins. Bad geometry is therefore a different failure from bad character recognition.
+
+**Whole-number recognition.** A playable cell is classified as one token from 1 through 26. The primary model uses compact, publisher-specific prototypes built from human-reviewed photographs. The numbered reference grid also supplies same-page digit exemplars under the photograph’s actual font, focus, lighting, and scale. Untrusted results alone pay for the slower reference and Tesseract fallback passes; agreement can raise confidence, while disagreement remains visible.
+
+**Ambiguity specialists.** Known visual families receive narrow additional checks rather than global heuristics. The current specialist compares reviewed neighbours for ``{6, 8, 16, 18}`` and ``{9, 19}``, verifies whether independent segmentations agree on one versus two digits, and uses an extreme upper-right ink-mass test to veto implausibly confident 6/8 decisions. These measurements can revoke trust and request review; none is allowed to rewrite a cell alone.
+
+**Reference clues and human review.** Printed numbers and supplied clue letters are measured separately. Supplied clues are always confirmed, faint apparent blanks are surfaced, and clean blank reference cells are accepted automatically. Every untrusted puzzle number is shown with its original crop. The approved board can proceed directly to Play even if lexical solving later fails.
+
+**Solver boundary.** Scan does not require a solution. The lexical solver starts only for a hint or full reveal and includes the player’s current entries as constraints. Solver results are not presently allowed to silently rewrite OCR. A planned confidence-fusion pass may use crossing-word evidence only inside a small OCR candidate family and must retain HIL for close decisions.
+
+Production audits rerun the same publisher-canon path used by Scan. The explicit leave-one-out mode excludes each puzzle’s own templates to measure unseen-puzzle generalisation; it must not be presented as current gameplay. New-publisher and adverse-photography suites remain sealed until their first-pass accuracy, trusted error rate, HIL load, time, and memory have been recorded.
+
+.. graphviz:: ../../../psym/parts/diagrams/ocr_pipeline.dot
+   :caption: OCR evidence flows toward an approved playable board; uncertain evidence flows to a human, not directly to the solver.
+   :align: center
+
 Puzzle Creation
 ---------------
 

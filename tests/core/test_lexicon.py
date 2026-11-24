@@ -9,11 +9,15 @@ def test_publisher_confirmed_supplemental_words_are_available() -> None:
     lexicon = english_lexicon(system_dictionary=Path("/does/not/exist"))
 
     for word in (
+        "BEETLEOFF",
         "BULLYOFF",
+        "CHEWTHEFAT",
+        "CZECHREPUBLIC",
         "ELMIEST",
         "FRIZZLIEST",
         "JUMPTHEGUN",
         "LOCKHORNS",
+        "LOOKDOWNON",
         "MERCYPROOF",
         "NOHIT",
         "OXFORDBLUE",

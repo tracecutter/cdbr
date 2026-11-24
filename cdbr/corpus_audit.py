@@ -279,6 +279,9 @@ def derive_publisher_number_truth(
         for coordinate in truth.get("number_defects", {}):
             row_text, column_text = coordinate.removeprefix("r").split("c", 1)
             human_number_truth.add((int(row_text), int(column_text)))
+        for coordinate in truth.get("number_confirmations", {}):
+            row_text, column_text = coordinate.removeprefix("r").split("c", 1)
+            human_number_truth.add((int(row_text), int(column_text)))
         solution = {int(symbol): str(letter).upper() for symbol, letter in truth.get("solution", {}).items()}
         clues = {int(symbol): str(letter).upper() for symbol, letter in truth.get("clues", {}).items()}
         if set(solution) != set(range(1, 27)) or len(set(solution.values())) != 26:
@@ -345,7 +348,15 @@ def _solution_review_sections(
     entries: Sequence[Any], results: Mapping[int, Mapping[str, Any]]
 ) -> tuple[list[str], int]:
     prepared: dict[
-        int, tuple[Any, dict[int, str], dict[int, str], dict[int, list[np.ndarray]], dict[int, np.ndarray]]
+        int,
+        tuple[
+            Any,
+            dict[int, str],
+            dict[int, str],
+            dict[int, str],
+            dict[int, list[np.ndarray]],
+            dict[int, np.ndarray],
+        ],
     ] = {}
     templates: dict[str, list[np.ndarray]] = {}
     for entry in entries:
@@ -356,6 +367,12 @@ def _solution_review_sections(
             truth = tomllib.load(stream)
         clues = {int(symbol): str(letter).upper() for symbol, letter in truth.get("clues", {}).items()}
         confirmed = {int(symbol): str(letter).upper() for symbol, letter in truth.get("solution", {}).items()}
+        observed_clues = {
+            int(item["symbol"]): str(item["reading"]).upper()
+            for item in result.get("clue_evidence", ())
+            if len(str(item.get("reading", ""))) == 1 and str(item["reading"]).isalpha()
+        }
+        anchors = {**observed_clues, **clues}
         image = cv2.imread(str(entry.solution))
         if image is None:
             continue
@@ -378,13 +395,13 @@ def _solution_review_sections(
                 if feature is not None:
                     features.setdefault(value, []).append(feature)
         averages = {symbol: np.mean(samples, axis=0) for symbol, samples in features.items()}
-        for symbol, letter in clues.items():
+        for symbol, letter in anchors.items():
             if symbol in averages:
                 templates.setdefault(letter, []).append(averages[symbol])
-        prepared[entry.puzzle_id] = (entry, clues, confirmed, features, crops)
+        prepared[entry.puzzle_id] = (entry, clues, observed_clues, confirmed, features, crops)
 
     sections = []
-    for puzzle_id, (_entry, clues, confirmed, features, crops) in sorted(prepared.items()):
+    for puzzle_id, (_entry, clues, observed_clues, confirmed, features, crops) in sorted(prepared.items()):
         cells = []
         for symbol in range(1, 27):
             samples = features.get(symbol, [])
@@ -394,7 +411,12 @@ def _solution_review_sections(
                 for letter, references in templates.items():
                     scores.append((min(float(np.mean((feature - reference) ** 2)) for reference in references), letter))
             scores.sort()
-            proposed = confirmed.get(symbol) or clues.get(symbol) or (scores[0][1] if scores else "")
+            proposed = (
+                confirmed.get(symbol)
+                or clues.get(symbol)
+                or observed_clues.get(symbol)
+                or (scores[0][1] if scores else "")
+            )
             margin = (scores[1][0] - scores[0][0]) / max(scores[1][0], 1e-9) if len(scores) > 1 else 0.0
             crop = crops.get(symbol)
             image_html = (
@@ -402,7 +424,8 @@ def _solution_review_sections(
                 if crop is not None
                 else ""
             )
-            low = not proposed or (symbol not in confirmed and symbol not in clues and margin < 0.25)
+            anchored = symbol in clues or symbol in observed_clues
+            low = not proposed or (symbol not in confirmed and not anchored and margin < 0.25)
             cells.append(
                 f'<label class="solution-cell{" is-low" if low else ""}">{image_html}'
                 f'<input maxlength="1" pattern="[A-Za-z]" value="{html.escape(proposed)}" data-symbol="{symbol}" data-has-crop="{str(crop is not None).lower()}" aria-label="Solution letter for symbol {symbol}">'

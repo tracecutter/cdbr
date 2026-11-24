@@ -14,11 +14,15 @@ from wordfreq import iter_wordlist, zipf_frequency
 # Publisher-confirmed solution words absent from the packaged British wordlist.
 # Keep this small, explicit, and backed by the approved solution corpus.
 SUPPLEMENTAL_BRITISH_WORDS = (
+    "beetleoff",
     "bullyoff",
+    "chewthefat",
+    "czechrepublic",
     "elmiest",
     "frizzliest",
     "jumpthegun",
     "lockhorns",
+    "lookdownon",
     "mercyproof",
     "nohit",
     "oxfordblue",
@@ -131,7 +135,18 @@ def english_lexicon(
             "ESDB/SCOWL-2026.02.25-en_GB-70",
         )
     )
-    entries.extend(_normalized_words(SUPPLEMENTAL_BRITISH_WORDS, "cdbr-british-supplement"))
+    # Human-confirmed publisher answers are evidence that these uncommon words
+    # and closed-up phrases are plausible puzzle fill.  Give them a modest
+    # score floor so an identical, low-frequency packaged entry does not win
+    # merely because it was loaded first.
+    entries.extend(
+        LexiconEntry(
+            word=word.upper(),
+            score=max(zipf_frequency(word, "en"), 4.0),
+            source="cdbr-british-supplement",
+        )
+        for word in SUPPLEMENTAL_BRITISH_WORDS
+    )
     if system_dictionary.is_file():
         entries.extend(
             _normalized_words(

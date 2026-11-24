@@ -83,4 +83,4 @@ var/
 /puzzle.toml
 /publish/
 /results/
-examples/*_solved.*
+/corpus/*_solved.*

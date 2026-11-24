@@ -10,5 +10,8 @@ __pycache__
 build
 dist
 docs
-examples
+corpus
+solutions/*
+!solutions/playable/
+!solutions/playable/*.toml
 tests

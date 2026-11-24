@@ -25,6 +25,9 @@ MIN_OCR_CONFIDENCE = 80.0
 MIN_TEMPLATE_MARGIN = 0.15
 MIN_WHOLE_NUMBER_MARGIN = 0.20
 MIN_REVIEWED_FAMILY_MARGIN = 0.10
+MIN_NINE_NINETEEN_PROMOTION_MARGIN = 0.23
+STRONG_NINE_NINETEEN_PROMOTION_MARGIN = 0.30
+MAX_SINGLE_NINE_INK_PIXELS = 450
 HIL_REVIEW_CONFIDENCE = 68.0
 HIL_AMBIGUOUS_NUMBERS = frozenset((5, 6, 8, 9, 16, 18, 19))
 WHOLE_TOKEN_PIPELINE = "whole-token"
@@ -36,7 +39,7 @@ LOCAL_BACKGROUND_KERNEL = 31
 # 387 foreground pixels while the faintest real clue contained 428.  Keep the
 # shelf slightly inside that measured gap so dirt can remain an automatic blank
 # without allowing a missed letter to pass silently.
-MIN_CLUE_REVIEW_INK_PIXELS = 400
+MIN_CLUE_REVIEW_INK_PIXELS = 420
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -553,6 +556,51 @@ def _reviewed_six_eight_quadrant_vote(
     return None
 
 
+def _number_ink_pixels(cell: np.ndarray) -> int:
+    """Measure raw printed-number weight before glyph resizing loses scale."""
+
+    gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)[5:70, 5:70]
+    return int(np.count_nonzero(_foreground_binary(gray)))
+
+
+def _adjudicate_nine_nineteen(
+    reading: CellReading,
+    cell: np.ndarray,
+    *,
+    excluded_puzzle_id: int | None = None,
+) -> CellReading:
+    """Promote only strongly corroborated false leading ones in the 9/19 family."""
+
+    if reading.text != "19":
+        return reading
+    token_arities = {
+        len(_digit_glyphs(cell)),
+        len(_digit_glyphs(cell, suppress_illumination=True)),
+    }
+    if token_arities != {1}:
+        return reading
+    assessment = _reviewed_number_assessment(
+        cell,
+        frozenset((9, 19)),
+        excluded_puzzle_id=excluded_puzzle_id,
+    )
+    if assessment is None:
+        return reading
+    vote, margin = assessment
+    light_single_glyph = (
+        margin >= MIN_NINE_NINETEEN_PROMOTION_MARGIN and _number_ink_pixels(cell) <= MAX_SINGLE_NINE_INK_PIXELS
+    )
+    if vote != 9 or not (margin >= STRONG_NINE_NINETEEN_PROMOTION_MARGIN or light_single_glyph):
+        return reading
+    return CellReading(
+        row=reading.row,
+        column=reading.column,
+        text="9",
+        confidence=max(reading.confidence, HIL_REVIEW_CONFIDENCE),
+        trusted=True,
+    )
+
+
 def _audit_reviewed_number_families(
     readings: list[CellReading],
     cells_by_position: dict[tuple[int, int], np.ndarray],
@@ -564,6 +612,12 @@ def _audit_reviewed_number_families(
     families = (frozenset((6, 8, 16, 18)), frozenset((9, 19)))
     reviewed = []
     for reading in readings:
+        cell = cells_by_position[(reading.row, reading.column)]
+        reading = _adjudicate_nine_nineteen(
+            reading,
+            cell,
+            excluded_puzzle_id=excluded_puzzle_id,
+        )
         if not reading.trusted or not reading.text.isdigit():
             reviewed.append(reading)
             continue
@@ -578,7 +632,6 @@ def _audit_reviewed_number_families(
             excluded_puzzle_id=excluded_puzzle_id,
         )
         vote, margin = assessment if assessment is not None else (None, 1.0)
-        cell = cells_by_position[(reading.row, reading.column)]
         token_arities = {
             len(_digit_glyphs(cell)),
             len(_digit_glyphs(cell, suppress_illumination=True)),

@@ -228,6 +228,20 @@
         </div>
         </section>
 
+        <dialog class="hint-dialog" id="hint-dialog">
+          <form method="dialog">
+            <p class="eyebrow">Reference-grid hint</p>
+            <h2 id="hint-dialog-title">A possible letter</h2>
+            <div class="hint-dialog-answer" id="hint-dialog-answer" aria-live="polite"></div>
+            <p id="hint-dialog-detail"></p>
+            <p class="hint-dialog-warning" id="hint-dialog-warning"></p>
+            <div class="hint-dialog-actions">
+              <button class="secondary-button" value="cancel" type="submit">Not now</button>
+              <button class="primary-button" id="hint-dialog-accept" value="accept" type="submit">Use this hint</button>
+            </div>
+          </form>
+        </dialog>
+
         <section class="scanner-workspace" id="scanner-workspace" aria-label="Puzzle scanner" hidden>
         <div class="game-heading scanner-heading">
           <div>
