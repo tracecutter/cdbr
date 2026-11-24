@@ -150,6 +150,21 @@ def test_reviewed_number_vote_respects_puzzle_exclusion(monkeypatch) -> None:
     assert _reviewed_number_vote(cell, frozenset((6, 8)), excluded_puzzle_id=37) == 6
 
 
+def test_whole_token_pipeline_keeps_reviewed_family_audit_enabled(monkeypatch) -> None:
+    from cdbr.core.recognition import CellReading, _audit_reviewed_number_families
+
+    cell = np.full((100, 100, 3), 255, dtype=np.uint8)
+    monkeypatch.setattr("cdbr.core.recognition._reviewed_number_vote", lambda *_args, **_kwargs: 8)
+
+    audited = _audit_reviewed_number_families(
+        [CellReading(row=0, column=0, text="6", confidence=95.0, trusted=True)],
+        {(0, 0): cell},
+    )
+
+    assert audited[0].text == "6"
+    assert audited[0].trusted is False
+
+
 def test_whole_number_classifier_uses_complete_token_margin() -> None:
     cell = np.full((100, 100, 3), 255, dtype=np.uint8)
     cv2.putText(cell, "16", (8, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.1, 0, 3, cv2.LINE_AA)

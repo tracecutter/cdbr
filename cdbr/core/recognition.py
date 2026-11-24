@@ -1297,12 +1297,11 @@ def recognize_photo(
         if trace is not None:
             trace.record("classify.whole", classification_stage)
     cells_by_position = {(row, column): cell for row, column, cell in playable}
-    if ocr_pipeline == LEGACY_PIPELINE:
-        readings = _audit_reviewed_number_families(
-            readings,
-            cells_by_position,
-            excluded_puzzle_id=template_exclusion,
-        )
+    readings = _audit_reviewed_number_families(
+        readings,
+        cells_by_position,
+        excluded_puzzle_id=template_exclusion,
+    )
     for reading in readings:
         if not reading.trusted:
             cv2.imwrite(
