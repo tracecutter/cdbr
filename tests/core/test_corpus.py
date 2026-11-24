@@ -22,6 +22,7 @@ from cdbr.corpus import (
     summarize_classification,
 )
 from cdbr.corpus_audit import write_audit_reports
+from cdbr.core.puzzle import UNKNOWN
 
 
 def test_load_manifest_resolves_assets_relative_to_manifest(tmp_path: Path) -> None:
@@ -329,7 +330,7 @@ def test_benchmark_solutions_scores_only_confirmed_publisher_mapping(tmp_path: P
 
 def test_solution_approval_import_and_sparse_asset_publication(tmp_path: Path) -> None:
     truth = tmp_path / "truth.toml"
-    truth.write_text('format_version = 1\n[clues]\n"1" = "A"\n')
+    truth.write_text('format_version = 1\naccept_observed_numbers = true\n[clues]\n"1" = "A"\n')
     entry = CorpusEntry(puzzle_id=31, photo=tmp_path / "puzzle.jpg", solution=tmp_path / "solution.jpg", truth=truth)
     mapping = {str(symbol): chr(64 + symbol) for symbol in range(1, 27)}
     approvals = tmp_path / "approvals.json"
@@ -340,7 +341,13 @@ def test_solution_approval_import_and_sparse_asset_publication(tmp_path: Path) -
 
     published = publish_corpus_assets(
         (entry,),
-        {31: {"status": "ok", "grid": [[1, 2], [".", 1]]}},
+        {
+            31: {
+                "status": "ok",
+                "grid": [[1, UNKNOWN], [".", 1]],
+                "evidence": [{"row": 1, "column": 2, "reading": "2"}],
+            }
+        },
         tmp_path / "assets",
     )
 

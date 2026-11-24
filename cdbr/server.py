@@ -201,9 +201,8 @@ def _playable_puzzle(puzzle_id: str) -> tuple[dict[str, object], dict[int, str]]
         raise HTTPException(status_code=404, detail="Puzzle not found") from None
     if serial in _runtime_corpus:
         return _runtime_corpus[serial]
-    publisher_assets = list(PUZZLE_ROOT.glob("puzzle-*.toml"))
     source_path = PUZZLE_ROOT / f"puzzle-{serial}.toml"
-    if serial == 1 and not publisher_assets:
+    if serial == 1:
         source_path = PUZZLE_ROOT / "seed-437.toml"
     if not source_path.is_file():
         raise HTTPException(status_code=404, detail="Puzzle not found")
@@ -240,13 +239,13 @@ def _playable_puzzle(puzzle_id: str) -> tuple[dict[str, object], dict[int, str]]
 
 
 def _packaged_corpus_ids() -> list[int]:
-    identifiers = []
+    identifiers = [1] if (PUZZLE_ROOT / "seed-437.toml").is_file() else []
     for source in PUZZLE_ROOT.glob("puzzle-*.toml"):
         try:
             identifiers.append(int(source.stem.removeprefix("puzzle-")))
         except ValueError:
             continue
-    return sorted(set(identifiers)) or [1]
+    return sorted(set(identifiers))
 
 
 def _complete_mapping(grid: list[list[int | None]], mapping: dict[int, str]) -> dict[int, str]:

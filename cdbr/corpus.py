@@ -626,6 +626,16 @@ def publish_corpus_assets(
         reviewed_grid = _truth_grid(truth, entry.truth)
         if reviewed_grid:
             grid = [list(row) for row in reviewed_grid]
+        elif truth.get("accept_observed_numbers") is True:
+            # Human review accepted the photographed grid except for the
+            # explicit defects below. Restore conservative OCR proposals that
+            # were withheld from the public grid solely for HIL confirmation.
+            for evidence in result.get("evidence", ()):
+                row = int(evidence["row"])
+                column = int(evidence["column"])
+                reading = str(evidence["reading"])
+                if grid[row - 1][column - 1] == UNKNOWN and reading.isdigit():
+                    grid[row - 1][column - 1] = int(reading)
         for (row, column), expected in _truth_number_defects(truth, entry.truth).items():
             grid[row - 1][column - 1] = expected
         if any(value not in {BLOCK, "."} and not isinstance(value, int) for row in grid for value in row):

@@ -472,8 +472,9 @@ def test_publish_generated_candidate_assigns_next_serial():
     response = client.post("/api/generation-jobs/publish-test/publish")
 
     assert response.status_code == 201
-    assert response.json()["serial"] == 2
-    assert response.json()["title"] == "Puzzle 2"
+    expected_serial = max(server_module._packaged_corpus_ids()) + 1
+    assert response.json()["serial"] == expected_serial
+    assert response.json()["title"] == f"Puzzle {expected_serial}"
     assert response.json()["origin"] == "cdbr_generated"
     assert "solution" not in response.json()
 
