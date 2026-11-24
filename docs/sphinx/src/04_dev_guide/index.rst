@@ -30,7 +30,7 @@ Preview the web application directly from the active development environment:
 
 This starts the configured ``cdbrd`` service at http://127.0.0.1:8000/ without building or running a container. It remains in the foreground until interrupted.
 
-Run the resumable OCR corpus benchmark, optionally limiting an experiment to a single puzzle:
+Run the OCR corpus benchmark, optionally limiting an experiment to a single puzzle. Benchmark targets always start again from the source photograph; cached recognition is for explicit debugging commands, never benchmark evidence:
 
 .. code:: bash
 
@@ -38,7 +38,7 @@ Run the resumable OCR corpus benchmark, optionally limiting an experiment to a s
    make benchmark BENCHMARK_ARGS="--puzzle 48"
    make benchmark-audit
 
-``make benchmark-audit`` regenerates the error-first number, reference-clue, and publisher-solution review pages beneath ``build/corpus-audit/``. Corpus benchmarks are engineering tools and are intentionally not part of the quick ``make check`` gate.
+``make benchmark-audit`` reruns OCR and independent search, then regenerates the error-first number, reference-clue, publisher-validation, and search-outcome pages beneath ``build/corpus-audit/``. Corpus benchmarks are engineering tools and are intentionally not part of the quick ``make check`` gate. The same directory retains ``summary.json`` for before-and-after comparisons.
 
 Regenerate README, manpage, and Sphinx projections from their canonical sources:
 

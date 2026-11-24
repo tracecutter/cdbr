@@ -21,7 +21,7 @@ import cv2
 
 from cdbr import __version__
 from cdbr.corpus_audit import write_audit_reports
-from cdbr.core.lexicon import english_lexicon
+from cdbr.core.lexicon import english_lexicon, word_pattern
 from cdbr.core.model import CodewordPuzzle, extract_slots
 from cdbr.core.puzzle import BLOCK, UNKNOWN
 from cdbr.core.recognition import (
@@ -33,7 +33,7 @@ from cdbr.core.recognition import (
     _cell_images,
     recognize_photo,
 )
-from cdbr.core.solver import solve
+from cdbr.core.solver import slot_candidates, solve
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -449,64 +449,16 @@ def benchmark_solutions(
     entries: Iterable[CorpusEntry],
     results: dict[int, dict[str, Any]],
 ) -> dict[str, Any]:
-    """Solve reviewed OCR grids and compare only against confirmed publisher mappings."""
+    """Measure scan/HIL and ground-truth search as strictly separate lanes."""
 
     outcomes = []
     lexicon = english_lexicon()
-    for entry in entries:
-        result = results.get(entry.puzzle_id)
-        if result is None or result.get("status") != "ok" or entry.truth is None:
-            continue
-        truth = _truth_document(entry.truth)
-        grid = [list(row) for row in result["grid"]]
-        reviewed_grid = _truth_grid(truth, entry.truth)
-        defects = _truth_number_defects(truth, entry.truth)
-        number_reviews = 0
-        number_corrections = 0
-        for evidence in result.get("evidence", ()):
-            row = int(evidence["row"])
-            column = int(evidence["column"])
-            reading = str(evidence["reading"])
-            expected: int | None = None
-            if reviewed_grid:
-                reviewed = reviewed_grid[row - 1][column - 1]
-                expected = int(reviewed) if reviewed not in {BLOCK, UNKNOWN} else None
-            elif (row, column) in defects:
-                expected = defects[row, column]
-            if expected is not None:
-                observed = int(reading) if reading.isdigit() else None
-                requires_review = evidence["trusted"] is not True or observed != expected
-                number_reviews += int(requires_review)
-                number_corrections += int(observed != expected)
-                grid[row - 1][column - 1] = expected
-                continue
-            if evidence["trusted"] is True and grid[row - 1][column - 1] != UNKNOWN:
-                continue
-            if reading.isdigit():
-                expected = int(reading)
-            if expected is None:
-                continue
-            number_reviews += 1
-            number_corrections += int(not reading.isdigit() or int(reading) != expected)
-            grid[row - 1][column - 1] = expected
+
+    def run_search(grid: list[list[int | str]], clues: dict[int, str]) -> dict[str, Any]:
         if any(value not in {BLOCK, "."} and not isinstance(value, int) for row in grid for value in row):
-            outcomes.append(
-                {
-                    "puzzle_id": entry.puzzle_id,
-                    "status": "unresolved-ocr",
-                    "result": "unsolved",
-                    "number_reviews": number_reviews,
-                    "number_corrections": number_corrections,
-                    "clue_corrections": 0,
-                }
-            )
-            continue
+            return {"status": "unresolved-ocr", "mapping": {}, "seconds": 0.0, "nodes": 0, "puzzle": None}
         normalized = tuple(tuple(None if value in {BLOCK, "."} else int(value) for value in row) for row in grid)
-        puzzle = CodewordPuzzle(
-            grid=normalized,
-            clues=_truth_clues(truth, entry.truth),
-            slots=extract_slots(normalized),
-        )
+        puzzle = CodewordPuzzle(grid=normalized, clues=clues, slots=extract_slots(normalized))
         started = time.perf_counter()
         solved = solve(puzzle, lexicon)
         elapsed = time.perf_counter() - started
@@ -522,31 +474,138 @@ def benchmark_solutions(
         else:
             status = "candidate"
             mapping = solved.solutions[0].mapping
+        return {
+            "status": status,
+            "mapping": mapping,
+            "seconds": round(elapsed, 3),
+            "nodes": solved.nodes,
+            "puzzle": puzzle,
+        }
+
+    def validate_publisher(puzzle: CodewordPuzzle | None, mapping: dict[int, str]) -> list[dict[str, Any]]:
+        if puzzle is None or not mapping:
+            return [{"kind": "unavailable-grid"}]
+        rejected: list[dict[str, Any]] = []
+        for symbol, letter in sorted(puzzle.clues.items()):
+            if mapping.get(symbol) != letter:
+                rejected.append(
+                    {"kind": "clue-mismatch", "symbol": symbol, "expected": letter, "observed": mapping.get(symbol)}
+                )
+        for slot in puzzle.slots:
+            word = "".join(mapping.get(symbol, "?") for symbol in slot.symbols)
+            candidates = slot_candidates(slot, lexicon, mapping)
+            if any(item.word == word for item in candidates):
+                continue
+            reason = (
+                "incomplete-mapping"
+                if "?" in word
+                else "pattern-mismatch" if word_pattern(word) != word_pattern(slot.symbols) else "missing-lexicon"
+            )
+            rejected.append(
+                {
+                    "kind": "slot-rejected",
+                    "slot": slot.index,
+                    "direction": slot.direction,
+                    "row": slot.row + 1,
+                    "column": slot.column + 1,
+                    "symbols": list(slot.symbols),
+                    "word": word,
+                    "reason": reason,
+                }
+            )
+        return rejected
+
+    for entry in entries:
+        result = results.get(entry.puzzle_id)
+        if result is None or result.get("status") != "ok" or entry.truth is None:
+            continue
+        truth = _truth_document(entry.truth)
+        hil_grid = [list(row) for row in result["grid"]]
+        truth_grid = [list(row) for row in result["grid"]]
+        reviewed_grid = _truth_grid(truth, entry.truth)
+        defects = _truth_number_defects(truth, entry.truth)
+        number_reviews = 0
+        number_corrections = 0
+        for evidence in result.get("evidence", ()):
+            row = int(evidence["row"])
+            column = int(evidence["column"])
+            reading = str(evidence["reading"])
+            expected: int | None = None
+            if reviewed_grid:
+                reviewed = reviewed_grid[row - 1][column - 1]
+                expected = int(reviewed) if reviewed not in {BLOCK, UNKNOWN} else None
+            elif (row, column) in defects:
+                expected = defects[row, column]
+            observed = int(reading) if reading.isdigit() else None
+            if expected is not None:
+                truth_grid[row - 1][column - 1] = expected
+            elif observed is not None and truth_grid[row - 1][column - 1] == UNKNOWN:
+                truth_grid[row - 1][column - 1] = observed
+            if evidence["trusted"] is True:
+                continue
+            reviewed_value = expected if expected is not None else observed
+            if reviewed_value is not None:
+                hil_grid[row - 1][column - 1] = reviewed_value
+            number_reviews += 1
+            number_corrections += int(observed != reviewed_value)
+        if reviewed_grid:
+            truth_grid = [list(row) for row in reviewed_grid]
+        for (row, column), expected in defects.items():
+            truth_grid[row - 1][column - 1] = expected
+
         solution_truth = _truth_solution(truth, entry.truth)
         clue_truth = _truth_clues(truth, entry.truth)
+        hil_search = run_search(hil_grid, clue_truth)
+        truth_search = run_search(truth_grid, clue_truth)
+        publisher_rejections = validate_publisher(hil_search["puzzle"], solution_truth)
+        truth_rejections = validate_publisher(truth_search["puzzle"], solution_truth)
         observed_clues = {int(item["symbol"]): str(item["reading"]) for item in result.get("clue_evidence", ())}
         clue_corrections = sum(observed_clues.get(symbol) != letter for symbol, letter in clue_truth.items())
         presumed_hil = bool(number_reviews or clue_corrections)
         outcome_result = (
             "solved-with-presumed-hil"
-            if status in {"certified", "candidate"} and presumed_hil
-            else "solved" if status in {"certified", "candidate"} else "unsolved"
+            if hil_search["status"] in {"certified", "candidate"} and presumed_hil
+            else "solved" if hil_search["status"] in {"certified", "candidate"} else "unsolved"
         )
         mismatches = [
-            {"symbol": symbol, "observed": mapping.get(symbol), "expected": letter}
+            {"symbol": symbol, "observed": hil_search["mapping"].get(symbol), "expected": letter}
             for symbol, letter in sorted(solution_truth.items())
-            if mapping.get(symbol) != letter
+            if hil_search["mapping"].get(symbol) != letter
+        ]
+        truth_mismatches = [
+            {"symbol": symbol, "observed": truth_search["mapping"].get(symbol), "expected": letter}
+            for symbol, letter in sorted(solution_truth.items())
+            if truth_search["mapping"].get(symbol) != letter
         ]
         outcomes.append(
             {
                 "puzzle_id": entry.puzzle_id,
-                "status": status,
-                "seconds": round(elapsed, 3),
-                "nodes": solved.nodes,
-                "mapped_symbols": len(mapping),
+                "status": hil_search["status"],
+                "seconds": hil_search["seconds"],
+                "nodes": hil_search["nodes"],
+                "mapped_symbols": len(hil_search["mapping"]),
+                "truth_status": truth_search["status"],
+                "truth_seconds": truth_search["seconds"],
+                "truth_nodes": truth_search["nodes"],
+                "truth_mapped_symbols": len(truth_search["mapping"]),
                 "publisher_scored": bool(solution_truth),
+                "publisher_playback": "available" if solution_truth else "unavailable",
+                "publisher_validation": (
+                    "accepted"
+                    if solution_truth and not publisher_rejections
+                    else "rejected" if solution_truth else "unscored"
+                ),
+                "publisher_rejections": publisher_rejections,
+                "truth_publisher_validation": (
+                    "accepted"
+                    if solution_truth and not truth_rejections
+                    else "rejected" if solution_truth else "unscored"
+                ),
+                "truth_publisher_rejections": truth_rejections,
                 "publisher_match": bool(solution_truth) and not mismatches,
                 "publisher_mismatches": mismatches,
+                "truth_publisher_match": bool(solution_truth) and not truth_mismatches,
+                "truth_publisher_mismatches": truth_mismatches,
                 "result": outcome_result,
                 "number_reviews": number_reviews,
                 "number_corrections": number_corrections,
@@ -562,6 +621,16 @@ def benchmark_solutions(
         "solved": sum(item["result"] == "solved" for item in outcomes),
         "solved_with_presumed_hil": sum(item["result"] == "solved-with-presumed-hil" for item in outcomes),
         "publisher_scored": sum(bool(item.get("publisher_scored")) for item in outcomes),
+        "publisher_valid": sum(item.get("publisher_validation") == "accepted" for item in outcomes),
+        "publisher_rejected": [
+            item["puzzle_id"] for item in outcomes if item.get("publisher_validation") == "rejected"
+        ],
+        "truth_unsolved": [
+            item["puzzle_id"] for item in outcomes if item["truth_status"] not in {"certified", "candidate"}
+        ],
+        "truth_publisher_rejected": [
+            item["puzzle_id"] for item in outcomes if item.get("truth_publisher_validation") == "rejected"
+        ],
         "publisher_mismatches": [
             item["puzzle_id"] for item in outcomes if item.get("publisher_scored") and not item["publisher_match"]
         ],
@@ -795,7 +864,11 @@ def main(
                 f"{cells['unknown']} unknown; {cells['review']} review; "
                 f"{number_accuracy.get('incorrect', 0)} known OCR errors; "
                 f"{number_accuracy.get('trusted_incorrect', 0)} trusted wrong; "
-                f"{outcome['result']} ({outcome['status']})"
+                f"publisher playback {outcome['publisher_playback']}; "
+                f"publisher validation {outcome['publisher_validation']} "
+                f"({len(outcome['publisher_rejections'])} rejected constraints); "
+                f"scan/HIL search {outcome['status']}; "
+                f"ground-truth search {outcome['truth_status']}"
             )
     if publish_assets:
         summary["published_assets"] = publish_corpus_assets(

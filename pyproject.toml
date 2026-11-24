@@ -1,6 +1,6 @@
 [project]
 name = "cdbr"
-version = "0.1.4"
+version = "0.2.0"
 description = "Code Break Puzzle Solver."
 authors = [
   { name = "John Fogelin" }
@@ -108,7 +108,7 @@ deploy-on = "release"
 
 [tool.npkg.benchmark]
 command = "python -m cdbr.corpus --no-resume"
-audit-command = "python -m cdbr.corpus --resume --audit --solve"
+audit-command = "python -m cdbr.corpus --no-resume --audit --solve --summary-output build/corpus-audit/summary.json"
 
 [tool.psym]
 docs-dir = "docs"

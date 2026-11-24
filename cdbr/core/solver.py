@@ -115,6 +115,12 @@ def _slot_candidates(
     return tuple(sorted(compounds.values(), key=lambda entry: (-entry.score, entry.word)))
 
 
+def slot_candidates(slot: Slot, lexicon: Lexicon, mapping: dict[int, str]) -> tuple[LexiconEntry, ...]:
+    """Return the candidates accepted by the solver for one mapped slot."""
+
+    return _slot_candidates(slot, lexicon, mapping)
+
+
 def _propagate(
     puzzle: CodewordPuzzle,
     lexicon: Lexicon,

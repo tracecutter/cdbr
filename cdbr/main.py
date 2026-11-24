@@ -147,8 +147,10 @@ Run the photographed-puzzle corpus benchmark locally with:
 make benchmark
 ```
 
-The benchmark uses one worker by default and stores reusable images plus
-per-puzzle JSONL beneath the operating system's temporary directory. Its summary
+The benchmark uses one worker by default and stores diagnostic images plus
+per-puzzle JSONL beneath the operating system's temporary directory. Every
+`make benchmark` and `make benchmark-audit` run starts from the source photographs:
+cached recognition is never accepted as benchmark evidence. The summary
 separates total recognition time from cell-classification throughput, individual
 classification passes, review load, and peak resident memory. Limit a tuning run
 with `make benchmark BENCHMARK_ARGS="--puzzle 35"`, or deliberately test
@@ -161,13 +163,15 @@ OCR separately. Number truth is a transcribed grid; clue truth covers all 26
 reference positions so misses and false positives are measurable. Coverage is
 deliberately incremental and never derived from the recogniser's own output.
 
-Build a human-review report from the latest resumable benchmark with:
+Build a fresh human-review and independent-search report with:
 
 ```bash
 make benchmark-audit
 ```
 
-The report is written inside the project at `build/corpus-audit/index.html`.
+The complete OCR and solver pipeline runs again before the report is written
+inside the project at `build/corpus-audit/index.html`; its machine-readable
+summary is retained beside it as `summary.json`.
 It provides two independent scorecards, putting confirmed errors first and then
 ordering each review tier from least to most confident. Published solution cells
 remain visible beside number crops as supporting evidence, but do not silently

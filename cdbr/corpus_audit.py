@@ -510,8 +510,10 @@ document.querySelector('#export-unsolved-review').addEventListener('click', () =
         )
     )
     outcome_rows = "".join(
-        f"<tr><td>{int(item['puzzle_id'])}</td><td>{html.escape(str(item['status']))}</td>"
-        f"<td class=\"outcome-result {'is-unsolved' if item['result'] == 'unsolved' else 'is-hil' if item['result'] == 'solved-with-presumed-hil' else ''}\">{html.escape(str(item['result']))}</td>"
+        f"<tr><td>{int(item['puzzle_id'])}</td><td>{html.escape(str(item.get('publisher_playback', 'unavailable')))}</td>"
+        f"<td>{html.escape(str(item.get('publisher_validation', 'unscored')))} ({len(item.get('publisher_rejections', ()))})</td>"
+        f"<td class=\"outcome-result {'is-unsolved' if item['result'] == 'unsolved' else 'is-hil' if item['result'] == 'solved-with-presumed-hil' else ''}\">{html.escape(str(item['status']))}</td>"
+        f"<td>{html.escape(str(item.get('truth_status', 'unscored')))}</td>"
         f"<td>{int(item.get('number_reviews', 0))}</td><td>{int(item.get('number_corrections', 0))}</td>"
         f"<td>{int(item.get('clue_corrections', 0))}</td><td>{float(item.get('seconds', 0.0)):.3f}s</td>"
         f"<td>{int(item.get('nodes', 0))}</td></tr>"
@@ -522,7 +524,7 @@ document.querySelector('#export-unsolved-review').addEventListener('click', () =
         + _metric(int(solution_summary.get("solved", 0)), "solved directly")
         + _metric(int(solution_summary.get("solved_with_presumed_hil", 0)), "solved with presumed HIL")
         + _metric(len(solution_summary.get("unsolved", ())), "unsolved after presumed HIL")
-        + f'</div><p><a href="unsolved.html">Review {len(unsolved_ids)} unsolved puzzles →</a></p><table class="outcome-table"><thead><tr><th>Puzzle</th><th>Solver</th><th>Outcome</th><th>Reviews</th><th>Number fixes</th><th>Clue fixes</th><th>Time</th><th>Nodes</th></tr></thead><tbody>'
+        + f'</div><p><a href="unsolved.html">Review {len(unsolved_ids)} scan/HIL contradictions →</a></p><table class="outcome-table"><thead><tr><th>Puzzle</th><th>Playback</th><th>Scan/HIL validation</th><th>Scan/HIL search</th><th>Ground-truth search</th><th>Reviews</th><th>Number fixes</th><th>Clue fixes</th><th>Time</th><th>Nodes</th></tr></thead><tbody>'
         + outcome_rows
         + "</tbody></table></section>"
         if outcome_rows

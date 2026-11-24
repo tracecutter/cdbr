@@ -315,7 +315,11 @@ def test_benchmark_solutions_scores_only_confirmed_publisher_mapping(tmp_path: P
         nodes=12,
         best_mapping={1: "A", 2: "B"},
     )
-    monkeypatch.setattr(corpus_module, "english_lexicon", lambda: object())
+    words = {(1, 2): "AB", (2, 1): "BA"}
+    lexicon = SimpleNamespace(
+        candidates=lambda symbols: (SimpleNamespace(word=words[symbols]),) if symbols in words else ()
+    )
+    monkeypatch.setattr(corpus_module, "english_lexicon", lambda: lexicon)
     monkeypatch.setattr(corpus_module, "solve", lambda _puzzle, _lexicon: solved)
 
     summary = benchmark_solutions(
@@ -338,7 +342,14 @@ def test_benchmark_solutions_scores_only_confirmed_publisher_mapping(tmp_path: P
     assert summary["publisher_scored"] == 1
     assert summary["publisher_mismatches"] == []
     assert summary["outcomes"][0]["publisher_match"] is True
-    assert summary["outcomes"][0]["number_corrections"] == 1
+    # A reviewed correction is admissible only when the fresh OCR run asks for
+    # human review.  This reading was trusted, so the scan/HIL lane must retain
+    # and expose the wrong value rather than silently applying old truth.
+    assert summary["outcomes"][0]["number_corrections"] == 0
+    assert summary["outcomes"][0]["publisher_playback"] == "available"
+    assert summary["outcomes"][0]["publisher_validation"] == "rejected"
+    assert summary["outcomes"][0]["truth_publisher_validation"] == "accepted"
+    assert summary["outcomes"][0]["truth_status"] == "certified"
 
 
 def test_solution_approval_import_and_sparse_asset_publication(tmp_path: Path) -> None:
@@ -434,7 +445,7 @@ def test_write_audit_reports_separates_number_and_clue_queues(tmp_path: Path) ->
     assert "Independent recognition concerns" in target.read_text()
     assert "solved with presumed HIL" in target.read_text()
     assert "0.125s" in target.read_text()
-    assert "Review 0 unsolved puzzles" in target.read_text()
+    assert "Review 0 scan/HIL contradictions" in target.read_text()
     unsolved = (tmp_path / "audit" / "unsolved.html").read_text()
     assert "DOMContentLoaded" in unsolved
     assert "Correct number (if known)" in unsolved
