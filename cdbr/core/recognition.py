@@ -24,8 +24,9 @@ WARP_SIZE = 1500
 MIN_OCR_CONFIDENCE = 80.0
 MIN_TEMPLATE_MARGIN = 0.15
 MIN_WHOLE_NUMBER_MARGIN = 0.20
+MIN_REVIEWED_FAMILY_MARGIN = 0.10
 HIL_REVIEW_CONFIDENCE = 68.0
-HIL_AMBIGUOUS_NUMBERS = frozenset((5, 6, 8, 16, 18))
+HIL_AMBIGUOUS_NUMBERS = frozenset((5, 6, 8, 9, 16, 18, 19))
 WHOLE_TOKEN_PIPELINE = "whole-token"
 LEGACY_PIPELINE = "legacy"
 OCR_PIPELINES = (LEGACY_PIPELINE, WHOLE_TOKEN_PIPELINE)
@@ -475,12 +476,12 @@ def _reviewed_number_templates() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         return archive["features"], archive["labels"], archive["puzzle_ids"]
 
 
-def _reviewed_number_vote(
+def _reviewed_number_assessment(
     cell: np.ndarray,
     family: frozenset[int],
     *,
     excluded_puzzle_id: int | None = None,
-) -> int | None:
+) -> tuple[int, float] | None:
     features, labels, puzzle_ids = _reviewed_number_templates()
     eligible = np.isin(labels, tuple(family))
     if excluded_puzzle_id is not None:
@@ -491,7 +492,23 @@ def _reviewed_number_vote(
         return None
     feature = _reviewed_number_feature(cell).astype(np.float32)
     distances = np.mean((candidate_features.astype(np.float32) - feature) ** 2, axis=(1, 2))
-    return int(candidate_labels[int(np.argmin(distances))])
+    scores = sorted(
+        (float(np.min(distances[candidate_labels == value])), int(value)) for value in np.unique(candidate_labels)
+    )
+    margin = _relative_margin(scores[0][0], scores[1][0]) if len(scores) > 1 else 1.0
+    return scores[0][1], margin
+
+
+def _reviewed_number_vote(
+    cell: np.ndarray,
+    family: frozenset[int],
+    *,
+    excluded_puzzle_id: int | None = None,
+) -> int | None:
+    """Return the closest reviewed family label for diagnostics and tests."""
+
+    assessment = _reviewed_number_assessment(cell, family, excluded_puzzle_id=excluded_puzzle_id)
+    return assessment[0] if assessment is not None else None
 
 
 def _audit_reviewed_number_families(
@@ -502,7 +519,7 @@ def _audit_reviewed_number_families(
 ) -> list[CellReading]:
     """Revoke trust when reviewed examples dispute a known OCR ambiguity."""
 
-    families = (frozenset((6, 8)), frozenset((16, 18)))
+    families = (frozenset((6, 8)), frozenset((9, 19)), frozenset((16, 18)))
     reviewed = []
     for reading in readings:
         if not reading.trusted or not reading.text.isdigit():
@@ -513,18 +530,19 @@ def _audit_reviewed_number_families(
         if family is None:
             reviewed.append(reading)
             continue
-        vote = _reviewed_number_vote(
+        assessment = _reviewed_number_assessment(
             cells_by_position[(reading.row, reading.column)],
             family,
             excluded_puzzle_id=excluded_puzzle_id,
         )
+        vote, margin = assessment if assessment is not None else (None, 1.0)
         reviewed.append(
             CellReading(
                 row=reading.row,
                 column=reading.column,
                 text=reading.text,
                 confidence=reading.confidence,
-                trusted=vote is None or vote == value,
+                trusted=(vote is None or vote == value) and margin >= MIN_REVIEWED_FAMILY_MARGIN,
             )
         )
     return reviewed

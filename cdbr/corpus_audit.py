@@ -484,6 +484,7 @@ def write_audit_reports(
     clue_summary: Mapping[str, Any],
     solution_summary: Mapping[str, Any] | None = None,
     publisher_number_truth: Mapping[int, Sequence[Mapping[str, Any]]] | None = None,
+    evaluation_mode: str = "publisher-canon",
 ) -> Path:
     """Write separate, confidence-first number and clue OCR reports."""
 
@@ -623,17 +624,27 @@ document.querySelector('#export-unsolved-review').addEventListener('click', () =
         f"<td>{html.escape(str(item.get('publisher_validation', 'unscored')))} ({len(item.get('publisher_rejections', ()))})</td>"
         f"<td class=\"outcome-result {'is-unsolved' if item['result'] == 'unsolved' else 'is-hil' if item['result'] == 'solved-with-oracle-review' else ''}\">{html.escape(str(item['status']))}</td>"
         f"<td>{html.escape(str(item.get('truth_status', 'unscored')))}</td>"
+        f"<td>{html.escape(str(item.get('failure_layer') or '—'))}</td>"
         f"<td>{int(item.get('number_reviews', 0))}</td><td>{int(item.get('number_corrections', 0))}</td>"
         f"<td>{int(item.get('clue_corrections', 0))}</td><td>{float(item.get('seconds', 0.0)):.3f}s</td>"
         f"<td>{int(item.get('nodes', 0))}</td></tr>"
         for item in solution_summary.get("outcomes", ())
     )
+    production_mode = evaluation_mode == "publisher-canon"
+    mode_title = "Production publisher-canon playback" if production_mode else "Leave-one-out publisher generalisation"
+    mode_explanation = (
+        "This runs the same publisher-specific OCR canon used by Scan and therefore measures current gameplay."
+        if production_mode
+        else "This deliberately excludes each puzzle's own templates. It measures an unseen puzzle, not current gameplay."
+    )
+    lane_label = "Production scan/HIL" if production_mode else "Leave-one-out scan/HIL"
     solution_outcomes = (
         '<section class="outcomes"><h2>Parse, review, and solve outcomes</h2><div class="summary">'
         + _metric(int(solution_summary.get("solved", 0)), "solved directly")
         + _metric(int(solution_summary.get("solved_with_oracle_review", 0)), "solved with oracle-assisted review")
-        + _metric(len(solution_summary.get("unsolved", ())), "unsolved after oracle-assisted review")
-        + f'</div><p><a href="unsolved.html">Review {len(unsolved_ids)} scan/HIL failures →</a></p><table class="outcome-table"><thead><tr><th>Puzzle</th><th>Playback</th><th>Scan/HIL validation</th><th>Scan/HIL search</th><th>Ground-truth search</th><th>Reviews</th><th>Number fixes</th><th>Clue fixes</th><th>Time</th><th>Nodes</th></tr></thead><tbody>'
+        + _metric(len(solution_summary.get("ocr_or_hil_failures", ())), "OCR/HIL replay failures")
+        + _metric(len(solution_summary.get("solver_or_ground_truth_failures", ())), "solver or ground-truth failures")
+        + f'</div><p><strong>{mode_title}.</strong> {mode_explanation}</p><p><a href="unsolved.html">Review {len(unsolved_ids)} unresolved puzzles by failure layer →</a></p><table class="outcome-table"><thead><tr><th>Puzzle</th><th>Playback</th><th>{lane_label} validation</th><th>{lane_label} search</th><th>Ground-truth search</th><th>Failure layer</th><th>Reviews</th><th>Number fixes</th><th>Clue fixes</th><th>Time</th><th>Nodes</th></tr></thead><tbody>'
         + outcome_rows
         + "</tbody></table></section>"
         if outcome_rows

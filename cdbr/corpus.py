@@ -269,6 +269,7 @@ def benchmark_entry(
     work_root: Path,
     review_threshold: float,
     ocr_pipeline: str = WHOLE_TOKEN_PIPELINE,
+    leave_one_out: bool = False,
 ) -> dict[str, Any]:
     """Recognise one photograph without invoking the lexical solver."""
 
@@ -280,7 +281,7 @@ def benchmark_entry(
             entry.photo,
             work_dir,
             trace=trace,
-            template_exclusion=entry.puzzle_id,
+            template_exclusion=entry.puzzle_id if leave_one_out else None,
             ocr_pipeline=ocr_pipeline,
         )
         expected_blocks = _solution_blocks(entry.solution, observation.width)
@@ -349,6 +350,7 @@ def benchmark_entry(
         "photo_sha256": _digest(entry.photo),
         "cdbr_version": __version__,
         "ocr_pipeline": ocr_pipeline,
+        "evaluation_mode": "leave-one-out" if leave_one_out else "publisher-canon",
         "elapsed_seconds": round(trace.elapsed_seconds, 6),
         "stage_seconds": {name: round(seconds, 6) for name, seconds in trace.stage_seconds.items()},
         "cells": {
@@ -597,16 +599,17 @@ def benchmark_solutions(
         clue_truth = _truth_clues(truth, entry.truth)
         hil_search = run_search(hil_grid, clue_truth)
         truth_search = run_search(truth_grid, clue_truth)
+        hil_solved = hil_search["status"] in {"certified", "candidate"}
+        truth_solved = truth_search["status"] in {"certified", "candidate"}
         publisher_rejections = validate_publisher(hil_search["puzzle"], solution_truth)
         truth_rejections = validate_publisher(truth_search["puzzle"], solution_truth)
         observed_clues = {int(item["symbol"]): str(item["reading"]) for item in result.get("clue_evidence", ())}
         clue_corrections = sum(observed_clues.get(symbol) != letter for symbol, letter in clue_truth.items())
         oracle_review = bool(number_reviews or clue_corrections)
         outcome_result = (
-            "solved-with-oracle-review"
-            if hil_search["status"] in {"certified", "candidate"} and oracle_review
-            else "solved" if hil_search["status"] in {"certified", "candidate"} else "unsolved"
+            "solved-with-oracle-review" if hil_solved and oracle_review else "solved" if hil_solved else "unsolved"
         )
+        failure_layer = None if hil_solved else "ocr-or-hil" if truth_solved else "solver-or-ground-truth"
         mismatches = [
             {"symbol": symbol, "observed": hil_search["mapping"].get(symbol), "expected": letter}
             for symbol, letter in sorted(solution_truth.items())
@@ -647,6 +650,7 @@ def benchmark_solutions(
                 "truth_publisher_match": bool(solution_truth) and not truth_mismatches,
                 "truth_publisher_mismatches": truth_mismatches,
                 "result": outcome_result,
+                "failure_layer": failure_layer,
                 "number_reviews": number_reviews,
                 "number_corrections": number_corrections,
                 "clue_corrections": clue_corrections,
@@ -667,6 +671,10 @@ def benchmark_solutions(
         ],
         "truth_unsolved": [
             item["puzzle_id"] for item in outcomes if item["truth_status"] not in {"certified", "candidate"}
+        ],
+        "ocr_or_hil_failures": [item["puzzle_id"] for item in outcomes if item.get("failure_layer") == "ocr-or-hil"],
+        "solver_or_ground_truth_failures": [
+            item["puzzle_id"] for item in outcomes if item.get("failure_layer") == "solver-or-ground-truth"
         ],
         "truth_publisher_rejected": [
             item["puzzle_id"] for item in outcomes if item.get("truth_publisher_validation") == "rejected"
@@ -802,6 +810,12 @@ def publish_corpus_assets(
 @click.option("--workers", type=click.IntRange(1, 4), default=1, show_default=True)
 @click.option("--review-threshold", type=click.FloatRange(0.0, 100.0), default=70.0, show_default=True)
 @click.option("--ocr-pipeline", type=click.Choice(OCR_PIPELINES), default=WHOLE_TOKEN_PIPELINE, show_default=True)
+@click.option(
+    "--leave-one-out/--publisher-canon",
+    default=False,
+    show_default=True,
+    help="Exclude each puzzle from OCR templates to measure publisher generalisation rather than gameplay.",
+)
 @click.option("--summary-output", type=click.Path(path_type=Path, dir_okay=False))
 @click.option("--resume/--no-resume", default=True, show_default=True)
 @click.option("--audit/--no-audit", default=False, help="Write separate number and clue OCR review reports.")
@@ -826,6 +840,7 @@ def main(
     workers: int,
     review_threshold: float,
     ocr_pipeline: str,
+    leave_one_out: bool,
     summary_output: Path | None,
     resume: bool,
     audit: bool,
@@ -857,7 +872,12 @@ def main(
 
     output.parent.mkdir(parents=True, exist_ok=True)
     work_root.mkdir(parents=True, exist_ok=True)
-    prior = read_results(output) if resume else []
+    evaluation_mode = "leave-one-out" if leave_one_out else "publisher-canon"
+    prior = [
+        result
+        for result in (read_results(output) if resume else [])
+        if result.get("ocr_pipeline") == ocr_pipeline and result.get("evaluation_mode") == evaluation_mode
+    ]
     completed_ids = {int(result["puzzle_id"]) for result in prior if result.get("status") == "ok"}
     pending = [entry for entry in entries if entry.puzzle_id not in completed_ids]
     mode = "a" if resume else "w"
@@ -865,7 +885,7 @@ def main(
     with output.open(mode) as stream:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
-                executor.submit(benchmark_entry, entry, work_root, review_threshold, ocr_pipeline): entry
+                executor.submit(benchmark_entry, entry, work_root, review_threshold, ocr_pipeline, leave_one_out): entry
                 for entry in pending
             }
             for future in as_completed(futures):
@@ -887,6 +907,7 @@ def main(
     publisher_number_truth = derive_publisher_number_truth(entries, latest)
     summary: dict[str, Any] = {
         "ocr_pipeline": ocr_pipeline,
+        "evaluation_mode": evaluation_mode,
         **summarize(latest.values()),
         "number_ocr": summarize_accuracy(latest.values(), "number"),
         "clue_ocr": summarize_accuracy(latest.values(), "clue"),
@@ -909,6 +930,7 @@ def main(
                 f"publisher playback {outcome['publisher_playback']}; "
                 f"publisher validation {outcome['publisher_validation']} "
                 f"({len(outcome['publisher_rejections'])} rejected constraints); "
+                f"{'production' if evaluation_mode == 'publisher-canon' else 'leave-one-out'} "
                 f"scan/HIL search {outcome['status']}; "
                 f"ground-truth search {outcome['truth_status']}"
             )
@@ -933,6 +955,7 @@ def main(
             clue_summary=summary["clue_ocr"],
             solution_summary=summary.get("solutions"),
             publisher_number_truth=publisher_number_truth,
+            evaluation_mode=evaluation_mode,
         )
         click.echo(f"Corpus audit: {target}")
 

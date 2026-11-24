@@ -481,7 +481,8 @@ def test_write_audit_reports_separates_number_and_clue_queues(tmp_path: Path) ->
     assert "Independent recognition concerns" in target.read_text()
     assert "solved with oracle-assisted review" in target.read_text()
     assert "0.125s" in target.read_text()
-    assert "Review 0 scan/HIL failures" in target.read_text()
+    assert "Review 0 unresolved puzzles by failure layer" in target.read_text()
+    assert "measures current gameplay" in target.read_text()
     unsolved = (tmp_path / "audit" / "unsolved.html").read_text()
     assert "DOMContentLoaded" in unsolved
     assert "Correct number (if known)" in unsolved

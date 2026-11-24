@@ -163,7 +163,7 @@ def test_whole_token_pipeline_keeps_reviewed_family_audit_enabled(monkeypatch) -
     from cdbr.core.recognition import CellReading, _audit_reviewed_number_families
 
     cell = np.full((100, 100, 3), 255, dtype=np.uint8)
-    monkeypatch.setattr("cdbr.core.recognition._reviewed_number_vote", lambda *_args, **_kwargs: 8)
+    monkeypatch.setattr("cdbr.core.recognition._reviewed_number_assessment", lambda *_args, **_kwargs: (8, 0.9))
 
     audited = _audit_reviewed_number_families(
         [CellReading(row=0, column=0, text="6", confidence=95.0, trusted=True)],
@@ -171,6 +171,20 @@ def test_whole_token_pipeline_keeps_reviewed_family_audit_enabled(monkeypatch) -
     )
 
     assert audited[0].text == "6"
+    assert audited[0].trusted is False
+
+
+def test_reviewed_family_audit_revokes_weak_agreement(monkeypatch) -> None:
+    from cdbr.core.recognition import CellReading, _audit_reviewed_number_families
+
+    cell = np.full((100, 100, 3), 255, dtype=np.uint8)
+    monkeypatch.setattr("cdbr.core.recognition._reviewed_number_assessment", lambda *_args, **_kwargs: (6, 0.08))
+
+    audited = _audit_reviewed_number_families(
+        [CellReading(row=0, column=0, text="6", confidence=90.0, trusted=True)],
+        {(0, 0): cell},
+    )
+
     assert audited[0].trusted is False
 
 
@@ -193,6 +207,31 @@ def test_puzzle_35_fragmented_eight_is_not_read_as_six(tmp_path: Path) -> None:
     observation = recognize_photo(project_root / "examples" / "puzzle_35.jpg", tmp_path)
 
     assert observation.grid[7][2] == 8
+
+
+def test_puzzle_34_weak_six_eight_vote_is_sent_to_hil(tmp_path: Path) -> None:
+    project_root = Path(__file__).parents[2]
+
+    observation = recognize_photo(
+        project_root / "examples" / "puzzle_34.jpg",
+        tmp_path,
+        template_exclusion=34,
+    )
+    evidence = {(item.row, item.column): item for item in observation.evidence}
+
+    assert evidence[(11, 5)].reading == "6"
+    assert evidence[(11, 5)].trusted is False
+    assert needs_hil_review(evidence[(11, 5)])
+
+
+def test_puzzle_59_lost_leading_one_is_corrected_by_publisher_canon(tmp_path: Path) -> None:
+    project_root = Path(__file__).parents[2]
+
+    observation = recognize_photo(project_root / "examples" / "puzzle_59.jpg", tmp_path)
+    evidence = {(item.row, item.column): item for item in observation.evidence}
+
+    assert evidence[(2, 5)].reading == "19"
+    assert evidence[(2, 5)].trusted is True
 
 
 def test_puzzle_36_counter_family_errors_are_corrected_without_hil(tmp_path: Path) -> None:
