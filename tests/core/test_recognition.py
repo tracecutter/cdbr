@@ -11,6 +11,7 @@ from cdbr.core.recognition import (
     _block_mask,
     _cell_images,
     _coarse_glyph_feature,
+    _classify_whole_number,
     _digit_glyphs,
     _foreground_binary,
     _relative_margin,
@@ -147,6 +148,19 @@ def test_reviewed_number_vote_respects_puzzle_exclusion(monkeypatch) -> None:
 
     assert _reviewed_number_vote(cell, frozenset((6, 8))) == 6
     assert _reviewed_number_vote(cell, frozenset((6, 8)), excluded_puzzle_id=37) == 6
+
+
+def test_whole_number_classifier_uses_complete_token_margin() -> None:
+    cell = np.full((100, 100, 3), 255, dtype=np.uint8)
+    cv2.putText(cell, "16", (8, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.1, 0, 3, cv2.LINE_AA)
+    feature = cv2.resize(_number_feature(cell), (20, 30), interpolation=cv2.INTER_AREA)
+    prototypes = np.stack((feature, 255 - feature))
+    labels = np.array((16, 18), dtype=np.uint8)
+
+    reading = _classify_whole_number((2, 4, cell), prototypes, labels)
+
+    assert reading.text == "16"
+    assert reading.trusted is True
 
 
 def test_puzzle_35_fragmented_eight_is_not_read_as_six(tmp_path: Path) -> None:

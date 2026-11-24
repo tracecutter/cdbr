@@ -24,7 +24,15 @@ from cdbr.corpus_audit import write_audit_reports
 from cdbr.core.lexicon import english_lexicon
 from cdbr.core.model import CodewordPuzzle, extract_slots
 from cdbr.core.puzzle import BLOCK, UNKNOWN
-from cdbr.core.recognition import WARP_SIZE, RecognitionTrace, _block_mask, _cell_images, recognize_photo
+from cdbr.core.recognition import (
+    LEGACY_PIPELINE,
+    OCR_PIPELINES,
+    WARP_SIZE,
+    RecognitionTrace,
+    _block_mask,
+    _cell_images,
+    recognize_photo,
+)
 from cdbr.core.solver import solve
 
 
@@ -135,11 +143,16 @@ def apply_truth(result: dict[str, Any], source: Path) -> dict[str, Any]:
                 if expected == "." or observed == expected:
                     continue
                 item = evidence.get((row, column))
+                observed_reading: int | str = observed
+                if item is not None and str(item["reading"]).isdigit():
+                    observed_reading = int(item["reading"])
+                if observed_reading == expected:
+                    continue
                 mismatches.append(
                     {
                         "row": row,
                         "column": column,
-                        "observed": observed,
+                        "observed": observed_reading,
                         "expected": expected,
                         "confidence": item["confidence"] if item is not None else None,
                         "trusted": item["trusted"] if item is not None else None,
@@ -152,14 +165,16 @@ def apply_truth(result: dict[str, Any], source: Path) -> dict[str, Any]:
             item = evidence.get((row, column))
             if item is None:
                 raise ValueError(f"Truth number defect r{row:02d}c{column:02d} is not a playable cell: {source}")
-            observed = observed_grid[row - 1][column - 1]
-            if observed == expected:
+            reviewed_observed: int | str = observed_grid[row - 1][column - 1]
+            if str(item["reading"]).isdigit():
+                reviewed_observed = int(item["reading"])
+            if reviewed_observed == expected:
                 continue
             reviewed_defects.append(
                 {
                     "row": row,
                     "column": column,
-                    "observed": observed,
+                    "observed": reviewed_observed,
                     "expected": expected,
                     "confidence": item["confidence"],
                     "trusted": item["trusted"],
@@ -252,6 +267,7 @@ def benchmark_entry(
     entry: CorpusEntry,
     work_root: Path,
     review_threshold: float,
+    ocr_pipeline: str = LEGACY_PIPELINE,
 ) -> dict[str, Any]:
     """Recognise one photograph without invoking the lexical solver."""
 
@@ -264,6 +280,7 @@ def benchmark_entry(
             work_dir,
             trace=trace,
             template_exclusion=entry.puzzle_id,
+            ocr_pipeline=ocr_pipeline,
         )
         expected_blocks = _solution_blocks(entry.solution, observation.width)
     except Exception as exc:  # noqa: BLE001 - one failed photograph must not stop a corpus run
@@ -320,6 +337,7 @@ def benchmark_entry(
         "solution": str(entry.solution),
         "photo_sha256": _digest(entry.photo),
         "cdbr_version": __version__,
+        "ocr_pipeline": ocr_pipeline,
         "elapsed_seconds": round(trace.elapsed_seconds, 6),
         "stage_seconds": {name: round(seconds, 6) for name, seconds in trace.stage_seconds.items()},
         "cells": {
@@ -626,6 +644,8 @@ def publish_corpus_assets(
 @click.option("--puzzle", "puzzle_ids", type=int, multiple=True, help="Limit the run to one or more puzzle IDs.")
 @click.option("--workers", type=click.IntRange(1, 4), default=1, show_default=True)
 @click.option("--review-threshold", type=click.FloatRange(0.0, 100.0), default=70.0, show_default=True)
+@click.option("--ocr-pipeline", type=click.Choice(OCR_PIPELINES), default=LEGACY_PIPELINE, show_default=True)
+@click.option("--summary-output", type=click.Path(path_type=Path, dir_okay=False))
 @click.option("--resume/--no-resume", default=True, show_default=True)
 @click.option("--audit/--no-audit", default=False, help="Write separate number and clue OCR review reports.")
 @click.option("--solve/--no-solve", "solve_corpus", default=False, help="Solve reviewed grids and inventory outcomes.")
@@ -648,6 +668,8 @@ def main(
     puzzle_ids: tuple[int, ...],
     workers: int,
     review_threshold: float,
+    ocr_pipeline: str,
+    summary_output: Path | None,
     resume: bool,
     audit: bool,
     solve_corpus: bool,
@@ -685,7 +707,10 @@ def main(
     new_results: list[dict[str, Any]] = []
     with output.open(mode) as stream:
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(benchmark_entry, entry, work_root, review_threshold): entry for entry in pending}
+            futures = {
+                executor.submit(benchmark_entry, entry, work_root, review_threshold, ocr_pipeline): entry
+                for entry in pending
+            }
             for future in as_completed(futures):
                 result = future.result()
                 stream.write(json.dumps(result, separators=(",", ":")) + "\n")
@@ -703,6 +728,7 @@ def main(
         if entry.truth is not None and entry.puzzle_id in latest and latest[entry.puzzle_id].get("status") == "ok":
             latest[entry.puzzle_id] = apply_truth(latest[entry.puzzle_id], entry.truth)
     summary: dict[str, Any] = {
+        "ocr_pipeline": ocr_pipeline,
         **summarize(latest.values()),
         "number_ocr": summarize_accuracy(latest.values(), "number"),
         "clue_ocr": summarize_accuracy(latest.values(), "clue"),
@@ -718,6 +744,9 @@ def main(
             Path(__file__).parent / "assets" / "puzzles",
         )
     click.echo(json.dumps(summary, indent=2))
+    if summary_output is not None:
+        summary_output.parent.mkdir(parents=True, exist_ok=True)
+        summary_output.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     if audit:
         target = write_audit_reports(
             entries=entries,

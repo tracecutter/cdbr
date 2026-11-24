@@ -24,6 +24,10 @@ WARP_SIZE = 1500
 MIN_OCR_CONFIDENCE = 80.0
 MIN_TEMPLATE_MARGIN = 0.15
 MIN_WHOLE_NUMBER_MARGIN = 0.20
+WHOLE_TOKEN_PIPELINE = "whole-token"
+LEGACY_PIPELINE = "legacy"
+OCR_PIPELINES = (LEGACY_PIPELINE, WHOLE_TOKEN_PIPELINE)
+WHOLE_TOKEN_PROFILE = "book-15x15-v1"
 LOCAL_BACKGROUND_KERNEL = 31
 # Across 520 human-reviewed reference cells, obvious blanks contained at most
 # 387 foreground pixels while the faintest real clue contained 428.  Keep the
@@ -389,6 +393,62 @@ def _reviewed_number_feature(cell: np.ndarray) -> np.ndarray:
     """Return the compact feature used by the reviewed ambiguity bank."""
 
     return cv2.resize(_number_feature(cell), (20, 30), interpolation=cv2.INTER_AREA)
+
+
+@lru_cache(maxsize=1)
+def _whole_number_banks() -> tuple[np.ndarray, np.ndarray, np.ndarray, str]:
+    source = Path(__file__).parents[1] / "assets" / "ocr" / "number-tokens.npz"
+    if not source.is_file():
+        return (
+            np.empty((0, 0, 30, 20), dtype=np.uint8),
+            np.empty(0, dtype=np.uint8),
+            np.empty(0, dtype=np.uint8),
+            "",
+        )
+    with np.load(source) as archive:
+        return (
+            archive["features"],
+            archive["labels"],
+            archive["exclusions"],
+            str(archive["profile"]),
+        )
+
+
+def _whole_number_templates(excluded_puzzle_id: int | None) -> tuple[np.ndarray, np.ndarray]:
+    banks, labels, exclusions, profile = _whole_number_banks()
+    if profile != WHOLE_TOKEN_PROFILE:
+        return np.empty((0, 30, 20), dtype=np.uint8), labels
+    requested = excluded_puzzle_id or 0
+    matches = np.flatnonzero(exclusions == requested)
+    if not len(matches):
+        matches = np.flatnonzero(exclusions == 0)
+    if not len(matches):
+        return np.empty((0, 30, 20), dtype=np.uint8), labels
+    return banks[int(matches[0])], labels
+
+
+def _classify_whole_number(
+    item: tuple[int, int, np.ndarray],
+    prototypes: np.ndarray,
+    labels: np.ndarray,
+) -> CellReading:
+    """Classify the complete printed number before attempting digit segmentation."""
+
+    row, column, cell = item
+    if not len(prototypes):
+        return CellReading(row=row, column=column, text="", confidence=0.0)
+    feature = _reviewed_number_feature(cell).astype(np.float32)
+    distances = np.mean((prototypes.astype(np.float32) - feature) ** 2, axis=(1, 2))
+    class_scores = sorted((float(np.min(distances[labels == value])), int(value)) for value in np.unique(labels))
+    best_score, value = class_scores[0]
+    margin = _relative_margin(best_score, class_scores[1][0])
+    return CellReading(
+        row=row,
+        column=column,
+        text=str(value),
+        confidence=50.0 + 50.0 * margin,
+        trusted=margin >= MIN_WHOLE_NUMBER_MARGIN,
+    )
 
 
 @lru_cache(maxsize=1)
@@ -967,9 +1027,12 @@ def recognize_photo(
     *,
     trace: RecognitionTrace | None = None,
     template_exclusion: int | None = None,
+    ocr_pipeline: str = LEGACY_PIPELINE,
 ) -> PuzzleObservation:
     """Convert a supported square photographed puzzle into a conservative observation."""
 
+    if ocr_pipeline not in OCR_PIPELINES:
+        raise ValueError(f"Unknown OCR pipeline: {ocr_pipeline}")
     recognition_started = time.perf_counter()
     started = time.perf_counter()
     normalized_path = work_dir / "normalized.png"
@@ -1015,13 +1078,48 @@ def recognize_photo(
     started = time.perf_counter()
     if digit_templates is not None:
         classification_stage = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            readings = list(
-                executor.map(
-                    lambda cell: _classify_from_reference(cell, work_dir, digit_templates),
-                    playable,
+        if ocr_pipeline == WHOLE_TOKEN_PIPELINE:
+            prototypes, prototype_labels = _whole_number_templates(template_exclusion)
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                readings = list(
+                    executor.map(
+                        lambda cell: _classify_whole_number(cell, prototypes, prototype_labels),
+                        playable,
+                    )
                 )
-            )
+            if trace is not None:
+                trace.record("classify.whole-token", classification_stage)
+            unresolved = [reading for reading in readings if not reading.trusted]
+            if unresolved:
+                cells_by_position = {(row, column): cell for row, column, cell in playable}
+                reconsidered = [
+                    _classify_from_reference(
+                        (item.row, item.column, cells_by_position[(item.row, item.column)]),
+                        work_dir,
+                        digit_templates,
+                    )
+                    for item in unresolved
+                ]
+                replacements = {
+                    (item.row, item.column): item
+                    for item in reconsidered
+                    if item.trusted
+                    and item.text
+                    == next(
+                        original.text
+                        for original in unresolved
+                        if (original.row, original.column) == (item.row, item.column)
+                    )
+                }
+                readings = [replacements.get((item.row, item.column), item) for item in readings]
+        else:
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                readings = list(
+                    executor.map(
+                        lambda cell: _classify_from_reference(cell, work_dir, digit_templates),
+                        playable,
+                    )
+                )
         if trace is not None:
             trace.record("classify.reference", classification_stage)
         cells_by_position = {(row, column): cell for row, column, cell in playable}
@@ -1033,7 +1131,9 @@ def recognize_photo(
             if len(glyphs) == len(reading.text):
                 for digit, glyph in zip(reading.text, glyphs, strict=True):
                     expanded_templates[digit].append(glyph)
-        second_pass = [reading for reading in readings if not reading.trusted]
+        second_pass = (
+            [reading for reading in readings if not reading.trusted] if ocr_pipeline == LEGACY_PIPELINE else []
+        )
         if second_pass:
             classification_stage = time.perf_counter()
             with ThreadPoolExecutor(max_workers=8) as executor:
@@ -1057,7 +1157,7 @@ def recognize_photo(
             if trace is not None:
                 trace.record("classify.expanded", classification_stage)
         classification_stage = time.perf_counter()
-        for _ in range(2):
+        for _ in range(2 if ocr_pipeline == LEGACY_PIPELINE else 0):
             unresolved = [reading for reading in readings if not reading.trusted]
             if not unresolved:
                 break
@@ -1085,10 +1185,11 @@ def recognize_photo(
             readings = [replacements.get((item.row, item.column), item) for item in readings]
         if trace is not None:
             trace.record("classify.board", classification_stage)
-        classification_stage = time.perf_counter()
-        readings = _audit_confident_readings(readings, cells_by_position, digit_templates)
-        if trace is not None:
-            trace.record("classify.audit", classification_stage)
+        if ocr_pipeline == LEGACY_PIPELINE:
+            classification_stage = time.perf_counter()
+            readings = _audit_confident_readings(readings, cells_by_position, digit_templates)
+            if trace is not None:
+                trace.record("classify.audit", classification_stage)
     else:
         classification_stage = time.perf_counter()
         with ThreadPoolExecutor(max_workers=8) as executor:
@@ -1149,12 +1250,21 @@ def recognize_photo(
             )
             for item in retried
         ]
+        if ocr_pipeline == WHOLE_TOKEN_PIPELINE:
+            retried = [
+                (
+                    item
+                    if item.text == original_by_position[(item.row, item.column)].text
+                    else original_by_position[(item.row, item.column)]
+                )
+                for item in retried
+            ]
         replacements = {(item.row, item.column): item for item in retried}
         readings = [replacements.get((item.row, item.column), item) for item in readings]
         if trace is not None:
             trace.record("classify.tesseract", classification_stage)
 
-    if templates is not None:
+    if templates is not None and ocr_pipeline == LEGACY_PIPELINE:
         classification_stage = time.perf_counter()
         cells_by_position = {(row, column): cell for row, column, cell in playable}
         board_templates: dict[int, list[np.ndarray]] = {}
@@ -1187,11 +1297,12 @@ def recognize_photo(
         if trace is not None:
             trace.record("classify.whole", classification_stage)
     cells_by_position = {(row, column): cell for row, column, cell in playable}
-    readings = _audit_reviewed_number_families(
-        readings,
-        cells_by_position,
-        excluded_puzzle_id=template_exclusion,
-    )
+    if ocr_pipeline == LEGACY_PIPELINE:
+        readings = _audit_reviewed_number_families(
+            readings,
+            cells_by_position,
+            excluded_puzzle_id=template_exclusion,
+        )
     for reading in readings:
         if not reading.trusted:
             cv2.imwrite(
