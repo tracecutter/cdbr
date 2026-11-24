@@ -441,6 +441,7 @@ def write_audit_reports(
     unsolved_controls = """
 <div class="solution-actions"><button type="button" id="export-unsolved-review">Download review decisions</button><span>Classify only what the photographs establish; leave uncertain cells pending.</span></div>
 <script>
+document.addEventListener('DOMContentLoaded', () => {
 const choices = [
   ['', 'Pending'], ['correct', 'OCR number is correct'], ['wrong-number', 'OCR number is wrong'],
   ['topology', 'Grid topology is wrong'], ['clue', 'Reference clue is wrong'], ['other', 'None of these']
@@ -464,6 +465,7 @@ document.querySelector('#export-unsolved-review').addEventListener('click', () =
   const blob = new Blob([JSON.stringify(decisions, null, 2)], {type: 'application/json'});
   const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
   link.download = 'cdbr-unsolved-review.json'; link.click(); URL.revokeObjectURL(link.href);
+});
 });
 </script>"""
     (destination / "unsolved.html").write_text(

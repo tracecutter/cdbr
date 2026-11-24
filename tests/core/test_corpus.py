@@ -415,7 +415,9 @@ def test_write_audit_reports_separates_number_and_clue_queues(tmp_path: Path) ->
     assert "solved with presumed HIL" in target.read_text()
     assert "0.125s" in target.read_text()
     assert "Review 0 unsolved puzzles" in target.read_text()
-    assert (tmp_path / "audit" / "unsolved.html").exists()
+    unsolved = (tmp_path / "audit" / "unsolved.html").read_text()
+    assert "DOMContentLoaded" in unsolved
+    assert "Correct number (if known)" in unsolved
     numbers = (tmp_path / "audit" / "numbers.html").read_text()
     clues = (tmp_path / "audit" / "clues.html").read_text()
     assert "r02c02" in numbers
