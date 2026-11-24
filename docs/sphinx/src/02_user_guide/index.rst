@@ -37,6 +37,19 @@ Production audits rerun the same publisher-canon path used by Scan. The explicit
    :caption: OCR evidence flows toward an approved playable board; uncertain evidence flows to a human, not directly to the solver.
    :align: center
 
+Taking a scan photo
+~~~~~~~~~~~~~~~~~~~
+
+Frame one puzzle and include every corner of the board and the complete reference
+strip. Flatten the page, hold the camera directly above it, and tap to focus on
+the numbers. Use even light and move the camera or light source to avoid glare
+and hard shadows.
+
+cdbr can correct moderate perspective distortion and can turn a sideways photo
+when it can locate the reference strip. A small batch of uncertain numbers goes
+to review. If cdbr cannot read the grid, or too many numbers need review, the
+web scanner asks for a fresh photo and shows these capture tips.
+
 Puzzle Creation
 ---------------
 

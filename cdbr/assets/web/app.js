@@ -15,6 +15,7 @@ const resultDetail = document.querySelector('#result-detail');
 const downloadResult = document.querySelector('#download-result');
 const errorState = document.querySelector('#error-state');
 const errorMessage = document.querySelector('#error-message');
+const retakeTips = document.querySelector('#retake-tips');
 const gameWorkspace = document.querySelector('#game-workspace');
 const scannerWorkspace = document.querySelector('#scanner-workspace');
 const idleWorkspace = document.querySelector('#idle-workspace');
@@ -977,6 +978,7 @@ async function completeScan(cells, clues) {
   } catch (error) {
     errorState.hidden = false;
     errorMessage.textContent = error instanceof Error ? error.message : 'Please check the reviewed cells.';
+    retakeTips.hidden = true;
   } finally {
     finishReview.disabled = false;
     finishReview.textContent = 'Confirm and open puzzle';
@@ -1016,9 +1018,11 @@ form.addEventListener('submit', async (event) => {
   const body = new FormData();
   body.append('photo', selectedFile, selectedFile.name);
 
+  let retakeRecommended = false;
   try {
     const response = await fetch('/api/scan-jobs', { method: 'POST', body });
     if (!response.ok) {
+      retakeRecommended = response.status === 422;
       let message = 'Try another image with the complete puzzle in frame.';
       try {
         const data = await response.json();
@@ -1044,6 +1048,7 @@ form.addEventListener('submit', async (event) => {
     previewState.hidden = false;
     errorState.hidden = false;
     errorMessage.textContent = error instanceof Error ? error.message : 'Please try another photograph.';
+    retakeTips.hidden = !retakeRecommended;
   } finally {
     clearInterval(stageTimer);
   }

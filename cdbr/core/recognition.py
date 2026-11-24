@@ -104,7 +104,7 @@ def _ordered_corners(points: np.ndarray) -> np.ndarray:
     )
 
 
-def find_grid_corners(image: np.ndarray) -> np.ndarray:
+def find_grid_corners(image: np.ndarray, *, reference: np.ndarray | None = None) -> np.ndarray:
     """Locate and order the four outer puzzle-grid corners."""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     binary = cv2.adaptiveThreshold(
@@ -129,12 +129,36 @@ def find_grid_corners(image: np.ndarray) -> np.ndarray:
         if len(polygon) != 4 or not cv2.isContourConvex(polygon):
             continue
         points = polygon.reshape(4, 2)
+        if reference is not None and not _board_above_reference(points, reference):
+            continue
         width, height = cv2.minAreaRect(points)[1]
         if min(width, height) <= 0 or max(width, height) / min(width, height) >= 1.3:
             continue
         candidates.append((area_fraction, points))
 
     if not candidates:
+        # Smaller or foreshortened grids can fail the fast contour filters.
+        # Require internal lattice evidence before accepting a relaxed contour.
+        global_binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        for mask in (binary, global_binary):
+            contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            for contour in sorted(contours, key=cv2.contourArea, reverse=True):
+                fraction = cv2.contourArea(contour) / image_area
+                if fraction < 0.06:
+                    break
+                if fraction >= 0.65:
+                    continue
+                polygon = cv2.approxPolyDP(contour, 0.02 * cv2.arcLength(contour, True), True)
+                if len(polygon) != 4 or not cv2.isContourConvex(polygon):
+                    continue
+                corners = _ordered_corners(polygon.reshape(4, 2))
+                if reference is not None and not _board_above_reference(corners, reference):
+                    continue
+                try:
+                    detect_grid_size(_warp_grid(image, corners))
+                except ValueError:
+                    continue
+                return corners
         raise ValueError("Could not locate a square puzzle grid in the photograph")
 
     return _ordered_corners(max(candidates, key=lambda candidate: candidate[0])[1])
@@ -143,7 +167,10 @@ def find_grid_corners(image: np.ndarray) -> np.ndarray:
 def extract_grid(image: np.ndarray) -> np.ndarray:
     """Locate the near-square puzzle grid and rectify its perspective."""
 
-    corners = find_grid_corners(image)
+    return _warp_grid(image, find_grid_corners(image))
+
+
+def _warp_grid(image: np.ndarray, corners: np.ndarray) -> np.ndarray:
     destination = np.array(
         [[0, 0], [WARP_SIZE - 1, 0], [WARP_SIZE - 1, WARP_SIZE - 1], [0, WARP_SIZE - 1]],
         dtype=np.float32,
@@ -170,11 +197,13 @@ def _grid_line_positions(binary: np.ndarray, *, vertical: bool, grid_size: int =
     return positions
 
 
-def detect_grid_size(grid: np.ndarray) -> int:
+def _adaptive_lattice_mask(gray: np.ndarray) -> np.ndarray:
+    return cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 71, 15)
+
+
+def _detect_grid_size(binary: np.ndarray) -> int | None:
     """Infer a supported square-grid size from its internal rule lines."""
 
-    gray = cv2.cvtColor(grid, cv2.COLOR_BGR2GRAY)
-    binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
     candidates: list[tuple[float, int]] = []
     for grid_size in SUPPORTED_GRID_SIZES:
         x_positions = _grid_line_positions(binary, vertical=True, grid_size=grid_size)
@@ -193,9 +222,18 @@ def detect_grid_size(grid: np.ndarray) -> int:
         ).sum(axis=1)
         score = float(np.mean(vertical_lines[x_positions]) + np.mean(horizontal_lines[y_positions]))
         candidates.append((score, grid_size))
-    if not candidates:
+    return max(candidates)[1] if candidates else None
+
+
+def detect_grid_size(grid: np.ndarray) -> int:
+    """Infer a supported square-grid size from its internal rule lines."""
+
+    gray = cv2.cvtColor(grid, cv2.COLOR_BGR2GRAY)
+    binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    size = _detect_grid_size(binary) or _detect_grid_size(_adaptive_lattice_mask(gray))
+    if size is None:
         raise ValueError("Could not determine whether the puzzle grid is 13×13 or 15×15")
-    return max(candidates)[1]
+    return size
 
 
 def normalize_grid_lattice(grid: np.ndarray, grid_size: int = GRID_SIZE) -> np.ndarray:
@@ -205,6 +243,10 @@ def normalize_grid_lattice(grid: np.ndarray, grid_size: int = GRID_SIZE) -> np.n
     binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
     x_positions = _grid_line_positions(binary, vertical=True, grid_size=grid_size)
     y_positions = _grid_line_positions(binary, vertical=False, grid_size=grid_size)
+    if x_positions is None or y_positions is None:
+        adaptive = _adaptive_lattice_mask(gray)
+        x_positions = x_positions or _grid_line_positions(adaptive, vertical=True, grid_size=grid_size)
+        y_positions = y_positions or _grid_line_positions(adaptive, vertical=False, grid_size=grid_size)
     target = np.linspace(0, WARP_SIZE - 1, grid_size + 1)
     coordinates = np.arange(WARP_SIZE, dtype=np.float32)
     source_x = (
@@ -373,6 +415,36 @@ def find_reference_corners(image: np.ndarray) -> np.ndarray:
     if not candidates:
         raise ValueError("Could not locate the numbered reference grid")
     return _ordered_corners(max(candidates, key=lambda candidate: candidate[0])[1])
+
+
+def _board_above_reference(board: np.ndarray, reference: np.ndarray) -> bool:
+    board_center = np.mean(board, axis=0)
+    reference_center = np.mean(reference, axis=0)
+    strip_width = float(np.ptp(reference[:, 0]))
+    return bool(
+        np.max(board[:, 1]) < reference_center[1] and abs(board_center[0] - reference_center[0]) < strip_width / 3
+    )
+
+
+def _orient_photo_grid(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """For a sideways reference strip, test both quarter-turns for its board."""
+
+    try:
+        strip = find_reference_corners(image)
+    except ValueError:
+        return image, extract_grid(image)
+    if np.ptp(strip[:, 0]) >= np.ptp(strip[:, 1]):
+        return image, extract_grid(image)
+    for turn in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE):
+        turned = cv2.rotate(image, turn)
+        try:
+            reference = find_reference_corners(turned)
+            grid = _warp_grid(turned, find_grid_corners(turned, reference=reference))
+            detect_grid_size(grid)
+        except ValueError:
+            continue
+        return turned, grid
+    raise ValueError("Could not locate a square puzzle grid above the sideways reference strip")
 
 
 def extract_reference_grid(image: np.ndarray) -> np.ndarray:
@@ -970,9 +1042,8 @@ def extract_clues(
             )
         if clue is not None:
             clues[value] = clue
-    if len(set(clues.values())) != len(clues):
-        raise ValueError("Recognised reference clues violate the letter bijection")
-    return clues
+    counts = Counter(clues.values())
+    return {symbol: letter for symbol, letter in clues.items() if counts[letter] == 1}
 
 
 def _classify_from_reference(
@@ -1184,7 +1255,7 @@ def recognize_photo(
         trace.record("decode", started)
 
     started = time.perf_counter()
-    extracted_grid = extract_grid(image)
+    image, extracted_grid = _orient_photo_grid(image)
     grid_size = detect_grid_size(extracted_grid)
     grid_image = normalize_grid_lattice(extracted_grid, grid_size)
     cv2.imwrite(str(work_dir / "grid.png"), grid_image)
@@ -1202,7 +1273,10 @@ def recognize_photo(
     else:
         cv2.imwrite(str(work_dir / "reference-grid.png"), reference_grid)
         templates = _reference_templates(reference_grid)
-        digit_templates = _digit_templates(reference_grid)
+        try:
+            digit_templates = _digit_templates(reference_grid)
+        except ValueError:
+            digit_templates = None
         clue_evidence = []
         clues = extract_clues(reference_grid, work_dir, clue_evidence)
     if trace is not None:

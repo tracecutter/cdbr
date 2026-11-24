@@ -57,13 +57,24 @@ Build and exercise the same container used by the hosted service:
 
 ``make container-check`` builds the image and probes its configured health endpoint. ``make container-run`` rebuilds and serves it in the foreground at http://127.0.0.1:8000/.
 
-Prepare a release only after committing the intended tree and bumping the version:
+Merge the intended changes into ``main``, bump the version, and commit the release tree there:
 
 .. code:: bash
 
    make release
 
 The release target is deliberately interactive in the human sense: it must be invoked by the maintainer. It runs the full preflight, creates and pushes the version tag, publishes the GitHub release, and triggers release-driven web deployment when configured in ``pyproject.toml``.
+
+Photo geometry stress tests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Run the grid detector on a repeatable set of 625 combinations of rotation, perspective skew, page curl, and scale:
+
+.. code:: bash
+
+   python -m cdbr.geometry_stress corpus/puzzle_047.jpg > stress.csv
+
+Use ``--quick`` for a short geometry sweep or ``--lighting`` for 25 combinations of exposure and a soft shadow. Each row records the transform and whether the recovered grid has the same size and block layout as the original scan. The stress test measures geometry independently of number and clue OCR.
 
 DigitalOcean App Platform example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -93,6 +104,15 @@ The deployment boundary is a published GitHub release—not a routine Git push:
 The workflow reads ``tool.npkg.web.deploy-on`` from ``pyproject.toml``; the DigitalOcean job runs only for a published GitHub release when that value is ``release``. A manually dispatched workflow performs verification but does not deploy. Production deployments are serialized, and a failed verification never calls DigitalOcean.
 
 The GitHub workflow builds and health-checks the production container as an independent release gate. It does not push that verification image to DigitalOcean. Instead, ``doctl apps create-deployment`` tells App Platform to rebuild its configured source with the same checked-in ``Dockerfile``. Because ``make release`` pushes the release commit before publishing the tag, the tracked production branch and released commit are aligned.
+
+Next steps and future directions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Operate the current release.** In DigitalOcean App Platform, verify the HTTP readiness check for ``/health`` on the service port and enable a liveness probe with enough consecutive failures to tolerate brief OCR or solver load. Readiness controls traffic and liveness can restart a stuck instance. Enable failed deployment and restart-count alerts. Use the Insights graphs for memory and request duration when investigating scans that slow down. After deployment, open a corpus puzzle and run one real scan through review and play to exercise the workflow behind the health endpoint.
+
+**Make game and corpus state durable.** Active games, pending scan jobs, and newly created puzzles currently live in the server process. A restart or redeploy can interrupt that work. The packaged corpus ships with the image. Plan to store game progress, puzzle metadata, and answer keys in SQL, with source photos and derived images in Spaces. Define stable puzzle identifiers and publisher provenance before migrating the file corpus. Keep publisher and book numbers available for lookup. Add an admin review and import workflow when the storage model is ready.
+
+**Measure scan quality from capture to play.** Keep the difficult Puzzle 47 photos as real-world regressions and use the synthetic sweeps to isolate changes in perspective, curl, and lighting. Strong curl is the next dewarping target. Score grid recovery, number and clue accuracy, review burden, retake decisions, and time separately. Check new thresholds on held-out photos and a second publisher before treating them as general. Use fresh OCR and solver passes when measuring the end-to-end experience.
 
 The generated ``README.md``, manpages, and files under ``docs/sphinx/src/`` must not be edited directly. Update structured source docstrings, ``docs/psym/parts/``, or ``docs/psym/templates/``, then regenerate the projections.
 

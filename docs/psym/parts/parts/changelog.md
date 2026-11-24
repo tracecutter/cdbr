@@ -1,4 +1,22 @@
-### 0.1.4 — in development
+### 0.2.1 — 2026-11-24
+
+- Recover more small, foreshortened, and sideways puzzle grids by checking the internal grid lines after perspective correction.
+- Use the sideways reference strip to orient the photo and select the board above it in a two-page shot.
+- Ask for a retake when scan quality would leave an unusually large number of cells to review. Show tips for framing, angle, focus, and lighting.
+- Retain conflicting clue readings for review and continue when the reference strip cannot supply a complete set of digit templates.
+- Add repeatable geometry and lighting stress tests for photographed puzzles.
+- Require releases to be made from `main`.
+
+### 0.2.0 — 2026-11-24
+
+- Expand the playable book corpus through puzzle 100 and separate zero-padded puzzle photos, solution photos, audit truth, and playable answer keys.
+- Improve whole-number OCR for the 6/8, 16/18, and 9/19 confusions and send uncertain readings to review.
+- Run fresh OCR and solver passes in the corpus audit, report progress, and cap each solve attempt at two minutes.
+- Improve gameplay navigation with abandon confirmation and a fresh scanner when starting another scan.
+- Restore two-click reference hints, warn when a hint comes from a partial result, and use current player entries when solving again.
+- Reduce unnecessary blank-clue confirmations and allow revealed entries to be erased.
+
+### 0.1.4
 
 - Added sparse publisher-puzzle packaging and direct book-number selection
 - Added human approval of publisher solution keys before solver scoring

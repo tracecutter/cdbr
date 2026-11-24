@@ -580,6 +580,29 @@ def test_running_generation_job_can_publish_best_so_far():
     assert job.cancelled is True
 
 
+def test_scan_requests_retake_when_too_many_numbers_need_review(monkeypatch):
+    observation = PuzzleObservation(
+        source=server_module.Path("puzzle.jpg"),
+        source_format="JPEG",
+        grid=tuple((1,) * 10 for _ in range(10)),
+        clues={},
+        uncertainties=(),
+        evidence=tuple(
+            CellEvidence(row=row, column=column, reading="1", confidence=50, trusted=row > 4)
+            for row in range(1, 11)
+            for column in range(1, 11)
+        ),
+    )
+    monkeypatch.setattr(server_module, "detect_photo_format", lambda _: PhotoFormat.JPEG)
+    monkeypatch.setattr(server_module, "recognize_photo", lambda *_: observation)
+
+    response = client.post("/api/scan-jobs", files={"photo": ("puzzle.jpg", b"pretend jpeg", "image/jpeg")})
+
+    assert response.status_code == 422
+    assert "40 need review" in response.json()["detail"]
+    assert "retake the photo" in response.json()["detail"]
+
+
 def test_solve_rejects_empty_upload():
     response = client.post("/solve", files={"photo": ("puzzle.jpg", b"", "image/jpeg")})
 

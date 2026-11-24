@@ -340,6 +340,11 @@
                 <div>
                   <h2>We couldn’t read that photo</h2>
                   <p id="error-message">Try another image with the complete puzzle in frame.</p>
+                  <ul id="retake-tips" hidden>
+                    <li>Frame one puzzle and include the whole board and reference strip.</li>
+                    <li>Flatten the page and hold the camera square above it.</li>
+                    <li>Use even light, avoid glare and shadows, and tap to focus on the numbers.</li>
+                  </ul>
                   <button class="text-button" id="try-again" type="button">Choose another photo</button>
                 </div>
               </div>
@@ -370,7 +375,10 @@
     </main>
 
     <footer>
-      <p><strong>Code Break Solver</strong> · British English · No account required</p>
+      <div>
+        <p><strong>Code Break Solver</strong> · British English · No account required</p>
+        <p class="footer-credit">Anava Designs · powered by npkg</p>
+      </div>
       <p>Made with unreasonable enthusiasm for small numbered squares.</p>
     </footer>
   </body>

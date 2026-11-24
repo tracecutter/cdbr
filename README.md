@@ -306,8 +306,8 @@ make container-run
 endpoint. `make container-run` rebuilds and serves it in the foreground at
 http://127.0.0.1:8000/.
 
-Prepare a release only after committing the intended tree and bumping the
-version:
+Merge the intended changes into `main`, bump the version, and commit the
+release tree there:
 
 ```bash
 make release
@@ -317,6 +317,20 @@ The release target is deliberately interactive in the human sense: it must be
 invoked by the maintainer. It runs the full preflight, creates and pushes the
 version tag, publishes the GitHub release, and triggers release-driven web
 deployment when configured in `pyproject.toml`.
+
+### Photo geometry stress tests
+
+Run the grid detector on a repeatable set of 625 combinations of rotation,
+perspective skew, page curl, and scale:
+
+```bash
+python -m cdbr.geometry_stress corpus/puzzle_047.jpg > stress.csv
+```
+
+Use `--quick` for a short geometry sweep or `--lighting` for 25 combinations
+of exposure and a soft shadow. Each row records the transform and whether the
+recovered grid has the same size and block layout as the original scan. The
+stress test measures geometry independently of number and clue OCR.
 
 ### DigitalOcean App Platform example
 
@@ -364,6 +378,34 @@ rebuild its configured source with the same checked-in `Dockerfile`. Because
 `make release` pushes the release commit before publishing the tag, the tracked
 production branch and released commit are aligned.
 
+### Next steps and future directions
+
+**Operate the current release.** In DigitalOcean App Platform, verify the HTTP
+readiness check for `/health` on the service port and enable a liveness probe
+with enough consecutive failures to tolerate brief OCR or solver load. Readiness
+controls traffic and liveness can restart a stuck instance. Enable failed
+deployment and restart-count alerts. Use the Insights graphs for memory and
+request duration when investigating scans that slow down. After deployment,
+open a corpus puzzle and run one real scan through review and play to exercise
+the workflow behind the health endpoint.
+
+**Make game and corpus state durable.** Active games, pending scan jobs, and
+newly created puzzles currently live in the server process. A restart or
+redeploy can interrupt that work. The packaged corpus ships with the image.
+Plan to store game progress, puzzle metadata, and answer keys in SQL, with
+source photos and derived images in Spaces. Define stable puzzle identifiers
+and publisher provenance before migrating the file corpus. Keep publisher
+and book numbers available for lookup. Add an admin review and import workflow
+when the storage model is ready.
+
+**Measure scan quality from capture to play.** Keep the difficult Puzzle 47
+photos as real-world regressions and use the synthetic sweeps to isolate changes
+in perspective, curl, and lighting. Strong curl is the next dewarping target.
+Score grid recovery, number and clue accuracy, review burden, retake decisions,
+and time separately. Check new thresholds on held-out photos and a second
+publisher before treating them as general. Use fresh OCR and solver passes when
+measuring the end-to-end experience.
+
 The generated `README.md`, manpages, and files under `docs/sphinx/src/` must not
 be edited directly. Update structured source docstrings, `docs/psym/parts/`, or
 `docs/psym/templates/`, then regenerate the projections.
@@ -375,7 +417,25 @@ System tests require ImageMagick and Tesseract. The project configuration in
 
 ## Changelog
 
-### 0.1.4 — in development
+### 0.2.1 — 2026-11-24
+
+- Recover more small, foreshortened, and sideways puzzle grids by checking the internal grid lines after perspective correction.
+- Use the sideways reference strip to orient the photo and select the board above it in a two-page shot.
+- Ask for a retake when scan quality would leave an unusually large number of cells to review. Show tips for framing, angle, focus, and lighting.
+- Retain conflicting clue readings for review and continue when the reference strip cannot supply a complete set of digit templates.
+- Add repeatable geometry and lighting stress tests for photographed puzzles.
+- Require releases to be made from `main`.
+
+### 0.2.0 — 2026-11-24
+
+- Expand the playable book corpus through puzzle 100 and separate zero-padded puzzle photos, solution photos, audit truth, and playable answer keys.
+- Improve whole-number OCR for the 6/8, 16/18, and 9/19 confusions and send uncertain readings to review.
+- Run fresh OCR and solver passes in the corpus audit, report progress, and cap each solve attempt at two minutes.
+- Improve gameplay navigation with abandon confirmation and a fresh scanner when starting another scan.
+- Restore two-click reference hints, warn when a hint comes from a partial result, and use current player entries when solving again.
+- Reduce unnecessary blank-clue confirmations and allow revealed entries to be erased.
+
+### 0.1.4
 
 - Added sparse publisher-puzzle packaging and direct book-number selection
 - Added human approval of publisher solution keys before solver scoring

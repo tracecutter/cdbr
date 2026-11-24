@@ -105,6 +105,8 @@ PUZZLE_ROOT = Path(__file__).parent / "assets" / "puzzles"
 MAX_SESSIONS = 100
 MAX_GENERATION_JOBS = 20
 MAX_SCAN_JOBS = 20
+MIN_RETAKE_REVIEW_CELLS = 20
+MAX_SCAN_REVIEW_FRACTION = 0.25
 
 
 @dataclass(kw_only=True)
@@ -741,15 +743,20 @@ async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, o
         if detect_photo_format(source) is PhotoFormat.UNKNOWN:
             raise ValueError("Unsupported or unrecognised image format")
         observation = recognize_photo(source, work_dir)
+        review_cells = [item for item in observation.evidence if needs_hil_review(item)]
+        if len(review_cells) >= MIN_RETAKE_REVIEW_CELLS and len(review_cells) > MAX_SCAN_REVIEW_FRACTION * len(
+            observation.evidence
+        ):
+            raise ValueError(
+                f"Too many grid numbers are unclear ({len(review_cells)} need review). Please retake the photo."
+            )
         grid_image = cv2.imread(str(work_dir / "grid.png"))
         reference_grid = cv2.imread(str(work_dir / "reference-grid.png"))
         if grid_image is None:
             raise ValueError("Could not prepare cell review images")
         if reference_grid is None:
             raise ValueError("Could not prepare reference-grid review images")
-        for item in observation.evidence:
-            if not needs_hil_review(item):
-                continue
+        for item in review_cells:
             row = item.row - 1
             column = item.column - 1
             cell_height = grid_image.shape[0] / observation.height

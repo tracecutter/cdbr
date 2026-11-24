@@ -18,11 +18,14 @@ from cdbr.core.recognition import (
     _foreground_binary,
     _relative_margin,
     _number_feature,
+    _orient_photo_grid,
     _reviewed_number_vote,
     _select_clue,
     clue_ink_pixels,
     detect_grid_size,
     needs_hil_review,
+    normalize_grid_lattice,
+    normalize_photo,
     recognize_photo,
 )
 
@@ -43,6 +46,21 @@ def test_grid_geometry_adapts_to_supported_square_sizes() -> None:
 
         assert detect_grid_size(grid) == grid_size
         assert len(_cell_images(grid, grid_size)) == grid_size**2
+
+
+def test_puzzle_47_grid_recovery_preserves_block_layout(tmp_path: Path) -> None:
+    root = Path(__file__).parents[2]
+
+    def block_layout(source: Path) -> list[bool]:
+        normalized = tmp_path / "normalized.png"
+        normalize_photo(source, normalized)
+        _, grid = _orient_photo_grid(cv2.imread(str(normalized)))
+        assert detect_grid_size(grid) == 15
+        return _block_mask(_cell_images(normalize_grid_lattice(grid)))
+
+    expected = block_layout(root / "corpus" / "puzzle_047.jpg")
+    for number in (4783, 4786, 4788, 4789):
+        assert block_layout(root / "import" / f"IMG_{number}.HEIC") == expected
 
 
 def test_foreground_binary_rejects_smooth_shadow() -> None:
