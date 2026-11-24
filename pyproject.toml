@@ -108,7 +108,7 @@ deploy-on = "release"
 
 [tool.npkg.benchmark]
 command = "python -m cdbr.corpus --no-resume"
-audit-command = "python -m cdbr.corpus --resume --audit"
+audit-command = "python -m cdbr.corpus --resume --audit --solve"
 
 [tool.psym]
 docs-dir = "docs"

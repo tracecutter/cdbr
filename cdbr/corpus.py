@@ -460,23 +460,39 @@ def benchmark_solutions(
         truth = _truth_document(entry.truth)
         grid = [list(row) for row in result["grid"]]
         reviewed_grid = _truth_grid(truth, entry.truth)
-        if reviewed_grid:
-            grid = [list(row) for row in reviewed_grid]
-        else:
-            # Simulate a completed human-review gate.  A conservative OCR
-            # disagreement may remove a perfectly good proposed number from
-            # the public grid; accepting that proposal restores it before
-            # confirmed defects below apply the human correction.
-            for evidence in result.get("evidence", ()):
-                row = int(evidence["row"])
-                column = int(evidence["column"])
-                reading = str(evidence["reading"])
-                if grid[row - 1][column - 1] == UNKNOWN and reading.isdigit():
-                    grid[row - 1][column - 1] = int(reading)
-        for (row, column), expected in _truth_number_defects(truth, entry.truth).items():
+        defects = _truth_number_defects(truth, entry.truth)
+        number_reviews = 0
+        number_corrections = 0
+        for evidence in result.get("evidence", ()):
+            row = int(evidence["row"])
+            column = int(evidence["column"])
+            reading = str(evidence["reading"])
+            if evidence["trusted"] is True and grid[row - 1][column - 1] != UNKNOWN:
+                continue
+            expected: int | None = None
+            if reviewed_grid:
+                reviewed = reviewed_grid[row - 1][column - 1]
+                expected = int(reviewed) if reviewed not in {BLOCK, UNKNOWN} else None
+            elif (row, column) in defects:
+                expected = defects[row, column]
+            elif reading.isdigit():
+                expected = int(reading)
+            if expected is None:
+                continue
+            number_reviews += 1
+            number_corrections += int(not reading.isdigit() or int(reading) != expected)
             grid[row - 1][column - 1] = expected
         if any(value not in {BLOCK, "."} and not isinstance(value, int) for row in grid for value in row):
-            outcomes.append({"puzzle_id": entry.puzzle_id, "status": "unresolved-ocr"})
+            outcomes.append(
+                {
+                    "puzzle_id": entry.puzzle_id,
+                    "status": "unresolved-ocr",
+                    "result": "unsolved",
+                    "number_reviews": number_reviews,
+                    "number_corrections": number_corrections,
+                    "clue_corrections": 0,
+                }
+            )
             continue
         normalized = tuple(tuple(None if value in {BLOCK, "."} else int(value) for value in row) for row in grid)
         puzzle = CodewordPuzzle(
@@ -500,6 +516,15 @@ def benchmark_solutions(
             status = "candidate"
             mapping = solved.solutions[0].mapping
         solution_truth = _truth_solution(truth, entry.truth)
+        clue_truth = _truth_clues(truth, entry.truth)
+        observed_clues = {int(item["symbol"]): str(item["reading"]) for item in result.get("clue_evidence", ())}
+        clue_corrections = sum(observed_clues.get(symbol) != letter for symbol, letter in clue_truth.items())
+        presumed_hil = bool(number_reviews or clue_corrections)
+        outcome_result = (
+            "solved-with-presumed-hil"
+            if status in {"certified", "candidate"} and presumed_hil
+            else "solved" if status in {"certified", "candidate"} else "unsolved"
+        )
         mismatches = [
             {"symbol": symbol, "observed": mapping.get(symbol), "expected": letter}
             for symbol, letter in sorted(solution_truth.items())
@@ -515,6 +540,10 @@ def benchmark_solutions(
                 "publisher_scored": bool(solution_truth),
                 "publisher_match": bool(solution_truth) and not mismatches,
                 "publisher_mismatches": mismatches,
+                "result": outcome_result,
+                "number_reviews": number_reviews,
+                "number_corrections": number_corrections,
+                "clue_corrections": clue_corrections,
             }
         )
     return {
@@ -523,6 +552,8 @@ def benchmark_solutions(
         "candidate": sum(item["status"] == "candidate" for item in outcomes),
         "multiple": sum(item["status"] == "multiple" for item in outcomes),
         "unsolved": [item["puzzle_id"] for item in outcomes if item["status"] not in {"certified", "candidate"}],
+        "solved": sum(item["result"] == "solved" for item in outcomes),
+        "solved_with_presumed_hil": sum(item["result"] == "solved-with-presumed-hil" for item in outcomes),
         "publisher_scored": sum(bool(item.get("publisher_scored")) for item in outcomes),
         "publisher_mismatches": [
             item["puzzle_id"] for item in outcomes if item.get("publisher_scored") and not item["publisher_match"]
@@ -737,6 +768,18 @@ def main(
     }
     if solve_corpus:
         summary["solutions"] = benchmark_solutions(entries, latest)
+        for outcome in summary["solutions"]["outcomes"]:
+            result = latest[int(outcome["puzzle_id"])]
+            cells = result["cells"]
+            number_accuracy = result.get("number_accuracy", {})
+            click.echo(
+                "puzzle "
+                f"{outcome['puzzle_id']}: parsed {cells['playable']} cells; "
+                f"{cells['unknown']} unknown; {cells['review']} review; "
+                f"{number_accuracy.get('incorrect', 0)} known OCR errors; "
+                f"{number_accuracy.get('trusted_incorrect', 0)} trusted wrong; "
+                f"{outcome['result']} ({outcome['status']})"
+            )
     if publish_assets:
         summary["published_assets"] = publish_corpus_assets(
             entries,
@@ -756,6 +799,7 @@ def main(
             review_threshold=review_threshold,
             number_summary=summary["number_ocr"],
             clue_summary=summary["clue_ocr"],
+            solution_summary=summary.get("solutions"),
         )
         click.echo(f"Corpus audit: {target}")
 

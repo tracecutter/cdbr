@@ -391,10 +391,29 @@ def test_write_audit_reports_separates_number_and_clue_queues(tmp_path: Path) ->
         review_threshold=70.0,
         number_summary={"puzzles": 0},
         clue_summary={"puzzles": 0},
+        solution_summary={
+            "solved": 0,
+            "solved_with_presumed_hil": 1,
+            "unsolved": [],
+            "outcomes": [
+                {
+                    "puzzle_id": 44,
+                    "status": "certified",
+                    "result": "solved-with-presumed-hil",
+                    "number_reviews": 2,
+                    "number_corrections": 1,
+                    "clue_corrections": 1,
+                    "seconds": 0.125,
+                    "nodes": 12,
+                }
+            ],
+        },
     )
 
     assert target == (tmp_path / "audit" / "index.html").resolve()
     assert "Independent recognition concerns" in target.read_text()
+    assert "solved with presumed HIL" in target.read_text()
+    assert "0.125s" in target.read_text()
     numbers = (tmp_path / "audit" / "numbers.html").read_text()
     clues = (tmp_path / "audit" / "clues.html").read_text()
     assert "r02c02" in numbers

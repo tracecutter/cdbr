@@ -35,6 +35,11 @@ main{max-width:1400px;margin:24px auto}.cards{display:grid;grid-template-columns
 .badge.ok{background:#dcebe5;color:var(--green)}.legend{font-size:12px;color:var(--muted)}
 .queues{display:grid;grid-template-columns:1fr 1fr;gap:18px}.queue{padding:20px;background:var(--bright);border:1px solid var(--line)}
 .queue h2{font:30px Georgia,serif;margin:0 0 8px}.queue a{font-size:19px}.queue p{color:var(--muted)}
+.outcomes{margin-top:18px;padding:20px;background:var(--bright);border:1px solid var(--line)}
+.outcomes h2{margin:0 0 12px;font:30px Georgia,serif}.outcome-table{width:100%;border-collapse:collapse}
+.outcome-table th,.outcome-table td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line)}
+.outcome-table th{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.outcome-result{font-weight:800}.outcome-result.is-unsolved{color:var(--red)}.outcome-result.is-hil{color:#9a6418}
 .solution-puzzle{margin:0 0 28px;padding:18px;background:var(--bright);border:1px solid var(--line)}
 .solution-puzzle h2{margin:0 0 5px;font:30px Georgia,serif}.solution-grid{display:grid;grid-template-columns:repeat(13,minmax(58px,1fr));gap:5px;margin:14px 0}
 .solution-cell{display:grid;grid-template-columns:1fr 28px;gap:3px;align-items:center}.solution-cell img{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--line)}
@@ -365,6 +370,7 @@ def write_audit_reports(
     review_threshold: float,
     number_summary: Mapping[str, Any],
     clue_summary: Mapping[str, Any],
+    solution_summary: Mapping[str, Any] | None = None,
 ) -> Path:
     """Write separate, confidence-first number and clue OCR reports."""
 
@@ -440,7 +446,27 @@ def write_audit_reports(
             body=solution_body,
         )
     )
-    index = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>cdbr corpus audit</title><style>{_STYLE}</style></head><body><header><h1>Code Break OCR audit</h1><p>Independent recognition concerns. Confirmed errors lead each queue, then confidence determines review priority; only human-reviewed fixtures contribute to accuracy.</p></header><main><div class="queues"><section class="queue"><h2>Puzzle-cell numbers</h2><div class="summary">{_accuracy_metrics(number_summary, 'number')}</div><p>{len(number_cards)} cells need attention. {number_truth_puzzles} puzzles currently have reviewed number truth.</p><a href="numbers.html">Open error-first number queue →</a><br><a href="number-suspects.html">Review {len(suspect_cards)} solution-derived suspects →</a></section><section class="queue"><h2>Reference-grid clues</h2><div class="summary">{_accuracy_metrics(clue_summary, 'clue-character')}</div><p>{len(clue_cards)} detected or known clue positions. {clue_truth_puzzles} puzzles currently have reviewed clue truth.</p><a href="clues.html">Open error-first clue queue →</a></section><section class="queue"><h2>Publisher solutions</h2><div class="summary">{_metric(len(solution_sections), 'answer keys awaiting or carrying truth')}</div><p>Approve proposed symbol-to-letter mappings against the published answer crops before scoring the solver.</p><a href="solutions.html">Open solution approval gate →</a></section></div></main></body></html>"""
+    solution_summary = solution_summary or {}
+    outcome_rows = "".join(
+        f"<tr><td>{int(item['puzzle_id'])}</td><td>{html.escape(str(item['status']))}</td>"
+        f"<td class=\"outcome-result {'is-unsolved' if item['result'] == 'unsolved' else 'is-hil' if item['result'] == 'solved-with-presumed-hil' else ''}\">{html.escape(str(item['result']))}</td>"
+        f"<td>{int(item.get('number_reviews', 0))}</td><td>{int(item.get('number_corrections', 0))}</td>"
+        f"<td>{int(item.get('clue_corrections', 0))}</td><td>{float(item.get('seconds', 0.0)):.3f}s</td>"
+        f"<td>{int(item.get('nodes', 0))}</td></tr>"
+        for item in solution_summary.get("outcomes", ())
+    )
+    solution_outcomes = (
+        '<section class="outcomes"><h2>Parse, review, and solve outcomes</h2><div class="summary">'
+        + _metric(int(solution_summary.get("solved", 0)), "solved directly")
+        + _metric(int(solution_summary.get("solved_with_presumed_hil", 0)), "solved with presumed HIL")
+        + _metric(len(solution_summary.get("unsolved", ())), "unsolved after presumed HIL")
+        + '</div><table class="outcome-table"><thead><tr><th>Puzzle</th><th>Solver</th><th>Outcome</th><th>Reviews</th><th>Number fixes</th><th>Clue fixes</th><th>Time</th><th>Nodes</th></tr></thead><tbody>'
+        + outcome_rows
+        + "</tbody></table></section>"
+        if outcome_rows
+        else ""
+    )
+    index = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>cdbr corpus audit</title><style>{_STYLE}</style></head><body><header><h1>Code Break OCR audit</h1><p>Independent recognition concerns. Confirmed errors lead each queue, then confidence determines review priority; only human-reviewed fixtures contribute to accuracy.</p></header><main><div class="queues"><section class="queue"><h2>Puzzle-cell numbers</h2><div class="summary">{_accuracy_metrics(number_summary, 'number')}</div><p>{len(number_cards)} cells need attention. {number_truth_puzzles} puzzles currently have reviewed number truth.</p><a href="numbers.html">Open error-first number queue →</a><br><a href="number-suspects.html">Review {len(suspect_cards)} solution-derived suspects →</a></section><section class="queue"><h2>Reference-grid clues</h2><div class="summary">{_accuracy_metrics(clue_summary, 'clue-character')}</div><p>{len(clue_cards)} detected or known clue positions. {clue_truth_puzzles} puzzles currently have reviewed clue truth.</p><a href="clues.html">Open error-first clue queue →</a></section><section class="queue"><h2>Publisher solutions</h2><div class="summary">{_metric(len(solution_sections), 'answer keys awaiting or carrying truth')}</div><p>Approve proposed symbol-to-letter mappings against the published answer crops before scoring the solver.</p><a href="solutions.html">Open solution approval gate →</a></section></div>{solution_outcomes}</main></body></html>"""
     target = destination / "index.html"
     target.write_text(index)
     return target.resolve()
