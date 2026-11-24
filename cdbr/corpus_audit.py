@@ -399,7 +399,7 @@ def _solution_review_sections(
             low = not proposed or (symbol not in confirmed and symbol not in clues and margin < 0.25)
             cells.append(
                 f'<label class="solution-cell{" is-low" if low else ""}">{image_html}'
-                f'<input maxlength="1" pattern="[A-Za-z]" value="{html.escape(proposed)}" data-symbol="{symbol}" aria-label="Solution letter for symbol {symbol}">'
+                f'<input maxlength="1" pattern="[A-Za-z]" value="{html.escape(proposed)}" data-symbol="{symbol}" data-has-crop="{str(crop is not None).lower()}" aria-label="Solution letter for symbol {symbol}">'
                 f'<small>{symbol} · {margin * 100:.0f}%</small></label>'
             )
         state = "confirmed" if len(confirmed) == 26 else "proposal"
@@ -420,7 +420,18 @@ document.querySelectorAll('.solution-puzzle').forEach(section => {
   const storageKey = `cdbr-solution-${section.dataset.puzzle}`;
   const saved = JSON.parse(window.localStorage.getItem(storageKey) || '{}');
   inputs.forEach(input => { if (saved[input.dataset.symbol]) input.value = saved[input.dataset.symbol]; });
+  const repairMissingCropDuplicate = () => {
+    const letters = inputs.map(input => input.value.trim().toUpperCase());
+    const counts = Object.fromEntries(letters.map(letter => [letter, letters.filter(item => item === letter).length]));
+    const duplicate = Object.keys(counts).filter(letter => /^[A-Z]$/.test(letter) && counts[letter] === 2);
+    const missing = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].filter(letter => !letters.includes(letter));
+    if (duplicate.length !== 1 || missing.length !== 1) return;
+    const duplicateInputs = inputs.filter(input => input.value.trim().toUpperCase() === duplicate[0]);
+    const cropMissing = duplicateInputs.filter(input => input.dataset.hasCrop === 'false');
+    if (cropMissing.length === 1) cropMissing[0].value = missing[0];
+  };
   const validate = () => {
+    repairMissingCropDuplicate();
     const letters = inputs.map(input => input.value.trim().toUpperCase());
     inputs.forEach((input, index) => input.value = letters[index]);
     const complete = letters.every(letter => /^[A-Z]$/.test(letter));

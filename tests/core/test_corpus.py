@@ -498,3 +498,5 @@ def test_write_audit_reports_separates_number_and_clue_queues(tmp_path: Path) ->
     assert "Publisher solution approval" in solutions
     assert "Prepare approved TOML" in solutions
     assert 'data-symbol="6"' in solutions
+    assert 'data-has-crop=' in solutions
+    assert "repairMissingCropDuplicate" in solutions
