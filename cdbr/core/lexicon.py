@@ -11,7 +11,13 @@ from pathlib import Path
 from wordfreq import iter_wordlist, zipf_frequency
 
 
-SUPPLEMENTAL_BRITISH_WORDS = ("mercyproof",)
+# Publisher-confirmed solution words absent from the packaged British wordlist.
+# Keep this small, explicit, and backed by the approved solution corpus.
+SUPPLEMENTAL_BRITISH_WORDS = (
+    "jumpthegun",
+    "mercyproof",
+    "shemozzle",
+)
 
 
 def word_pattern(values: Iterable[object]) -> tuple[int, ...]:

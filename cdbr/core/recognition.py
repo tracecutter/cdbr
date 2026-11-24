@@ -478,8 +478,11 @@ def _digit_glyphs(cell: np.ndarray, *, suppress_illumination: bool = False) -> l
         chunks = [(x, mask)]
         if width > 26:
             projection = np.sum(mask > 0, axis=0)
-            low = int(width * 0.3)
-            high = int(width * 0.7)
+            # Joined digits have a seam near the centre.  Searching too far
+            # right can mistake the empty counter inside 0 for that seam,
+            # turning a printed 20 into two 3-like glyphs.
+            low = int(width * 0.35)
+            high = int(width * 0.55)
             split = low + int(np.argmin(projection[low : high + 1]))
             chunks = [(x, mask[:, :split]), (x + split, mask[:, split:])]
         for position, glyph in chunks:

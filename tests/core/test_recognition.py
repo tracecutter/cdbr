@@ -118,3 +118,12 @@ def test_puzzle_44_open_five_is_not_read_as_eight(tmp_path: Path) -> None:
     observation = recognize_photo(project_root / "examples" / "puzzle_44.jpg", tmp_path)
 
     assert observation.grid[0][6] == 5
+
+
+def test_puzzle_48_joined_twenty_splits_between_digits(tmp_path: Path) -> None:
+    project_root = Path(__file__).parents[2]
+
+    observation = recognize_photo(project_root / "examples" / "puzzle_48.jpg", tmp_path)
+
+    for row, column in ((2, 3), (7, 6), (11, 4), (13, 2), (13, 7), (13, 8)):
+        assert observation.grid[row - 1][column - 1] == 20

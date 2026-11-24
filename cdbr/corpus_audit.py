@@ -15,6 +15,20 @@ import numpy as np
 from cdbr.core.recognition import WARP_SIZE
 
 
+# Provisional corrections inferred from publisher-approved solution words. They
+# remain separate from truth until a human confirms the photographed number.
+SOLUTION_DERIVED_NUMBER_SUSPECTS = {
+    (34, 13, 1): 16,
+    (37, 3, 11): 16,
+    (37, 7, 8): 6,
+    (37, 12, 5): 6,
+    (37, 14, 15): 6,
+    (37, 15, 13): 6,
+    (42, 13, 11): 16,
+    (47, 15, 6): 16,
+}
+
+
 _STYLE = """
 :root{--paper:#f2efe8;--bright:#fffefa;--ink:#171918;--muted:#686b66;--red:#c82d22;--green:#27725c;--line:#d8d4ca}
 *{box-sizing:border-box}body{margin:0;padding:32px;font:15px/1.4 system-ui;background:var(--paper);color:var(--ink)}
@@ -79,8 +93,9 @@ def _number_priority_cards(
     results: Mapping[int, Mapping[str, Any]],
     work_root: Path,
     review_threshold: float,
-) -> tuple[list[str], int]:
+) -> tuple[list[str], int, list[str]]:
     records: list[tuple[int, float, int, int, int, str]] = []
+    suspect_records: list[tuple[int, int, int, str]] = []
     truth_puzzles = 0
     for entry in entries:
         result = results.get(entry.puzzle_id)
@@ -107,7 +122,8 @@ def _number_priority_cards(
             column = int(item["column"])
             confidence = float(item["confidence"])
             mismatch = mismatches.get((row, column))
-            if bool(item["trusted"]) and confidence >= review_threshold and mismatch is None:
+            suspect = SOLUTION_DERIVED_NUMBER_SUSPECTS.get((entry.puzzle_id, row, column))
+            if bool(item["trusted"]) and confidence >= review_threshold and mismatch is None and suspect is None:
                 continue
             original_cell = original[
                 (row - 1) * cell_size : row * cell_size,
@@ -122,6 +138,8 @@ def _number_priority_cards(
                 badges.append('<span class="badge">untrusted</span>')
             if mismatch is not None:
                 badges.append(f'<span class="badge">truth: {html.escape(str(mismatch["expected"]))}</span>')
+            elif suspect is not None:
+                badges.append(f'<span class="badge">solution suggests: {suspect}</span>')
             elif "number_accuracy" in result:
                 badges.append('<span class="badge ok">truth agrees</span>')
             card = f"""
@@ -131,8 +149,11 @@ def _number_priority_cards(
   <div>OCR reading: <strong>{html.escape(str(item['reading']) or 'unknown')}</strong></div><div class="badges">{''.join(badges)}</div>
 </article>"""
             records.append((0 if mismatch is not None else 1, confidence, entry.puzzle_id, row, column, card))
+            if suspect is not None:
+                suspect_records.append((entry.puzzle_id, row, column, card))
     records.sort(key=lambda record: record[:-1])
-    return [record[-1] for record in records], truth_puzzles
+    suspect_records.sort(key=lambda record: record[:-1])
+    return [record[-1] for record in records], truth_puzzles, [record[-1] for record in suspect_records]
 
 
 def _clue_priority_cards(
@@ -357,7 +378,7 @@ def write_audit_reports(
     """Write separate, confidence-first number and clue OCR reports."""
 
     destination.mkdir(parents=True, exist_ok=True)
-    number_cards, number_truth_puzzles = _number_priority_cards(
+    number_cards, number_truth_puzzles, suspect_cards = _number_priority_cards(
         entries=entries,
         results=results,
         work_root=work_root,
@@ -389,6 +410,21 @@ def write_audit_reports(
             body=number_body,
         )
     )
+    suspect_body = (
+        '<p class="legend">These are hypotheses inferred because the approved publisher mapping decodes '
+        "a slot to a one-letter near-miss of an ordinary word. They are not ground truth until visually confirmed. "
+        "Left: puzzle photograph. Right: published solution photograph.</p><div class=\"cards\">"
+        + "".join(suspect_cards)
+        + "</div>"
+    )
+    (destination / "number-suspects.html").write_text(
+        _document(
+            title="cdbr solution-derived number suspects",
+            header="Solution-derived number suspects",
+            description=f"Focused human review of {len(suspect_cards)} provisional number corrections.",
+            body=suspect_body,
+        )
+    )
     (destination / "clues.html").write_text(
         _document(
             title="cdbr clue OCR audit",
@@ -413,7 +449,7 @@ def write_audit_reports(
             body=solution_body,
         )
     )
-    index = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>cdbr corpus audit</title><style>{_STYLE}</style></head><body><header><h1>Code Break OCR audit</h1><p>Independent recognition concerns. Confirmed errors lead each queue, then confidence determines review priority; only human-reviewed fixtures contribute to accuracy.</p></header><main><div class="queues"><section class="queue"><h2>Puzzle-cell numbers</h2><div class="summary">{_accuracy_metrics(number_summary, 'number')}</div><p>{len(number_cards)} cells need attention. {number_truth_puzzles} puzzles currently have reviewed number truth.</p><a href="numbers.html">Open error-first number queue →</a></section><section class="queue"><h2>Reference-grid clues</h2><div class="summary">{_accuracy_metrics(clue_summary, 'clue-character')}</div><p>{len(clue_cards)} detected or known clue positions. {clue_truth_puzzles} puzzles currently have reviewed clue truth.</p><a href="clues.html">Open error-first clue queue →</a></section><section class="queue"><h2>Publisher solutions</h2><div class="summary">{_metric(len(solution_sections), 'answer keys awaiting or carrying truth')}</div><p>Approve proposed symbol-to-letter mappings against the published answer crops before scoring the solver.</p><a href="solutions.html">Open solution approval gate →</a></section></div></main></body></html>"""
+    index = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>cdbr corpus audit</title><style>{_STYLE}</style></head><body><header><h1>Code Break OCR audit</h1><p>Independent recognition concerns. Confirmed errors lead each queue, then confidence determines review priority; only human-reviewed fixtures contribute to accuracy.</p></header><main><div class="queues"><section class="queue"><h2>Puzzle-cell numbers</h2><div class="summary">{_accuracy_metrics(number_summary, 'number')}</div><p>{len(number_cards)} cells need attention. {number_truth_puzzles} puzzles currently have reviewed number truth.</p><a href="numbers.html">Open error-first number queue →</a><br><a href="number-suspects.html">Review {len(suspect_cards)} solution-derived suspects →</a></section><section class="queue"><h2>Reference-grid clues</h2><div class="summary">{_accuracy_metrics(clue_summary, 'clue-character')}</div><p>{len(clue_cards)} detected or known clue positions. {clue_truth_puzzles} puzzles currently have reviewed clue truth.</p><a href="clues.html">Open error-first clue queue →</a></section><section class="queue"><h2>Publisher solutions</h2><div class="summary">{_metric(len(solution_sections), 'answer keys awaiting or carrying truth')}</div><p>Approve proposed symbol-to-letter mappings against the published answer crops before scoring the solver.</p><a href="solutions.html">Open solution approval gate →</a></section></div></main></body></html>"""
     target = destination / "index.html"
     target.write_text(index)
     return target.resolve()
