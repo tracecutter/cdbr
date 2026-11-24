@@ -60,7 +60,7 @@ def test_puzzle_47_grid_recovery_preserves_block_layout(tmp_path: Path) -> None:
 
     expected = block_layout(root / "corpus" / "puzzle_047.jpg")
     for number in (4783, 4786, 4788, 4789):
-        assert block_layout(root / "import" / f"IMG_{number}.HEIC") == expected
+        assert block_layout(root / "import" / f"IMG_{number}.jpg") == expected
 
 
 def test_foreground_binary_rejects_smooth_shadow() -> None:

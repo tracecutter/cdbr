@@ -7,9 +7,13 @@ cdbr
 
 Solve Code Break puzzles from photographs.
 
-.. image:: ../_static/cdbr.png
+**Play at** `codebreak.foghub.com <https://codebreak.foghub.com>`__\ **.** Open a puzzle from the collection, scan one from your book, or create your own. The hosted app runs in your browser and needs no installation or account.
+
+.. image:: ../../psym/assets/gameplay.png
    :align: center
-   :width: 200px
+   :width: 900px
+   :alt: Puzzle 47 in progress with the numbered board and reference grid side by side
+   :target: https://codebreak.foghub.com
 
 .. toctree::
    :maxdepth: 2

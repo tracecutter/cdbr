@@ -1,3 +1,8 @@
+### 0.2.2 — 2026-11-24
+
+- Use JPEG fixtures for Puzzle 47 geometry regression tests so release CI can run them without decoding HEIC.
+- Lead the README and user docs with the hosted app at `codebreak.foghub.com` and a gameplay screenshot.
+
 ### 0.2.1 — 2026-11-24
 
 - Recover more small, foreshortened, and sideways puzzle grids by checking the internal grid lines after perspective correction.

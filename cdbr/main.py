@@ -18,6 +18,11 @@ Copyright (c) 2026 John Fogelin. All rights reserved.
 [[meta.license]]
 MIT. See LICENSE for details.
 
+[[section.quickstart.hosted]]
+**Play at [codebreak.foghub.com](https://codebreak.foghub.com).**
+Open a puzzle from the collection, scan one from your book, or create your own.
+The hosted app runs in your browser and needs no installation or account.
+
 [[section.quickstart.intro]]
 Give cdbr a clear photograph containing the complete square puzzle and its
 reference grid. It detects supported 13x13 and 15x15 boards, corrects

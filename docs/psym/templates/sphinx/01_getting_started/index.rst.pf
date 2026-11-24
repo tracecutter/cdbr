@@ -1,10 +1,13 @@
 Getting Started
 ===============
 
-{{ code.section.quickstart.intro }}
+{{ code.section.quickstart.hosted }}
 
-Installation
-------------
+Local tools
+-----------
+
+Use `cdbr` to solve and export puzzles from the terminal, or `cdbrd` to
+run the web app on your own machine.
 
 {{ code.section.quickstart.install }}
 
@@ -15,6 +18,8 @@ Safe Exploration
 
 First Command
 -------------
+
+{{ code.section.quickstart.intro }}
 
 {{ code.section.quickstart.first_command }}
 

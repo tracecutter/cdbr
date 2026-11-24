@@ -7,9 +7,13 @@ cdbr
 
 {{ code.meta.tagline }}
 
-.. image:: ../_static/cdbr.png
+{{ code.section.quickstart.hosted }}
+
+.. image:: ../../psym/assets/gameplay.png
    :align: center
-   :width: 200px
+   :width: 900px
+   :alt: Puzzle 47 in progress with the numbered board and reference grid side by side
+   :target: https://codebreak.foghub.com
 
 .. toctree::
    :maxdepth: 2

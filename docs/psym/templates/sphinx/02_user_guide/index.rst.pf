@@ -35,6 +35,11 @@ Puzzle Creation
 Web Application
 ---------------
 
+{{ code.section.quickstart.hosted }}
+
+Run the web app locally
+~~~~~~~~~~~~~~~~~~~~~~~
+
 {{ code.section.web }}
 
 Status

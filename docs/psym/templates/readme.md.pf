@@ -6,8 +6,10 @@ Do not edit this artifact directly.
 
 **{{ code.meta.tagline }}**
 
+{{ code.section.quickstart.hosted }}
+
 <p align="center">
-  <img src="docs/psym/assets/cdbr.png" width="180" alt="cdbr logo">
+  <a href="https://codebreak.foghub.com"><img src="docs/psym/assets/gameplay.png" width="900" alt="Puzzle 47 in progress with the numbered board and reference grid side by side"></a>
 </p>
 
 <p align="center">
@@ -25,13 +27,13 @@ Do not edit this artifact directly.
 
 ---
 
-## Installation{{#toc.installation}}
+## Local installation{{#toc.local-installation}}
 
 {{ code.section.quickstart.install }}
 
 ---
 
-## Quick start{{#toc.quick-start}}
+## Command-line quick start{{#toc.command-line-quick-start}}
 
 {{ code.section.quickstart.intro }}
 
@@ -59,19 +61,19 @@ Do not edit this artifact directly.
 
 ---
 
-## Solve a photograph{{#toc.solve}}
+## Solve a photograph{{#toc.solve-a-photograph}}
 
 {{ dynamic.cli.help.root }}
 
 ---
 
-## Create a puzzle{{#toc.create}}
+## Create a puzzle{{#toc.create-a-puzzle}}
 
 {{ code.section.create }}
 
 ---
 
-## Web application{{#toc.web}}
+## Run the web app locally{{#toc.run-the-web-app-locally}}
 
 {{ code.section.web }}
 

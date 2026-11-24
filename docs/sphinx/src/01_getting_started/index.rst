@@ -1,10 +1,13 @@
 Getting Started
 ===============
 
-Give cdbr a clear photograph containing the complete square puzzle and its reference grid. It detects supported 13x13 and 15x15 boards, corrects perspective, reads the numbered cells and supplied letters, then solves the substitution puzzle using a British English lexicon.
+**Play at** `codebreak.foghub.com <https://codebreak.foghub.com>`__\ **.** Open a puzzle from the collection, scan one from your book, or create your own. The hosted app runs in your browser and needs no installation or account.
 
-Installation
-------------
+Local tools
+-----------
+
+Use `cdbr` to solve and export puzzles from the terminal, or `cdbrd` to
+run the web app on your own machine.
 
 Install the command from the public Git repository into an isolated environment:
 
@@ -21,6 +24,8 @@ cdbr never overwrites an existing solution image or puzzle file unless ``--force
 
 First Command
 -------------
+
+Give cdbr a clear photograph containing the complete square puzzle and its reference grid. It detects supported 13x13 and 15x15 boards, corrects perspective, reads the numbered cells and supplied letters, then solves the substitution puzzle using a British English lexicon.
 
 .. code:: bash
 

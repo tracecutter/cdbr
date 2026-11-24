@@ -69,6 +69,11 @@ Run ``cdbr create --help`` for the complete set of construction limits.
 Web Application
 ---------------
 
+**Play at** `codebreak.foghub.com <https://codebreak.foghub.com>`__\ **.** Open a puzzle from the collection, scan one from your book, or create your own. The hosted app runs in your browser and needs no installation or account.
+
+Run the web app locally
+~~~~~~~~~~~~~~~~~~~~~~~
+
 Start the local web application with:
 
 .. code:: bash

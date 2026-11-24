@@ -6,8 +6,12 @@ Do not edit this artifact directly.
 
 **Solve Code Break puzzles from photographs.**
 
+**Play at [codebreak.foghub.com](https://codebreak.foghub.com).**
+Open a puzzle from the collection, scan one from your book, or create your own.
+The hosted app runs in your browser and needs no installation or account.
+
 <p align="center">
-  <img src="docs/psym/assets/cdbr.png" width="180" alt="cdbr logo">
+  <a href="https://codebreak.foghub.com"><img src="docs/psym/assets/gameplay.png" width="900" alt="Puzzle 47 in progress with the numbered board and reference grid side by side"></a>
 </p>
 
 <p align="center">
@@ -26,12 +30,12 @@ Do not edit this artifact directly.
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
-- [Installation](#installation)
-- [Quick Start](#quick-start)
+- [Local Installation](#local-installation)
+- [Command Line Quick Start](#command-line-quick-start)
 - [Overview](#overview)
-- [Solve](#solve)
-- [Create](#create)
-- [Web](#web)
+- [Solve A Photograph](#solve-a-photograph)
+- [Create A Puzzle](#create-a-puzzle)
+- [Run The Web App Locally](#run-the-web-app-locally)
 - [Project Status](#project-status)
 - [Development](#development)
 - [Changelog](#changelog)
@@ -41,7 +45,7 @@ Do not edit this artifact directly.
 
 ---
 
-## Installation
+## Local installation
 
 Install the command from the public Git repository into an isolated environment:
 
@@ -55,7 +59,7 @@ virtual-environment workflow.
 
 ---
 
-## Quick start
+## Command-line quick start
 
 Give cdbr a clear photograph containing the complete square puzzle and its
 reference grid. It detects supported 13x13 and 15x15 boards, corrects
@@ -178,7 +182,7 @@ Run `cdbr create --help` for the complete set of construction limits.
 
 ---
 
-## Web application
+## Run the web app locally
 
 Start the local web application with:
 
@@ -416,6 +420,11 @@ System tests require ImageMagick and Tesseract. The project configuration in
 ---
 
 ## Changelog
+
+### 0.2.2 — 2026-11-24
+
+- Use JPEG fixtures for Puzzle 47 geometry regression tests so release CI can run them without decoding HEIC.
+- Lead the README and user docs with the hosted app at `codebreak.foghub.com` and a gameplay screenshot.
 
 ### 0.2.1 — 2026-11-24
 
