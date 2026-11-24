@@ -1,6 +1,7 @@
 # Puzzle corpus
 
-This directory holds source puzzle photos and the benchmark manifest. Playable
+Source photos use `puzzle_NNN.jpg`, where `NNN` is the zero-padded book number.
+The benchmark manifest points to the numbered photos it covers. Playable
 number grids and starting clues are packaged under `cdbr/assets/puzzles/`.
 
 Solution photos and audit truth live in the separate `solutions/` directory

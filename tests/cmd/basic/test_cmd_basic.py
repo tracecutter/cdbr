@@ -24,7 +24,7 @@ def test_cmd_basic(tmp_path):
     # Arrange: copy test filesystem (if needed)
     populate_fs(here / "before", tmp_path)
 
-    photo = Path(__file__).parents[3] / "corpus" / "puzzle_35.jpg"
+    photo = Path(__file__).parents[3] / "corpus" / "puzzle_035.jpg"
 
     # Act: run cdbr with a puzzle photograph.
     result = run_cdbr(["--orig", str(photo)], cwd=tmp_path)

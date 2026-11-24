@@ -275,7 +275,7 @@ def test_whole_number_classifier_uses_complete_token_margin() -> None:
 def test_puzzle_35_fragmented_eight_is_not_read_as_six(tmp_path: Path) -> None:
     project_root = Path(__file__).parents[2]
 
-    observation = recognize_photo(project_root / "corpus" / "puzzle_35.jpg", tmp_path)
+    observation = recognize_photo(project_root / "corpus" / "puzzle_035.jpg", tmp_path)
 
     assert observation.grid[7][2] == 8
 
@@ -284,7 +284,7 @@ def test_puzzle_34_weak_six_eight_vote_is_sent_to_hil(tmp_path: Path) -> None:
     project_root = Path(__file__).parents[2]
 
     observation = recognize_photo(
-        project_root / "corpus" / "puzzle_34.jpg",
+        project_root / "corpus" / "puzzle_034.jpg",
         tmp_path,
         template_exclusion=34,
     )
@@ -298,7 +298,7 @@ def test_puzzle_34_weak_six_eight_vote_is_sent_to_hil(tmp_path: Path) -> None:
 def test_puzzle_59_lost_leading_one_is_corrected_by_publisher_canon(tmp_path: Path) -> None:
     project_root = Path(__file__).parents[2]
 
-    observation = recognize_photo(project_root / "corpus" / "puzzle_59.jpg", tmp_path)
+    observation = recognize_photo(project_root / "corpus" / "puzzle_059.jpg", tmp_path)
     evidence = {(item.row, item.column): item for item in observation.evidence}
 
     assert evidence[(2, 5)].reading == "19"
@@ -308,7 +308,7 @@ def test_puzzle_59_lost_leading_one_is_corrected_by_publisher_canon(tmp_path: Pa
 def test_puzzle_36_counter_family_errors_are_corrected_without_hil(tmp_path: Path) -> None:
     project_root = Path(__file__).parents[2]
 
-    observation = recognize_photo(project_root / "corpus" / "puzzle_36.jpg", tmp_path)
+    observation = recognize_photo(project_root / "corpus" / "puzzle_036.jpg", tmp_path)
     evidence = {(item.row, item.column): item for item in observation.evidence}
 
     assert evidence[(1, 4)].reading == "18"
@@ -320,7 +320,7 @@ def test_puzzle_36_counter_family_errors_are_corrected_without_hil(tmp_path: Pat
 def test_puzzle_44_open_five_is_not_read_as_eight(tmp_path: Path) -> None:
     project_root = Path(__file__).parents[2]
 
-    observation = recognize_photo(project_root / "corpus" / "puzzle_44.jpg", tmp_path)
+    observation = recognize_photo(project_root / "corpus" / "puzzle_044.jpg", tmp_path)
 
     assert observation.grid[0][6] == 5
 
@@ -328,7 +328,7 @@ def test_puzzle_44_open_five_is_not_read_as_eight(tmp_path: Path) -> None:
 def test_puzzle_48_joined_twenty_splits_between_digits(tmp_path: Path) -> None:
     project_root = Path(__file__).parents[2]
 
-    observation = recognize_photo(project_root / "corpus" / "puzzle_48.jpg", tmp_path)
+    observation = recognize_photo(project_root / "corpus" / "puzzle_048.jpg", tmp_path)
 
     for row, column in ((2, 3), (7, 6), (11, 4), (13, 2), (13, 7), (13, 8)):
         assert observation.grid[row - 1][column - 1] == 20
