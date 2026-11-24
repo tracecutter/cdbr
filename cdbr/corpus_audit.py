@@ -46,6 +46,7 @@ main{max-width:1400px;margin:24px auto}.cards{display:grid;grid-template-columns
 .solution-cell input{width:28px;height:34px;padding:2px;text-align:center;text-transform:uppercase;font-weight:800;border:1px solid var(--line)}
 .solution-cell.is-low input{border:2px solid var(--red);background:#fde5e1}.solution-cell small{grid-column:1/-1;color:var(--muted)}
 .solution-actions{display:flex;gap:10px;align-items:center}.solution-actions button{padding:9px 14px;border:0;background:var(--ink);color:white;font-weight:750}.solution-output{width:100%;min-height:90px;margin-top:10px;font:12px/1.35 ui-monospace,monospace}
+.review-decision,.review-correction{width:100%;margin-top:8px;padding:7px;border:1px solid var(--line);background:white}
 @media(max-width:760px){body{padding:12px}.queues{grid-template-columns:1fr}.cards{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
 """
 
@@ -89,11 +90,15 @@ def _number_priority_cards(
     results: Mapping[int, Mapping[str, Any]],
     work_root: Path,
     review_threshold: float,
+    puzzle_ids: set[int] | None = None,
+    include_trusted_below_threshold: bool = True,
 ) -> tuple[list[str], int, list[str]]:
     records: list[tuple[int, float, int, int, int, str]] = []
     suspect_records: list[tuple[int, int, int, str]] = []
     truth_puzzles = 0
     for entry in entries:
+        if puzzle_ids is not None and entry.puzzle_id not in puzzle_ids:
+            continue
         result = results.get(entry.puzzle_id)
         if result is None or result.get("status") != "ok":
             continue
@@ -119,7 +124,8 @@ def _number_priority_cards(
             confidence = float(item["confidence"])
             mismatch = mismatches.get((row, column))
             suspect = SOLUTION_DERIVED_NUMBER_SUSPECTS.get((entry.puzzle_id, row, column))
-            if bool(item["trusted"]) and confidence >= review_threshold and mismatch is None and suspect is None:
+            trusted_is_actionable = include_trusted_below_threshold and confidence < review_threshold
+            if bool(item["trusted"]) and not trusted_is_actionable and mismatch is None and suspect is None:
                 continue
             original_cell = original[
                 (row - 1) * cell_size : row * cell_size,
@@ -139,7 +145,7 @@ def _number_priority_cards(
             elif "number_accuracy" in result:
                 badges.append('<span class="badge ok">truth agrees</span>')
             card = f"""
-<article class="card{' is-error' if mismatch else ''}">
+<article class="card{' is-error' if mismatch else ''}" data-puzzle="{entry.puzzle_id}" data-row="{row}" data-column="{column}">
   <div class="images"><img src="{_image_uri(original_cell)}" alt="Photographed puzzle cell"><img src="{_image_uri(solution_cell)}" alt="Published solution cell, supporting evidence only"></div>
   <div class="identity"><strong>Puzzle {entry.puzzle_id} · r{row:02d}c{column:02d}</strong><span class="confidence">{confidence:.0f}%</span></div>
   <div>OCR reading: <strong>{html.escape(str(item['reading']) or 'unknown')}</strong></div><div class="badges">{''.join(badges)}</div>
@@ -375,11 +381,21 @@ def write_audit_reports(
     """Write separate, confidence-first number and clue OCR reports."""
 
     destination.mkdir(parents=True, exist_ok=True)
+    solution_summary = solution_summary or {}
+    unsolved_ids = {int(value) for value in solution_summary.get("unsolved", ())}
     number_cards, number_truth_puzzles, suspect_cards = _number_priority_cards(
         entries=entries,
         results=results,
         work_root=work_root,
         review_threshold=review_threshold,
+    )
+    unsolved_cards, _, _ = _number_priority_cards(
+        entries=entries,
+        results=results,
+        work_root=work_root,
+        review_threshold=review_threshold,
+        puzzle_ids=unsolved_ids,
+        include_trusted_below_threshold=False,
     )
     clue_cards, clue_truth_puzzles = _clue_priority_cards(entries=entries, results=results, work_root=work_root)
     solution_sections, solution_template_letters = _solution_review_sections(entries, results)
@@ -422,6 +438,51 @@ def write_audit_reports(
             body=suspect_body,
         )
     )
+    unsolved_controls = """
+<div class="solution-actions"><button type="button" id="export-unsolved-review">Download review decisions</button><span>Classify only what the photographs establish; leave uncertain cells pending.</span></div>
+<script>
+const choices = [
+  ['', 'Pending'], ['correct', 'OCR number is correct'], ['wrong-number', 'OCR number is wrong'],
+  ['topology', 'Grid topology is wrong'], ['clue', 'Reference clue is wrong'], ['other', 'None of these']
+];
+for (const card of document.querySelectorAll('.card')) {
+  const select = document.createElement('select');
+  select.className = 'review-decision';
+  for (const [value, label] of choices) {
+    const option = document.createElement('option'); option.value = value; option.textContent = label; select.append(option);
+  }
+  const correction = document.createElement('input'); correction.className = 'review-correction';
+  correction.placeholder = 'Correct number (if known)'; correction.inputMode = 'numeric';
+  card.append(select, correction);
+}
+document.querySelector('#export-unsolved-review').addEventListener('click', () => {
+  const decisions = [...document.querySelectorAll('.card')].map(card => ({
+    puzzle: Number(card.dataset.puzzle), row: Number(card.dataset.row), column: Number(card.dataset.column),
+    decision: card.querySelector('.review-decision').value,
+    correction: card.querySelector('.review-correction').value.trim()
+  })).filter(item => item.decision);
+  const blob = new Blob([JSON.stringify(decisions, null, 2)], {type: 'application/json'});
+  const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
+  link.download = 'cdbr-unsolved-review.json'; link.click(); URL.revokeObjectURL(link.href);
+});
+</script>"""
+    (destination / "unsolved.html").write_text(
+        _document(
+            title="cdbr unsolved-puzzle review",
+            header=f"Review {len(unsolved_ids)} unsolved puzzles",
+            description="A focused queue of low-confidence, untrusted, or known-wrong number cells from puzzles that still contradict after presumed human review.",
+            body=(
+                '<div class="summary">'
+                + _metric(len(unsolved_ids), "unsolved puzzles")
+                + _metric(len(unsolved_cards), "number cells to inspect")
+                + "</div>"
+                + unsolved_controls
+                + '<div class="cards">'
+                + "".join(unsolved_cards)
+                + "</div>"
+            ),
+        )
+    )
     (destination / "clues.html").write_text(
         _document(
             title="cdbr clue OCR audit",
@@ -446,7 +507,6 @@ def write_audit_reports(
             body=solution_body,
         )
     )
-    solution_summary = solution_summary or {}
     outcome_rows = "".join(
         f"<tr><td>{int(item['puzzle_id'])}</td><td>{html.escape(str(item['status']))}</td>"
         f"<td class=\"outcome-result {'is-unsolved' if item['result'] == 'unsolved' else 'is-hil' if item['result'] == 'solved-with-presumed-hil' else ''}\">{html.escape(str(item['result']))}</td>"
@@ -460,7 +520,7 @@ def write_audit_reports(
         + _metric(int(solution_summary.get("solved", 0)), "solved directly")
         + _metric(int(solution_summary.get("solved_with_presumed_hil", 0)), "solved with presumed HIL")
         + _metric(len(solution_summary.get("unsolved", ())), "unsolved after presumed HIL")
-        + '</div><table class="outcome-table"><thead><tr><th>Puzzle</th><th>Solver</th><th>Outcome</th><th>Reviews</th><th>Number fixes</th><th>Clue fixes</th><th>Time</th><th>Nodes</th></tr></thead><tbody>'
+        + f'</div><p><a href="unsolved.html">Review {len(unsolved_ids)} unsolved puzzles →</a></p><table class="outcome-table"><thead><tr><th>Puzzle</th><th>Solver</th><th>Outcome</th><th>Reviews</th><th>Number fixes</th><th>Clue fixes</th><th>Time</th><th>Nodes</th></tr></thead><tbody>'
         + outcome_rows
         + "</tbody></table></section>"
         if outcome_rows
