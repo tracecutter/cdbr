@@ -20,6 +20,7 @@ from cdbr.corpus import (
     summarize,
     summarize_accuracy,
     summarize_classification,
+    summarize_publisher_number_truth,
 )
 from cdbr.corpus_audit import write_audit_reports
 from cdbr.core.puzzle import UNKNOWN
@@ -38,6 +39,22 @@ def test_load_manifest_resolves_assets_relative_to_manifest(tmp_path: Path) -> N
     assert entries[0].photo == (tmp_path / "photo.jpg").resolve()
     assert entries[0].solution == (tmp_path / "solution.jpg").resolve()
     assert entries[0].truth is None
+
+
+def test_publisher_number_truth_scores_every_derived_cell() -> None:
+    summary = summarize_publisher_number_truth(
+        {
+            34: [
+                {"row": 1, "column": 1, "observed": 8, "expected": 8, "letter": "R", "margin": 0.9},
+                {"row": 1, "column": 2, "observed": 6, "expected": 8, "letter": "R", "margin": 0.8},
+            ]
+        }
+    )
+
+    assert summary["samples"] == 2
+    assert summary["correct"] == 1
+    assert summary["incorrect"] == 1
+    assert summary["mismatches"][0]["puzzle_id"] == 34
 
 
 def test_load_manifest_resolves_optional_truth(tmp_path: Path) -> None:
@@ -350,6 +367,25 @@ def test_benchmark_solutions_scores_only_confirmed_publisher_mapping(tmp_path: P
     assert summary["outcomes"][0]["publisher_validation"] == "rejected"
     assert summary["outcomes"][0]["truth_publisher_validation"] == "accepted"
     assert summary["outcomes"][0]["truth_status"] == "certified"
+
+    reviewed = benchmark_solutions(
+        (entry,),
+        {
+            1: {
+                "status": "ok",
+                "grid": [[1, 8], [".", 1]],
+                "evidence": [
+                    {"row": 1, "column": 1, "reading": "1", "trusted": True},
+                    {"row": 1, "column": 2, "reading": "8", "trusted": True},
+                    {"row": 2, "column": 2, "reading": "1", "trusted": True},
+                ],
+                "hil_review_cells": [{"row": 1, "column": 2}],
+            }
+        },
+        {1: [{"row": 1, "column": 2, "observed": 8, "expected": 2}]},
+    )
+    assert reviewed["outcomes"][0]["number_corrections"] == 1
+    assert reviewed["outcomes"][0]["publisher_validation"] == "accepted"
 
 
 def test_solution_approval_import_and_sparse_asset_publication(tmp_path: Path) -> None:

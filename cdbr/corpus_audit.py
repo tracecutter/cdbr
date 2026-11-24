@@ -15,9 +15,7 @@ import numpy as np
 from cdbr.core.recognition import WARP_SIZE
 
 
-# Provisional corrections inferred from publisher-approved solution words. They
-# remain separate from truth until a human confirms the photographed number.
-SOLUTION_DERIVED_NUMBER_SUSPECTS: dict[tuple[int, int, int], int] = {}
+PUBLISHER_NUMBER_MARGIN = 0.25
 
 
 _STYLE = """
@@ -90,6 +88,7 @@ def _number_priority_cards(
     results: Mapping[int, Mapping[str, Any]],
     work_root: Path,
     review_threshold: float,
+    publisher_number_truth: Mapping[int, Sequence[Mapping[str, Any]]] | None = None,
     puzzle_ids: set[int] | None = None,
     include_trusted_below_threshold: bool = True,
 ) -> tuple[list[str], int, list[str]]:
@@ -117,15 +116,20 @@ def _number_priority_cards(
                 *result.get("number_defects", ()),
             ]
         }
+        publisher_mismatches = {
+            (int(item["row"]), int(item["column"])): item
+            for item in (publisher_number_truth or {}).get(entry.puzzle_id, ())
+            if int(item["observed"]) != int(item["expected"])
+        }
         truth_puzzles += int("number_accuracy" in result)
         for item in result["evidence"]:
             row = int(item["row"])
             column = int(item["column"])
             confidence = float(item["confidence"])
             mismatch = mismatches.get((row, column))
-            suspect = SOLUTION_DERIVED_NUMBER_SUSPECTS.get((entry.puzzle_id, row, column))
+            publisher_mismatch = publisher_mismatches.get((row, column))
             trusted_is_actionable = include_trusted_below_threshold and confidence < review_threshold
-            if bool(item["trusted"]) and not trusted_is_actionable and mismatch is None and suspect is None:
+            if bool(item["trusted"]) and not trusted_is_actionable and mismatch is None and publisher_mismatch is None:
                 continue
             original_cell = original[
                 (row - 1) * cell_size : row * cell_size,
@@ -140,18 +144,31 @@ def _number_priority_cards(
                 badges.append('<span class="badge">untrusted</span>')
             if mismatch is not None:
                 badges.append(f'<span class="badge">truth: {html.escape(str(mismatch["expected"]))}</span>')
-            elif suspect is not None:
-                badges.append(f'<span class="badge">solution suggests: {suspect}</span>')
+            elif publisher_mismatch is not None:
+                badges.append(
+                    f'<span class="badge">publisher {html.escape(str(publisher_mismatch["letter"]))} '
+                    f'⇒ {int(publisher_mismatch["expected"])} '
+                    f'({float(publisher_mismatch["margin"]) * 100:.0f}% margin)</span>'
+                )
             elif "number_accuracy" in result:
                 badges.append('<span class="badge ok">truth agrees</span>')
             card = f"""
-<article class="card{' is-error' if mismatch else ''}" data-puzzle="{entry.puzzle_id}" data-row="{row}" data-column="{column}">
+<article class="card{' is-error' if mismatch or publisher_mismatch else ''}" data-puzzle="{entry.puzzle_id}" data-row="{row}" data-column="{column}">
   <div class="images"><img src="{_image_uri(original_cell)}" alt="Photographed puzzle cell"><img src="{_image_uri(solution_cell)}" alt="Published solution cell, supporting evidence only"></div>
   <div class="identity"><strong>Puzzle {entry.puzzle_id} · r{row:02d}c{column:02d}</strong><span class="confidence">{confidence:.0f}%</span></div>
   <div>OCR reading: <strong>{html.escape(str(item['reading']) or 'unknown')}</strong></div><div class="badges">{''.join(badges)}</div>
 </article>"""
-            records.append((0 if mismatch is not None else 1, confidence, entry.puzzle_id, row, column, card))
-            if suspect is not None:
+            records.append(
+                (
+                    0 if mismatch is not None or publisher_mismatch is not None else 1,
+                    confidence,
+                    entry.puzzle_id,
+                    row,
+                    column,
+                    card,
+                )
+            )
+            if publisher_mismatch is not None:
                 suspect_records.append((entry.puzzle_id, row, column, card))
     records.sort(key=lambda record: record[:-1])
     suspect_records.sort(key=lambda record: record[:-1])
@@ -238,6 +255,84 @@ def _reviewed_grid(result: Mapping[str, Any]) -> list[list[int | str]]:
     for mismatch in result.get("number_accuracy", {}).get("mismatches", ()):
         grid[int(mismatch["row"]) - 1][int(mismatch["column"]) - 1] = int(mismatch["expected"])
     return grid
+
+
+def derive_publisher_number_truth(
+    entries: Sequence[Any],
+    results: Mapping[int, Mapping[str, Any]],
+    *,
+    minimum_margin: float = PUBLISHER_NUMBER_MARGIN,
+) -> dict[int, list[dict[str, Any]]]:
+    """Infer cell numbers from approved mappings and leave-one-puzzle-out answer glyphs."""
+
+    prepared: dict[
+        int,
+        tuple[dict[int, str], dict[int, str], list[tuple[int, int, int, np.ndarray]]],
+    ] = {}
+    for entry in entries:
+        result = results.get(entry.puzzle_id)
+        if result is None or result.get("status") != "ok" or entry.truth is None:
+            continue
+        with entry.truth.open("rb") as stream:
+            truth = tomllib.load(stream)
+        solution = {int(symbol): str(letter).upper() for symbol, letter in truth.get("solution", {}).items()}
+        clues = {int(symbol): str(letter).upper() for symbol, letter in truth.get("clues", {}).items()}
+        if set(solution) != set(range(1, 27)) or len(set(solution.values())) != 26:
+            continue
+        image = cv2.imread(str(entry.solution))
+        if image is None:
+            continue
+        image = cv2.resize(image, (WARP_SIZE, WARP_SIZE), interpolation=cv2.INTER_CUBIC)
+        grid = _reviewed_grid(result)
+        cell_size = WARP_SIZE // len(grid)
+        cells = []
+        for row, values in enumerate(grid):
+            for column, symbol in enumerate(values):
+                if not isinstance(symbol, int):
+                    continue
+                cell = image[
+                    row * cell_size : (row + 1) * cell_size,
+                    column * cell_size : (column + 1) * cell_size,
+                ]
+                feature = _solution_glyph(cell)
+                if feature is not None:
+                    cells.append((row + 1, column + 1, symbol, feature))
+        prepared[entry.puzzle_id] = (solution, clues, cells)
+
+    derived: dict[int, list[dict[str, Any]]] = {}
+    for puzzle_id, (solution, _clues, cells) in prepared.items():
+        templates: dict[str, list[np.ndarray]] = {}
+        for other_id, (_other_solution, other_clues, other_cells) in prepared.items():
+            if other_id == puzzle_id:
+                continue
+            for _row, _column, symbol, feature in other_cells:
+                if symbol in other_clues:
+                    templates.setdefault(other_clues[symbol], []).append(feature)
+        averages = {letter: np.mean(samples, axis=0) for letter, samples in templates.items()}
+        if set(averages) != set(solution.values()):
+            continue
+        inverse = {letter: symbol for symbol, letter in solution.items()}
+        records = []
+        for row, column, observed, feature in cells:
+            scores = sorted(
+                (float(np.mean((feature - reference) ** 2)), letter) for letter, reference in averages.items()
+            )
+            margin = (scores[1][0] - scores[0][0]) / max(scores[1][0], 1e-9)
+            if margin < minimum_margin:
+                continue
+            letter = scores[0][1]
+            records.append(
+                {
+                    "row": row,
+                    "column": column,
+                    "observed": observed,
+                    "expected": inverse[letter],
+                    "letter": letter,
+                    "margin": round(margin, 6),
+                }
+            )
+        derived[puzzle_id] = records
+    return derived
 
 
 def _solution_review_sections(
@@ -377,6 +472,7 @@ def write_audit_reports(
     number_summary: Mapping[str, Any],
     clue_summary: Mapping[str, Any],
     solution_summary: Mapping[str, Any] | None = None,
+    publisher_number_truth: Mapping[int, Sequence[Mapping[str, Any]]] | None = None,
 ) -> Path:
     """Write separate, confidence-first number and clue OCR reports."""
 
@@ -388,12 +484,14 @@ def write_audit_reports(
         results=results,
         work_root=work_root,
         review_threshold=review_threshold,
+        publisher_number_truth=publisher_number_truth,
     )
     unsolved_cards, _, _ = _number_priority_cards(
         entries=entries,
         results=results,
         work_root=work_root,
         review_threshold=review_threshold,
+        publisher_number_truth=publisher_number_truth,
         puzzle_ids=unsolved_ids,
         include_trusted_below_threshold=False,
     )
@@ -424,17 +522,17 @@ def write_audit_reports(
         )
     )
     suspect_body = (
-        '<p class="legend">These are hypotheses inferred because the approved publisher mapping decodes '
-        "a slot to a one-letter near-miss of an ordinary word. They are not ground truth until visually confirmed. "
-        "Left: puzzle photograph. Right: published solution photograph.</p><div class=\"cards\">"
+        '<p class="legend">The answer letter is independently classified from the published solution photograph, '
+        "then converted back to its approved symbol number. Each target puzzle is excluded while its letter templates "
+        "are built. Left: puzzle photograph. Right: published solution photograph.</p><div class=\"cards\">"
         + "".join(suspect_cards)
         + "</div>"
     )
     (destination / "number-suspects.html").write_text(
         _document(
             title="cdbr solution-derived number suspects",
-            header="Solution-derived number suspects",
-            description=f"Focused human review of {len(suspect_cards)} provisional number corrections.",
+            header="Publisher-derived number mismatches",
+            description=f"Focused review of {len(suspect_cards)} high-margin number disagreements.",
             body=suspect_body,
         )
     )
@@ -530,7 +628,7 @@ document.querySelector('#export-unsolved-review').addEventListener('click', () =
         if outcome_rows
         else ""
     )
-    index = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>cdbr corpus audit</title><style>{_STYLE}</style></head><body><header><h1>Code Break OCR audit</h1><p>Independent recognition concerns. Confirmed errors lead each queue, then confidence determines review priority; only human-reviewed fixtures contribute to accuracy.</p></header><main><div class="queues"><section class="queue"><h2>Puzzle-cell numbers</h2><div class="summary">{_accuracy_metrics(number_summary, 'number')}</div><p>{len(number_cards)} cells need attention. {number_truth_puzzles} puzzles currently have reviewed number truth.</p><a href="numbers.html">Open error-first number queue →</a><br><a href="number-suspects.html">Review {len(suspect_cards)} solution-derived suspects →</a></section><section class="queue"><h2>Reference-grid clues</h2><div class="summary">{_accuracy_metrics(clue_summary, 'clue-character')}</div><p>{len(clue_cards)} detected or known clue positions. {clue_truth_puzzles} puzzles currently have reviewed clue truth.</p><a href="clues.html">Open error-first clue queue →</a></section><section class="queue"><h2>Publisher solutions</h2><div class="summary">{_metric(len(solution_sections), 'answer keys awaiting or carrying truth')}</div><p>Approve proposed symbol-to-letter mappings against the published answer crops before scoring the solver.</p><a href="solutions.html">Open solution approval gate →</a></section></div>{solution_outcomes}</main></body></html>"""
+    index = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>cdbr corpus audit</title><style>{_STYLE}</style></head><body><header><h1>Code Break OCR audit</h1><p>Independent recognition concerns. Confirmed errors lead each queue, then confidence determines review priority; only human-reviewed fixtures contribute to accuracy.</p></header><main><div class="queues"><section class="queue"><h2>Puzzle-cell numbers</h2><div class="summary">{_accuracy_metrics(number_summary, 'number')}{_metric(len(suspect_cards), 'publisher-derived mismatches')}</div><p>{len(number_cards)} cells need attention. {number_truth_puzzles} puzzles currently have reviewed number truth.</p><a href="numbers.html">Open error-first number queue →</a><br><a href="number-suspects.html">Review {len(suspect_cards)} publisher-derived mismatches →</a></section><section class="queue"><h2>Reference-grid clues</h2><div class="summary">{_accuracy_metrics(clue_summary, 'clue-character')}</div><p>{len(clue_cards)} detected or known clue positions. {clue_truth_puzzles} puzzles currently have reviewed clue truth.</p><a href="clues.html">Open error-first clue queue →</a></section><section class="queue"><h2>Publisher solutions</h2><div class="summary">{_metric(len(solution_sections), 'answer keys awaiting or carrying truth')}</div><p>Approve proposed symbol-to-letter mappings against the published answer crops before scoring the solver.</p><a href="solutions.html">Open solution approval gate →</a></section></div>{solution_outcomes}</main></body></html>"""
     target = destination / "index.html"
     target.write_text(index)
     return target.resolve()

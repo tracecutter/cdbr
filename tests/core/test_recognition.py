@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from cdbr.core.recognition import (
+    CellReading,
     _adjudicate_clue_topology,
     _adjudicate_counter_family,
     _block_mask,
@@ -20,8 +21,16 @@ from cdbr.core.recognition import (
     _select_clue,
     clue_ink_pixels,
     detect_grid_size,
+    needs_hil_review,
     recognize_photo,
 )
+
+
+def test_hil_review_keeps_low_margin_counter_family_readings_visible() -> None:
+    assert needs_hil_review(CellReading(row=1, column=1, text="6", confidence=67.9, trusted=True))
+    assert not needs_hil_review(CellReading(row=1, column=1, text="6", confidence=68.0, trusted=True))
+    assert not needs_hil_review(CellReading(row=1, column=1, text="23", confidence=60.0, trusted=True))
+    assert needs_hil_review(CellReading(row=1, column=1, text="23", confidence=90.0, trusted=False))
 
 
 def test_grid_geometry_adapts_to_supported_square_sizes() -> None:

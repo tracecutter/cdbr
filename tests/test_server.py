@@ -162,52 +162,35 @@ def test_check_marks_incorrect_symbols_without_revealing_answers():
     assert "letter" not in wrong.text
 
 
-def test_photo_session_converges_on_same_playable_state(monkeypatch):
-    grid = ((1, 2), (3, 4))
-    puzzle = CodewordPuzzle(grid=grid, clues={1: "A"}, slots=extract_slots(grid))
-    solved = SimpleNamespace(
-        puzzle=puzzle,
-        mapping={1: "A", 2: "B", 3: "C", 4: "D"},
-        result=SimpleNamespace(exhausted=True, solutions=(object(),)),
-    )
-    monkeypatch.setattr(server_module, "detect_photo_format", lambda _: PhotoFormat.JPEG)
-    monkeypatch.setattr(server_module, "solve_photo", lambda _source, _work_dir: solved)
-
+def test_legacy_photo_session_cannot_bypass_human_review():
     response = client.post(
         "/api/sessions/from-photo",
         files={"photo": ("puzzle.jpg", b"pretend jpeg", "image/jpeg")},
     )
 
-    assert response.status_code == 201
-    prepared = response.json()
-    assert prepared["title"] == "Scanned puzzle"
-    assert prepared["provenance"] == "photo"
-    assert prepared["clues"] == {"1": "A"}
-    assert prepared["solution_status"] == "certified"
-    assert "solution" not in prepared
-    revealed = client.post(f"/api/sessions/{prepared['session_id']}/reveal/4")
-    assert revealed.json() == {"symbol": 4, "letter": "D", "solution_status": "certified"}
+    assert response.status_code == 410
+    assert "/api/scan-jobs" in response.json()["detail"]
 
 
 def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatch):
     observation = PuzzleObservation(
         source=server_module.Path("upload.jpg"),
         source_format="JPEG",
-        grid=((1, UNKNOWN), (3, 4)),
+        grid=((1, UNKNOWN), (6, 4)),
         clues={1: "A"},
         uncertainties=(CellUncertainty(row=1, column=2, reading="2", confidence=43.0),),
         evidence=(
             CellEvidence(row=1, column=1, reading="1", confidence=90.0, trusted=True),
             CellEvidence(row=1, column=2, reading="2", confidence=43.0, trusted=False),
-            CellEvidence(row=2, column=1, reading="3", confidence=91.0, trusted=True),
+            CellEvidence(row=2, column=1, reading="6", confidence=65.0, trusted=True),
             CellEvidence(row=2, column=2, reading="4", confidence=92.0, trusted=True),
         ),
         clue_evidence=(ClueEvidence(symbol=1, reading="A", confidence=100.0),),
     )
-    puzzle = CodewordPuzzle(grid=((1, 2), (3, 4)), clues={1: "A"}, slots=extract_slots(((1, 2), (3, 4))))
+    puzzle = CodewordPuzzle(grid=((1, 2), (6, 4)), clues={1: "A"}, slots=extract_slots(((1, 2), (6, 4))))
     solved = SimpleNamespace(
         puzzle=puzzle,
-        mapping={1: "A", 2: "B", 3: "C", 4: "D"},
+        mapping={1: "A", 2: "B", 4: "D", 6: "C"},
         result=SimpleNamespace(exhausted=True, solutions=(object(),)),
     )
     monkeypatch.setattr(server_module, "detect_photo_format", lambda _: PhotoFormat.JPEG)
@@ -253,7 +236,15 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
             "confidence": 43.0,
             "reason": "needs confirmation",
             "image": f"/api/scan-jobs/{review['job_id']}/cells/1/2",
-        }
+        },
+        {
+            "row": 2,
+            "column": 1,
+            "proposed": 6,
+            "confidence": 65.0,
+            "reason": "needs confirmation",
+            "image": f"/api/scan-jobs/{review['job_id']}/cells/2/1",
+        },
     ]
     assert len(review["review_clues"]) == 2
     assert review["review_clues"][0] == {
@@ -284,7 +275,10 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
     missing_reference_cell = client.post(
         f"/api/scan-jobs/{review['job_id']}/complete",
         json={
-            "cells": [{"row": 1, "column": 2, "value": 2}],
+            "cells": [
+                {"row": 1, "column": 2, "value": 2},
+                {"row": 2, "column": 1, "value": 6},
+            ],
             "clues": [{"symbol": 1, "letter": "A"}],
         },
     )
@@ -294,12 +288,15 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
     completed = client.post(
         f"/api/scan-jobs/{review['job_id']}/complete",
         json={
-            "cells": [{"row": 1, "column": 2, "value": 2}],
+            "cells": [
+                {"row": 1, "column": 2, "value": 2},
+                {"row": 2, "column": 1, "value": 6},
+            ],
             "clues": [{"symbol": 1, "letter": "A"}, {"symbol": 2, "letter": "B"}],
         },
     )
     assert completed.status_code == 201
-    assert completed.json()["grid"] == [[1, 2], [3, 4]]
+    assert completed.json()["grid"] == [[1, 2], [6, 4]]
     assert completed.json()["clues"] == {"1": "A", "2": "B"}
     assert completed.json()["provenance"] == "photo"
     assert completed.json()["solution_status"] == "not_requested"

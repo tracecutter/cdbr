@@ -90,7 +90,13 @@ from cdbr.core.photo import PhotoFormat, detect_photo_format
 from cdbr.core.pipeline import solve_observation, solve_photo
 from cdbr.core.puzzle import BLOCK, PuzzleObservation
 from cdbr.core.presentation import write_solution_photo
-from cdbr.core.recognition import MIN_CLUE_REVIEW_INK_PIXELS, clue_ink_pixels, normalize_photo, recognize_photo
+from cdbr.core.recognition import (
+    MIN_CLUE_REVIEW_INK_PIXELS,
+    clue_ink_pixels,
+    needs_hil_review,
+    normalize_photo,
+    recognize_photo,
+)
 
 DEFAULT_MAX_UPLOAD_MIB = 25
 CHUNK_SIZE = 1024 * 1024
@@ -355,7 +361,7 @@ def _remember_scan(job: ScanJob) -> None:
 def _scan_public(job: ScanJob) -> dict[str, object]:
     review = []
     for item in job.observation.evidence:
-        if item.trusted:
+        if not needs_hil_review(item):
             continue
         proposed = int(item.reading) if item.reading.isdigit() and 1 <= int(item.reading) <= 26 else None
         review.append(
@@ -713,7 +719,7 @@ async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, o
         if reference_grid is None:
             raise ValueError("Could not prepare reference-grid review images")
         for item in observation.evidence:
-            if item.trusted:
+            if not needs_hil_review(item):
                 continue
             row = item.row - 1
             column = item.column - 1
@@ -769,7 +775,7 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
     """Apply reviewed OCR values and enter play without requiring a solution."""
 
     job = _scan_job(job_id)
-    required = {(item.row, item.column) for item in job.observation.evidence if not item.trusted}
+    required = {(item.row, item.column) for item in job.observation.evidence if needs_hil_review(item)}
     corrections = {(item.row, item.column): item.value for item in request.cells}
     missing = required - corrections.keys()
     if missing:
@@ -820,36 +826,15 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
     return session
 
 
-@app.post("/api/sessions/from-photo", status_code=201)
-async def photo_session_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, object]:
-    suffix = Path(photo.filename or "upload").suffix.lower()
-    if suffix not in {".avif", ".heic", ".heif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}:
-        suffix = ".img"
-    with tempfile.TemporaryDirectory(prefix="cdbr-http-") as directory:
-        work_dir = Path(directory)
-        source = work_dir / f"upload{suffix}"
-        await _save_upload(photo, source)
-        try:
-            if detect_photo_format(source) is PhotoFormat.UNKNOWN:
-                raise ValueError("Unsupported or unrecognised image format")
-            solved = solve_photo(source, work_dir)
-            if not solved.result.exhausted or len(solved.result.solutions) != 1:
-                raise ValueError("The photographed puzzle could not be certified with one unique solution")
-        except (CdbrCoreError, ValueError) as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+@app.post("/api/sessions/from-photo")
+async def photo_session_endpoint(photo: Annotated[UploadFile, File()]) -> None:
+    """Reject the legacy scan shortcut so every upload passes through fresh HIL."""
 
-    grid = [list(row) for row in solved.puzzle.grid]
-    used_symbols = sorted({symbol for row in grid for symbol in row if symbol is not None})
-    puzzle: dict[str, object] = {
-        "title": "Scanned puzzle",
-        "grid": grid,
-        "clues": solved.puzzle.clues,
-        "symbols": list(range(1, 27)),
-        "used_symbols": used_symbols,
-        "provenance": "photo",
-    }
-    solution = _complete_mapping(grid, solved.mapping)
-    return _create_session(puzzle, solution).public()
+    del photo
+    raise HTTPException(
+        status_code=410,
+        detail="Direct photo sessions are retired; create a fresh /api/scan-jobs review instead",
+    )
 
 
 @app.get("/health")

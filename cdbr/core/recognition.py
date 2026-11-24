@@ -24,6 +24,8 @@ WARP_SIZE = 1500
 MIN_OCR_CONFIDENCE = 80.0
 MIN_TEMPLATE_MARGIN = 0.15
 MIN_WHOLE_NUMBER_MARGIN = 0.20
+HIL_REVIEW_CONFIDENCE = 68.0
+HIL_AMBIGUOUS_NUMBERS = frozenset((5, 6, 8, 16, 18))
 WHOLE_TOKEN_PIPELINE = "whole-token"
 LEGACY_PIPELINE = "legacy"
 OCR_PIPELINES = (LEGACY_PIPELINE, WHOLE_TOKEN_PIPELINE)
@@ -43,6 +45,15 @@ class CellReading:
     text: str
     confidence: float
     trusted: bool = False
+
+
+def needs_hil_review(reading: CellReading | CellEvidence) -> bool:
+    """Return whether gameplay should ask a human to confirm this fresh reading."""
+
+    if not reading.trusted:
+        return True
+    text = reading.text if isinstance(reading, CellReading) else reading.reading
+    return reading.confidence < HIL_REVIEW_CONFIDENCE and text.isdigit() and int(text) in HIL_AMBIGUOUS_NUMBERS
 
 
 @dataclass(kw_only=True)

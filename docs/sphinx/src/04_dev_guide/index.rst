@@ -40,6 +40,8 @@ Run the OCR corpus benchmark, optionally limiting an experiment to a single puzz
 
 ``make benchmark-audit`` reruns OCR and independent search, then regenerates the error-first number, reference-clue, publisher-validation, and search-outcome pages beneath ``build/corpus-audit/``. Corpus benchmarks are engineering tools and are intentionally not part of the quick ``make check`` gate. The same directory retains ``summary.json`` for before-and-after comparisons.
 
+Approved publisher answer keys provide an independent number check. cdbr classifies each printed answer letter using templates built from the other puzzles, converts that letter through the approved symbol mapping, and compares the resulting number with fresh puzzle OCR. These publisher-derived measurements remain separate from sparse hand-reviewed truth; they may correct the simulated HIL lane only when that fresh scan actually requested human review.
+
 Regenerate README, manpage, and Sphinx projections from their canonical sources:
 
 .. code:: bash

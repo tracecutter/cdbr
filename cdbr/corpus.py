@@ -20,7 +20,7 @@ import cdbr.ui as click
 import cv2
 
 from cdbr import __version__
-from cdbr.corpus_audit import write_audit_reports
+from cdbr.corpus_audit import derive_publisher_number_truth, write_audit_reports
 from cdbr.core.lexicon import english_lexicon, word_pattern
 from cdbr.core.model import CodewordPuzzle, extract_slots
 from cdbr.core.puzzle import BLOCK, UNKNOWN
@@ -31,6 +31,7 @@ from cdbr.core.recognition import (
     RecognitionTrace,
     _block_mask,
     _cell_images,
+    needs_hil_review,
     recognize_photo,
 )
 from cdbr.core.solver import slot_candidates, solve
@@ -304,6 +305,7 @@ def benchmark_entry(
         for item in evidence
     ]
     review_cells = []
+    hil_review_cells = []
     for item in evidence:
         reasons = _review_reasons(
             trusted=item.trusted,
@@ -318,6 +320,15 @@ def benchmark_entry(
                     "reading": item.reading,
                     "confidence": round(item.confidence, 3),
                     "reasons": reasons,
+                }
+            )
+        if needs_hil_review(item):
+            hil_review_cells.append(
+                {
+                    "row": item.row,
+                    "column": item.column,
+                    "reading": item.reading,
+                    "confidence": round(item.confidence, 3),
                 }
             )
 
@@ -372,6 +383,7 @@ def benchmark_entry(
         "grid": observation.grid,
         "evidence": evidence_payload,
         "review_cells": review_cells,
+        "hil_review_cells": hil_review_cells,
     }
     return apply_truth(result, entry.truth) if entry.truth is not None else result
 
@@ -445,9 +457,28 @@ def summarize_accuracy(results: Iterable[dict[str, Any]], concern: str) -> dict[
     return summary
 
 
+def summarize_publisher_number_truth(
+    derived: Mapping[int, Iterable[Mapping[str, Any]]],
+) -> dict[str, Any]:
+    """Score OCR numbers against letters independently read from publisher answer keys."""
+
+    records = [dict(item, puzzle_id=puzzle_id) for puzzle_id, items in derived.items() for item in items]
+    mismatches = [item for item in records if int(item["observed"]) != int(item["expected"])]
+    correct = len(records) - len(mismatches)
+    return {
+        "puzzles": len(derived),
+        "samples": len(records),
+        "correct": correct,
+        "incorrect": len(mismatches),
+        "accuracy_percent": round(100.0 * correct / len(records), 3) if records else 0.0,
+        "mismatches": mismatches,
+    }
+
+
 def benchmark_solutions(
     entries: Iterable[CorpusEntry],
     results: dict[int, dict[str, Any]],
+    publisher_number_truth: Mapping[int, Iterable[Mapping[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Measure scan/HIL and ground-truth search as strictly separate lanes."""
 
@@ -524,6 +555,11 @@ def benchmark_solutions(
         truth_grid = [list(row) for row in result["grid"]]
         reviewed_grid = _truth_grid(truth, entry.truth)
         defects = _truth_number_defects(truth, entry.truth)
+        publisher_truth = {
+            (int(item["row"]), int(item["column"])): int(item["expected"])
+            for item in (publisher_number_truth or {}).get(entry.puzzle_id, ())
+        }
+        review_positions = {(int(item["row"]), int(item["column"])) for item in result.get("hil_review_cells", ())}
         number_reviews = 0
         number_corrections = 0
         for evidence in result.get("evidence", ()):
@@ -536,12 +572,14 @@ def benchmark_solutions(
                 expected = int(reviewed) if reviewed not in {BLOCK, UNKNOWN} else None
             elif (row, column) in defects:
                 expected = defects[row, column]
+            elif (row, column) in publisher_truth:
+                expected = publisher_truth[row, column]
             observed = int(reading) if reading.isdigit() else None
             if expected is not None:
                 truth_grid[row - 1][column - 1] = expected
             elif observed is not None and truth_grid[row - 1][column - 1] == UNKNOWN:
                 truth_grid[row - 1][column - 1] = observed
-            if evidence["trusted"] is True:
+            if (row, column) not in review_positions:
                 continue
             reviewed_value = expected if expected is not None else observed
             if reviewed_value is not None:
@@ -552,6 +590,8 @@ def benchmark_solutions(
             truth_grid = [list(row) for row in reviewed_grid]
         for (row, column), expected in defects.items():
             truth_grid[row - 1][column - 1] = expected
+        for item in (publisher_number_truth or {}).get(entry.puzzle_id, ()):
+            truth_grid[int(item["row"]) - 1][int(item["column"]) - 1] = int(item["expected"])
 
         solution_truth = _truth_solution(truth, entry.truth)
         clue_truth = _truth_clues(truth, entry.truth)
@@ -844,16 +884,18 @@ def main(
     for entry in entries:
         if entry.truth is not None and entry.puzzle_id in latest and latest[entry.puzzle_id].get("status") == "ok":
             latest[entry.puzzle_id] = apply_truth(latest[entry.puzzle_id], entry.truth)
+    publisher_number_truth = derive_publisher_number_truth(entries, latest)
     summary: dict[str, Any] = {
         "ocr_pipeline": ocr_pipeline,
         **summarize(latest.values()),
         "number_ocr": summarize_accuracy(latest.values(), "number"),
         "clue_ocr": summarize_accuracy(latest.values(), "clue"),
+        "publisher_number_ocr": summarize_publisher_number_truth(publisher_number_truth),
         "classification": summarize_classification(latest.values()),
         "resources": resource_usage(),
     }
     if solve_corpus:
-        summary["solutions"] = benchmark_solutions(entries, latest)
+        summary["solutions"] = benchmark_solutions(entries, latest, publisher_number_truth)
         for outcome in summary["solutions"]["outcomes"]:
             result = latest[int(outcome["puzzle_id"])]
             cells = result["cells"]
@@ -890,6 +932,7 @@ def main(
             number_summary=summary["number_ocr"],
             clue_summary=summary["clue_ocr"],
             solution_summary=summary.get("solutions"),
+            publisher_number_truth=publisher_number_truth,
         )
         click.echo(f"Corpus audit: {target}")
 
