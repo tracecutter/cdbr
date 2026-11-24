@@ -641,6 +641,8 @@ release-guard:
 		branch=$$(git rev-parse --abbrev-ref HEAD); \
 		[ -n "$$branch" ] && [ "$$branch" != "HEAD" ] || { \
 			echo "❌ Cannot release from detached HEAD"; exit 1; }; \
+		[ "$$branch" = "main" ] || { \
+			echo "❌ Release from main. Merge your changes to main first."; exit 1; }; \
 		[ -z "$$(git status --porcelain)" ] || { \
 			echo "❌ Working tree is dirty. Commit or stash before tagging."; \
 			exit 1; }; \
