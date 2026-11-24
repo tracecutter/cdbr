@@ -8,7 +8,17 @@ from cdbr.core.lexicon import english_lexicon, word_pattern
 def test_publisher_confirmed_supplemental_words_are_available() -> None:
     lexicon = english_lexicon(system_dictionary=Path("/does/not/exist"))
 
-    for word in ("JUMPTHEGUN", "MERCYPROOF", "SHEMOZZLE"):
+    for word in (
+        "BULLYOFF",
+        "ELMIEST",
+        "FRIZZLIEST",
+        "JUMPTHEGUN",
+        "MERCYPROOF",
+        "NOHIT",
+        "OXFORDBLUE",
+        "SHEMOZZLE",
+        "TUCKBOX",
+    ):
         symbols = tuple(word)
         candidates = lexicon.candidates(symbols)
         assert word_pattern(symbols) == word_pattern(word)

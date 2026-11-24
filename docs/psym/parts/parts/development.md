@@ -50,7 +50,9 @@ classifies each printed answer letter using templates built from the other
 puzzles, converts that letter through the approved symbol mapping, and compares
 the resulting number with fresh puzzle OCR. These publisher-derived measurements
 remain separate from sparse hand-reviewed truth; they may correct the simulated
-HIL lane only when that fresh scan actually requested human review.
+HIL lane only when that fresh scan actually requested human review. Reports call
+this **oracle-assisted review**: it proves that correct answers at the offered
+review gates are sufficient, not that a player will necessarily make them.
 
 Regenerate README, manpage, and Sphinx projections from their canonical sources:
 

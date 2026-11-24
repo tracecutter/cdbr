@@ -494,7 +494,7 @@ def benchmark_solutions(
         solved = solve(puzzle, lexicon)
         elapsed = time.perf_counter() - started
         if not solved.solutions:
-            status = "contradiction" if solved.exhausted else "search-limited"
+            status = "no-solution-under-candidates" if solved.exhausted else "search-limited"
             mapping = solved.best_mapping
         elif solved.exhausted and len(solved.solutions) == 1:
             status = "certified"
@@ -601,10 +601,10 @@ def benchmark_solutions(
         truth_rejections = validate_publisher(truth_search["puzzle"], solution_truth)
         observed_clues = {int(item["symbol"]): str(item["reading"]) for item in result.get("clue_evidence", ())}
         clue_corrections = sum(observed_clues.get(symbol) != letter for symbol, letter in clue_truth.items())
-        presumed_hil = bool(number_reviews or clue_corrections)
+        oracle_review = bool(number_reviews or clue_corrections)
         outcome_result = (
-            "solved-with-presumed-hil"
-            if hil_search["status"] in {"certified", "candidate"} and presumed_hil
+            "solved-with-oracle-review"
+            if hil_search["status"] in {"certified", "candidate"} and oracle_review
             else "solved" if hil_search["status"] in {"certified", "candidate"} else "unsolved"
         )
         mismatches = [
@@ -659,7 +659,7 @@ def benchmark_solutions(
         "multiple": sum(item["status"] == "multiple" for item in outcomes),
         "unsolved": [item["puzzle_id"] for item in outcomes if item["status"] not in {"certified", "candidate"}],
         "solved": sum(item["result"] == "solved" for item in outcomes),
-        "solved_with_presumed_hil": sum(item["result"] == "solved-with-presumed-hil" for item in outcomes),
+        "solved_with_oracle_review": sum(item["result"] == "solved-with-oracle-review" for item in outcomes),
         "publisher_scored": sum(bool(item.get("publisher_scored")) for item in outcomes),
         "publisher_valid": sum(item.get("publisher_validation") == "accepted" for item in outcomes),
         "publisher_rejected": [

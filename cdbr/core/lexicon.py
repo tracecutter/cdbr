@@ -14,9 +14,15 @@ from wordfreq import iter_wordlist, zipf_frequency
 # Publisher-confirmed solution words absent from the packaged British wordlist.
 # Keep this small, explicit, and backed by the approved solution corpus.
 SUPPLEMENTAL_BRITISH_WORDS = (
+    "bullyoff",
+    "elmiest",
+    "frizzliest",
     "jumpthegun",
     "mercyproof",
+    "nohit",
+    "oxfordblue",
     "shemozzle",
+    "tuckbox",
 )
 
 

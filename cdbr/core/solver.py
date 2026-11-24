@@ -245,7 +245,7 @@ def solve_result_to_toml(puzzle: CodewordPuzzle, result: SolveResult) -> str:
     document.add("search_exhausted", result.exhausted)
     document.add("search_nodes", result.nodes)
     if not result.solutions:
-        status = "contradiction-under-lexicon" if result.exhausted else "search-limited"
+        status = "no-solution-under-candidates" if result.exhausted else "search-limited"
     elif len(result.solutions) > 1:
         status = "multiple"
     elif result.exhausted:

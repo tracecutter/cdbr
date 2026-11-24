@@ -460,13 +460,13 @@ def test_write_audit_reports_separates_number_and_clue_queues(tmp_path: Path) ->
         clue_summary={"puzzles": 0},
         solution_summary={
             "solved": 0,
-            "solved_with_presumed_hil": 1,
+            "solved_with_oracle_review": 1,
             "unsolved": [],
             "outcomes": [
                 {
                     "puzzle_id": 44,
                     "status": "certified",
-                    "result": "solved-with-presumed-hil",
+                    "result": "solved-with-oracle-review",
                     "number_reviews": 2,
                     "number_corrections": 1,
                     "clue_corrections": 1,
@@ -479,9 +479,9 @@ def test_write_audit_reports_separates_number_and_clue_queues(tmp_path: Path) ->
 
     assert target == (tmp_path / "audit" / "index.html").resolve()
     assert "Independent recognition concerns" in target.read_text()
-    assert "solved with presumed HIL" in target.read_text()
+    assert "solved with oracle-assisted review" in target.read_text()
     assert "0.125s" in target.read_text()
-    assert "Review 0 scan/HIL contradictions" in target.read_text()
+    assert "Review 0 scan/HIL failures" in target.read_text()
     unsolved = (tmp_path / "audit" / "unsolved.html").read_text()
     assert "DOMContentLoaded" in unsolved
     assert "Correct number (if known)" in unsolved
