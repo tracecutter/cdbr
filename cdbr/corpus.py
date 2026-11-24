@@ -836,7 +836,7 @@ def publish_corpus_assets(
         (destination / f"puzzle-{entry.puzzle_id}.toml").write_text("\n".join(lines))
         if private_destination is not None:
             private_destination.mkdir(parents=True, exist_ok=True)
-            (private_destination / f"puzzle-{entry.puzzle_id}.toml").write_text(
+            (private_destination / f"puzzle_{entry.puzzle_id:03d}.toml").write_text(
                 "[solution]\n" + "".join(f'"{symbol}" = "{solution[symbol]}"\n' for symbol in range(1, 27))
             )
         published.append(entry.puzzle_id)

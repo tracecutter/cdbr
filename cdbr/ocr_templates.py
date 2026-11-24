@@ -26,7 +26,7 @@ def _reviewed_samples(
         if result.get("status") != "ok":
             continue
         puzzle_id = int(result["puzzle_id"])
-        truth_path = truth_root / f"puzzle_{puzzle_id:02d}.toml"
+        truth_path = truth_root / f"puzzle_{puzzle_id:03d}.toml"
         if not truth_path.is_file():
             continue
         with truth_path.open("rb") as stream:

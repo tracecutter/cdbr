@@ -455,7 +455,7 @@ def test_solution_approval_import_and_sparse_asset_publication(tmp_path: Path) -
     assert asset["serial"] == 31
     assert asset["grid"] == ["1 2", "## 1"]
     assert "solution" not in asset
-    private = tomllib.loads((tmp_path / "private" / "puzzle-31.toml").read_text())
+    private = tomllib.loads((tmp_path / "private" / "puzzle_031.toml").read_text())
     assert private["solution"]["26"] == "Z"
 
 

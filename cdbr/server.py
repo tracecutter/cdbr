@@ -218,7 +218,9 @@ def _playable_puzzle(puzzle_id: str) -> tuple[dict[str, object], dict[int, str] 
         [None if value == "##" else int(value) for value in str(row).split()] for row in source["grid"]
     ]
     private_root = Path(os.environ.get("CDBR_SOLUTIONS_DIR", "solutions/playable"))
-    private_path = private_root / source_path.name
+    private_path = private_root / f"puzzle_{serial:03d}.toml"
+    if not private_path.is_file():
+        private_path = private_root / source_path.name
     answers = source
     if private_path.is_file():
         with private_path.open("rb") as stream:
