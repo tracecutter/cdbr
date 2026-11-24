@@ -5,9 +5,11 @@ review_status = "human-reviewed"
 
 [number_defects]
 "r02c03" = 20
+"r07c03" = 16
 "r07c06" = 20
 "r11c04" = 20
 "r13c02" = 20
+"r13c05" = 16
 "r13c07" = 20
 "r13c08" = 20
 
