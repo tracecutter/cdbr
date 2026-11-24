@@ -62,10 +62,10 @@ def _reviewed_samples(
 
 
 def build_number_ambiguities(results: Path, work_root: Path, truth_root: Path, destination: Path) -> int:
-    """Build the 6/8 and 16/18 bank without copying full photographs."""
+    """Build reviewed whole-token ambiguity families without retaining photographs."""
 
     all_features, all_labels, all_puzzle_ids = _reviewed_samples(results, work_root, truth_root)
-    selected = np.isin(all_labels, (6, 8, 16, 18))
+    selected = np.isin(all_labels, (6, 8, 9, 16, 18, 19))
     destination.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         destination,

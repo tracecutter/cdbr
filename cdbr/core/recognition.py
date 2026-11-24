@@ -511,6 +511,48 @@ def _reviewed_number_vote(
     return assessment[0] if assessment is not None else None
 
 
+def _quadrant_ink_share(feature: np.ndarray) -> float:
+    """Measure upper-right ink mass after whole-glyph alignment."""
+
+    ink = 1.0 - feature.astype(np.float32) / 255.0
+    height, width = ink.shape
+    return float(np.sum(ink[: height // 2, width // 2 :]) / max(float(np.sum(ink)), 1e-6))
+
+
+@lru_cache(maxsize=64)
+def _reviewed_six_eight_quadrant_thresholds(excluded_puzzle_id: int | None) -> tuple[float, float] | None:
+    features, labels, puzzle_ids = _reviewed_number_templates()
+    eligible = np.isin(labels, (6, 8))
+    if excluded_puzzle_id is not None:
+        eligible &= puzzle_ids != excluded_puzzle_id
+    six = features[eligible & (labels == 6)]
+    eight = features[eligible & (labels == 8)]
+    if not len(six) or not len(eight):
+        return None
+    lower = float(np.percentile([_quadrant_ink_share(item) for item in eight], 1.0))
+    upper = float(np.percentile([_quadrant_ink_share(item) for item in six], 99.0))
+    return lower, upper
+
+
+def _reviewed_six_eight_quadrant_vote(
+    cell: np.ndarray,
+    *,
+    excluded_puzzle_id: int | None = None,
+) -> int | None:
+    """Return only an extreme, corpus-calibrated 6/8 quadrant vote."""
+
+    thresholds = _reviewed_six_eight_quadrant_thresholds(excluded_puzzle_id)
+    if thresholds is None:
+        return None
+    lower, upper = thresholds
+    share = _quadrant_ink_share(_reviewed_number_feature(cell))
+    if share < lower:
+        return 6
+    if share > upper:
+        return 8
+    return None
+
+
 def _audit_reviewed_number_families(
     readings: list[CellReading],
     cells_by_position: dict[tuple[int, int], np.ndarray],
@@ -519,7 +561,7 @@ def _audit_reviewed_number_families(
 ) -> list[CellReading]:
     """Revoke trust when reviewed examples dispute a known OCR ambiguity."""
 
-    families = (frozenset((6, 8)), frozenset((9, 19)), frozenset((16, 18)))
+    families = (frozenset((6, 8, 16, 18)), frozenset((9, 19)))
     reviewed = []
     for reading in readings:
         if not reading.trusted or not reading.text.isdigit():
@@ -536,13 +578,29 @@ def _audit_reviewed_number_families(
             excluded_puzzle_id=excluded_puzzle_id,
         )
         vote, margin = assessment if assessment is not None else (None, 1.0)
+        cell = cells_by_position[(reading.row, reading.column)]
+        token_arities = {
+            len(_digit_glyphs(cell)),
+            len(_digit_glyphs(cell, suppress_illumination=True)),
+        }
+        arity_agrees = len(token_arities) == 1 and 0 not in token_arities
+        arity_matches = not arity_agrees or token_arities == {len(reading.text)}
+        quadrant_vote = (
+            _reviewed_six_eight_quadrant_vote(cell, excluded_puzzle_id=excluded_puzzle_id)
+            if value in {6, 8} and token_arities == {1}
+            else None
+        )
+        quadrant_matches = quadrant_vote is None or quadrant_vote == value
         reviewed.append(
             CellReading(
                 row=reading.row,
                 column=reading.column,
                 text=reading.text,
                 confidence=reading.confidence,
-                trusted=(vote is None or vote == value) and margin >= MIN_REVIEWED_FAMILY_MARGIN,
+                trusted=(vote is None or vote == value)
+                and margin >= MIN_REVIEWED_FAMILY_MARGIN
+                and arity_matches
+                and quadrant_matches,
             )
         )
     return reviewed
