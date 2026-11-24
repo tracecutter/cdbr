@@ -4,6 +4,9 @@ source = "Human review of puzzle 32 reference grid."
 review_status = "human-reviewed"
 
 [number_defects]
+"r01c15" = 19
+"r03c03" = 8
+"r04c15" = 19
 "r05c01" = 20
 "r05c03" = 20
 

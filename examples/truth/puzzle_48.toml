@@ -4,12 +4,17 @@ source = "Human review of puzzle 48 reference grid."
 review_status = "human-reviewed"
 
 [number_defects]
+"r01c11" = 16
+"r02c13" = 19
 "r02c03" = 20
-"r07c03" = 16
+"r04c03" = 8
+"r07c03" = 18
 "r07c06" = 20
+"r07c12" = 16
 "r11c04" = 20
+"r11c05" = 16
 "r13c02" = 20
-"r13c05" = 16
+"r13c05" = 18
 "r13c07" = 20
 "r13c08" = 20
 

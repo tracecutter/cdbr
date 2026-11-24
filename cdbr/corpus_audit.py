@@ -153,7 +153,7 @@ def _number_priority_cards(
             elif "number_accuracy" in result:
                 badges.append('<span class="badge ok">truth agrees</span>')
             card = f"""
-<article class="card{' is-error' if mismatch or publisher_mismatch else ''}" data-puzzle="{entry.puzzle_id}" data-row="{row}" data-column="{column}">
+<article class="card{' is-error' if mismatch or publisher_mismatch else ''}" data-puzzle="{entry.puzzle_id}" data-row="{row}" data-column="{column}" data-reading="{html.escape(str(item['reading']))}">
   <div class="images"><img src="{_image_uri(original_cell)}" alt="Photographed puzzle cell"><img src="{_image_uri(solution_cell)}" alt="Published solution cell, supporting evidence only"></div>
   <div class="identity"><strong>Puzzle {entry.puzzle_id} · r{row:02d}c{column:02d}</strong><span class="confidence">{confidence:.0f}%</span></div>
   <div>OCR reading: <strong>{html.escape(str(item['reading']) or 'unknown')}</strong></div><div class="badges">{''.join(badges)}</div>
@@ -267,7 +267,7 @@ def derive_publisher_number_truth(
 
     prepared: dict[
         int,
-        tuple[dict[int, str], dict[int, str], list[tuple[int, int, int, np.ndarray]]],
+        tuple[dict[int, str], dict[int, str], set[tuple[int, int]], list[tuple[int, int, int, np.ndarray]]],
     ] = {}
     for entry in entries:
         result = results.get(entry.puzzle_id)
@@ -275,6 +275,10 @@ def derive_publisher_number_truth(
             continue
         with entry.truth.open("rb") as stream:
             truth = tomllib.load(stream)
+        human_number_truth: set[tuple[int, int]] = set()
+        for coordinate in truth.get("number_defects", {}):
+            row_text, column_text = coordinate.removeprefix("r").split("c", 1)
+            human_number_truth.add((int(row_text), int(column_text)))
         solution = {int(symbol): str(letter).upper() for symbol, letter in truth.get("solution", {}).items()}
         clues = {int(symbol): str(letter).upper() for symbol, letter in truth.get("clues", {}).items()}
         if set(solution) != set(range(1, 27)) or len(set(solution.values())) != 26:
@@ -297,12 +301,12 @@ def derive_publisher_number_truth(
                 feature = _solution_glyph(cell)
                 if feature is not None:
                     cells.append((row + 1, column + 1, symbol, feature))
-        prepared[entry.puzzle_id] = (solution, clues, cells)
+        prepared[entry.puzzle_id] = (solution, clues, human_number_truth, cells)
 
     derived: dict[int, list[dict[str, Any]]] = {}
-    for puzzle_id, (solution, _clues, cells) in prepared.items():
+    for puzzle_id, (solution, _clues, human_number_truth, cells) in prepared.items():
         templates: dict[str, list[np.ndarray]] = {}
-        for other_id, (_other_solution, other_clues, other_cells) in prepared.items():
+        for other_id, (_other_solution, other_clues, _other_human_truth, other_cells) in prepared.items():
             if other_id == puzzle_id:
                 continue
             for _row, _column, symbol, feature in other_cells:
@@ -314,6 +318,8 @@ def derive_publisher_number_truth(
         inverse = {letter: symbol for symbol, letter in solution.items()}
         records = []
         for row, column, observed, feature in cells:
+            if (row, column) in human_number_truth:
+                continue
             scores = sorted(
                 (float(np.mean((feature - reference) ** 2)), letter) for letter, reference in averages.items()
             )
@@ -553,7 +559,8 @@ def write_audit_reports(
 <script>
 document.addEventListener('DOMContentLoaded', () => {
 const choices = [
-  ['', 'Pending'], ['correct', 'OCR number is correct'], ['wrong-number', 'OCR number is wrong'],
+  ['', 'Pending'], ['correct', 'Photo agrees with OCR (reject any suggestion)'],
+  ['wrong-number', 'Photo differs from OCR (enter correct number)'],
   ['topology', 'Grid topology is wrong'], ['clue', 'Reference clue is wrong'], ['other', 'None of these']
 ];
 for (const card of document.querySelectorAll('.card')) {
@@ -567,7 +574,18 @@ for (const card of document.querySelectorAll('.card')) {
   card.append(select, correction);
 }
 document.querySelector('#export-unsolved-review').addEventListener('click', () => {
-  const decisions = [...document.querySelectorAll('.card')].map(card => ({
+  const cards = [...document.querySelectorAll('.card')];
+  for (const card of cards) {
+    const decision = card.querySelector('.review-decision').value;
+    const correction = card.querySelector('.review-correction').value.trim();
+    if (decision === 'wrong-number' && (!correction || correction === card.dataset.reading)) {
+      card.scrollIntoView({behavior: 'smooth', block: 'center'});
+      card.querySelector('.review-correction').focus();
+      window.alert('A wrong OCR number needs a different corrected number. Choose “Photo agrees with OCR” when rejecting only the publisher suggestion.');
+      return;
+    }
+  }
+  const decisions = cards.map(card => ({
     puzzle: Number(card.dataset.puzzle), row: Number(card.dataset.row), column: Number(card.dataset.column),
     decision: card.querySelector('.review-decision').value,
     correction: card.querySelector('.review-correction').value.trim()
