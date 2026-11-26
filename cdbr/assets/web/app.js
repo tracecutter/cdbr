@@ -1208,7 +1208,7 @@ const cancelDictionaryButton = document.querySelector('#cancel-scan-dictionary')
 const dictionaryChoice = document.querySelector('#scan-dictionary-choice');
 
 let dictionaryDestination;
-const dictionaryPrompt = 'Load the dictionary before opening this workspace.';
+const dictionaryPrompt = 'Load the selected dictionary to continue.';
 
 async function openWithDictionary(openWorkspace) {
   if (checkingDictionary || dictionaryDialog.open) return;
@@ -1247,8 +1247,9 @@ document.querySelector('#scan-dictionary-form').addEventListener('submit', async
   loadDictionaryButton.disabled = true;
   cancelDictionaryButton.disabled = true;
   dictionaryChoice.disabled = true;
-  const label = dictionaryChoice.selectedOptions[0].textContent;
-  dictionaryStatus.textContent = `Loading ${label}…`;
+  const label = dictionaryChoice.labels[0].textContent.trim();
+  loadDictionaryButton.textContent = 'Loading…';
+  dictionaryStatus.textContent = `Preparing ${label}. This may take a few seconds.`;
   try {
     const query = new URLSearchParams({ language: dictionaryChoice.value });
     const response = await fetch(`/api/scan-dictionary?${query}`, { method: 'POST' });
@@ -1260,6 +1261,7 @@ document.querySelector('#scan-dictionary-form').addEventListener('submit', async
   } catch {
     dictionaryStatus.textContent = 'Couldn’t load the dictionary. Try again or cancel.';
   } finally {
+    loadDictionaryButton.textContent = 'Load Dictionary';
     loadDictionaryButton.disabled = false;
     cancelDictionaryButton.disabled = false;
     dictionaryChoice.disabled = false;

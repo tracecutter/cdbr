@@ -84,6 +84,31 @@ def test_trimmed_four_suggests_one_only_for_review(tmp_path, monkeypatch) -> Non
     assert reviewed[1] == readings[1]
 
 
+def test_trailing_four_retry_keeps_the_leading_digit(tmp_path, monkeypatch) -> None:
+    pair = np.full((90, 100), 255, dtype=np.uint8)
+    pair[14:76, 10:20] = 0
+    pair[14:76, 76:87] = 0
+    pair[18:30, 65:76] = 0
+    genuine = pair.copy()
+    genuine[43:55, 57:76] = 0
+    monkeypatch.setattr(recognition, "_clean_number", lambda cell, **kwargs: cell.copy())
+
+    def batch(positions, work_dir, modes):
+        assert positions == [(0, 0)]
+        image = cv2.imread(str(work_dir / "cell-1-1.png"), cv2.IMREAD_GRAYSCALE)
+        assert image.shape == (82, 37)
+        return [[CellReading(row=0, column=0, text="1", confidence=91)]]
+
+    monkeypatch.setattr(recognition, "_ocr_batch", batch)
+    readings = [
+        CellReading(row=0, column=i, text=text, confidence=95, trusted=True) for i, text in enumerate(("14", "24"))
+    ]
+    reviewed = recognition._suggest_one_from_trimmed_fours(readings, {(0, 0): pair, (0, 1): genuine}, tmp_path)
+    assert reviewed[0].text == "11"
+    assert needs_hil_review(reviewed[0])
+    assert reviewed[1] == readings[1]
+
+
 def test_grid_geometry_adapts_to_supported_square_sizes() -> None:
     for grid_size in (13, 15):
         grid = np.full((1500, 1500, 3), 245, dtype=np.uint8)

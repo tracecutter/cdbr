@@ -7,8 +7,8 @@
     <meta name="description" content="Turn a photograph of a Code Break puzzle into a solved page.">
     <title>Code Break Solver</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="/static/app.css?v=20261125-5">
-    <script src="/static/app.js?v=20261126-5" defer></script>
+    <link rel="stylesheet" href="/static/app.css?v=20261126-6">
+    <script src="/static/app.js?v=20261126-6" defer></script>
   </head>
   <body data-mode="idle">
     <header class="site-header">
@@ -226,13 +226,11 @@
         <dialog class="hint-dialog" id="scan-dictionary-dialog" aria-labelledby="scan-dictionary-title">
           <form id="scan-dictionary-form">
             <h2 id="scan-dictionary-title">Choose a dictionary</h2>
-            <label class="puzzle-picker">
-              <span>Dictionary</span>
-              <select id="scan-dictionary-choice">
-                <option value="en-GB">{{ dictionary_label }}</option>
-              </select>
+            <label class="dictionary-option">
+              <input type="radio" name="dictionary" id="scan-dictionary-choice" value="en-GB" checked>
+              <span>{{ dictionary_label }}</span>
             </label>
-            <p id="scan-dictionary-status" role="status">Load the dictionary before opening this workspace.</p>
+            <p id="scan-dictionary-status" role="status">Load the selected dictionary to continue.</p>
             <div class="hint-dialog-actions">
               <button class="secondary-button" id="cancel-scan-dictionary" type="button">Cancel</button>
               <button class="primary-button" id="load-scan-dictionary" type="submit">Load Dictionary</button>

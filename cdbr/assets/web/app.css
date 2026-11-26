@@ -147,6 +147,10 @@ body[data-mode] .creator-workspace { padding: clamp(20px, 2.5vw, 30px); }
 .hint-dialog p:not(.eyebrow) { color: var(--muted); line-height: 1.5; }
 .hint-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 28px; }
 .hint-dialog-actions button { min-height: 52px; }
+.dictionary-option { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line); font-weight: 750; }
+.dictionary-option input { accent-color: var(--ink); }
+#scan-dictionary-status { min-height: 3em; }
+#load-scan-dictionary:disabled { cursor: wait; }
 #keep-searching { grid-column: 1 / -1; }
 #keep-searching[hidden] { display: none; }
 .puzzle-cell { position: relative; aspect-ratio: 1; min-width: 0; display: grid; place-items: center; border: 0; padding: 0; color: var(--ink); background: #fffefa; cursor: pointer; }

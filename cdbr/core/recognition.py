@@ -729,14 +729,24 @@ def _four_without_crossbar(cell: np.ndarray) -> bool:
     return bool(middle.size and np.count_nonzero(middle, axis=1).max() <= 0.30 * height)
 
 
-def _trim_four_to_stem(cell: np.ndarray) -> np.ndarray | None:
+def _trim_four_to_stem(cell: np.ndarray, *, trailing_digit: bool = False) -> np.ndarray | None:
     crop = _clean_number(cell, adaptive_crop=True)
+    if trailing_digit:
+        x, y, width, height = cv2.boundingRect(cv2.bitwise_not(crop))
+        middle = width // 2
+        gaps = np.flatnonzero(np.all(crop[y : y + height, x + width // 3 : x + 2 * width // 3] == 255, axis=0))
+        if not gaps.size:
+            return None
+        split = min((width // 3 + int(gap) for gap in gaps), key=lambda column: abs(column - middle))
+        crop = crop[:, x + split :].copy()
     ink = cv2.bitwise_not(crop)
     x, y, width, height = cv2.boundingRect(ink)
     if not height:
         return None
     glyph = ink[y : y + height, x : x + width]
     lower_stem = np.count_nonzero(glyph[int(0.77 * height) :], axis=0)
+    if not np.any(lower_stem):
+        return None
     stem = int(np.argmax(lower_stem))
     left_of_stem = glyph[int(0.40 * height) : int(0.76 * height), : max(0, stem - int(0.14 * height))]
     if np.count_nonzero(left_of_stem) > 0.025 * height**2:
@@ -745,6 +755,11 @@ def _trim_four_to_stem(cell: np.ndarray) -> np.ndarray | None:
     # Retain a narrow shoulder so the input does not become a plain vertical bar.
     cutoff = max(0, x + stem_edge - 6)
     crop[:, :cutoff] = 255
+    if trailing_digit:
+        x, y, width, height = cv2.boundingRect(cv2.bitwise_not(crop))
+        if not height:
+            return None
+        crop = cv2.copyMakeBorder(crop[y : y + height, x : x + width], 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
     return crop
 
 
@@ -754,9 +769,9 @@ def _suggest_one_from_trimmed_fours(
     candidates = []
     retry_dir = work_dir / "trimmed-fours"
     for index, item in enumerate(readings):
-        if item.text != "4" or item.confidence < MIN_OCR_CONFIDENCE:
+        if item.text not in {"4", "14", "24"} or item.confidence < MIN_OCR_CONFIDENCE:
             continue
-        trimmed = _trim_four_to_stem(cells[item.row, item.column])
+        trimmed = _trim_four_to_stem(cells[item.row, item.column], trailing_digit=len(item.text) == 2)
         if trimmed is None:
             continue
         retry_dir.mkdir(exist_ok=True)
@@ -769,7 +784,9 @@ def _suggest_one_from_trimmed_fours(
     for index, attempts in zip(candidates, _ocr_batch(positions, retry_dir, (7, 13)), strict=True):
         confidence = max((attempt.confidence for attempt in attempts if attempt.text == "1"), default=0.0)
         if confidence >= MIN_OCR_CONFIDENCE:
-            reviewed[index] = replace(readings[index], text="1", confidence=confidence, trusted=False)
+            reviewed[index] = replace(
+                readings[index], text=readings[index].text[:-1] + "1", confidence=confidence, trusted=False
+            )
     return reviewed
 
 

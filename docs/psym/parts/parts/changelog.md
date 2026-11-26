@@ -1,3 +1,8 @@
+### 0.2.6 — 2026-11-26
+
+- Retry the trailing glyph in `14` and `24` when a clean gap isolates a narrow, low-ink candidate. Suggest a confident `11` or `21` for the player to confirm.
+- Keep dictionary selection and loading in the same dialog, with the loading button visible until the selected workspace opens.
+
 ### 0.2.5 — 2026-11-26
 
 - Batch reference-clue OCR by Tesseract mode to reduce scan time.

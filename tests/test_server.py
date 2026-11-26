@@ -23,7 +23,8 @@ def test_home_serves_upload_experience():
     assert response.status_code == 200
     assert f"<strong>Codewords Breaker</strong> v{__version__}" in response.text
     label = server_module.SCAN_DICTIONARY_LABEL
-    assert f'<option value="en-GB">{label}</option>' in response.text
+    assert 'type="radio" name="dictionary" id="scan-dictionary-choice" value="en-GB" checked' in response.text
+    assert f"<span>{label}</span>" in response.text
     assert f'<span id="footer-dictionary">{label}</span>' in response.text
     assert "Choose how to begin." in response.text
     assert 'action="/solve"' in response.text
