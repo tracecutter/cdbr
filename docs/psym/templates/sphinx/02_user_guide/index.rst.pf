@@ -11,7 +11,8 @@ OCR Pipeline
 {{ code.section.ocr_pipeline }}
 
 .. graphviz:: ../../../psym/parts/diagrams/ocr_pipeline.dot
-   :caption: OCR evidence flows toward an approved playable board; uncertain evidence flows to a human, not directly to the solver.
+   :caption: The web scan starts with the shared recogniser and checks the reviewed board before play.
+   :alt: A photograph branches into board-number OCR and reference-clue OCR. The results meet at scan review. Accepting the scan checks for a solution before play.
    :align: center
 
 Taking a scan photo

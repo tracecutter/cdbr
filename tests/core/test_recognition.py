@@ -14,6 +14,7 @@ from cdbr.core.recognition import (
     _cell_images,
     _coarse_glyph_feature,
     _classify_whole_number,
+    _clean_number,
     _digit_glyphs,
     _foreground_binary,
     _relative_margin,
@@ -61,6 +62,26 @@ def test_puzzle_47_grid_recovery_preserves_block_layout(tmp_path: Path) -> None:
     expected = block_layout(root / "corpus" / "puzzle_047.jpg")
     for number in (4783, 4786, 4788, 4789):
         assert block_layout(root / "tests" / "fixtures" / "geometry" / f"IMG_{number}.jpg") == expected
+
+
+def test_wide_number_crop_retains_digits_attached_to_grid_rule() -> None:
+    cell = np.full((115, 115, 3), 245, dtype=np.uint8)
+    cv2.putText(cell, "23", (6, 29), cv2.FONT_HERSHEY_SIMPLEX, 0.95, (15, 15, 15), 2)
+    cv2.line(cell, (0, 8), (114, 8), (15, 15, 15), 2)
+
+    cleaned = _clean_number(cell)
+
+    assert cv2.connectedComponents((cleaned < 128).astype(np.uint8))[0] == 3
+
+
+def test_whole_number_classifier_rejects_empty_crop() -> None:
+    cell = np.full((115, 115, 3), 245, dtype=np.uint8)
+    prototypes = np.stack((np.full((30, 20), 240, dtype=np.uint8), np.zeros((30, 20), dtype=np.uint8)))
+
+    reading = _classify_whole_number((0, 0, cell), prototypes, np.array([1, 23]))
+
+    assert reading.text == ""
+    assert not reading.trusted
 
 
 def test_foreground_binary_rejects_smooth_shadow() -> None:
@@ -298,25 +319,28 @@ def test_puzzle_35_fragmented_eight_is_not_read_as_six(tmp_path: Path) -> None:
     assert observation.grid[7][2] == 8
 
 
-def test_puzzle_34_weak_six_eight_vote_is_sent_to_hil(tmp_path: Path) -> None:
+def test_puzzle_34_six_eight_read_is_correct_or_sent_to_hil(tmp_path: Path) -> None:
     project_root = Path(__file__).parents[2]
 
     observation = recognize_photo(
         project_root / "corpus" / "puzzle_034.jpg",
         tmp_path,
         template_exclusion=34,
+        ocr_pipeline="whole-token",
+        grid_mesh=False,
     )
     evidence = {(item.row, item.column): item for item in observation.evidence}
 
-    assert evidence[(11, 5)].reading == "6"
-    assert evidence[(11, 5)].trusted is False
-    assert needs_hil_review(evidence[(11, 5)])
+    reading = evidence[(11, 5)]
+    assert reading.reading == "8" or needs_hil_review(reading)
 
 
 def test_puzzle_59_lost_leading_one_is_corrected_by_publisher_canon(tmp_path: Path) -> None:
     project_root = Path(__file__).parents[2]
 
-    observation = recognize_photo(project_root / "corpus" / "puzzle_059.jpg", tmp_path)
+    observation = recognize_photo(
+        project_root / "corpus" / "puzzle_059.jpg", tmp_path, ocr_pipeline="whole-token", grid_mesh=False
+    )
     evidence = {(item.row, item.column): item for item in observation.evidence}
 
     assert evidence[(2, 5)].reading == "19"
@@ -346,7 +370,9 @@ def test_puzzle_44_open_five_is_not_read_as_eight(tmp_path: Path) -> None:
 def test_puzzle_48_joined_twenty_splits_between_digits(tmp_path: Path) -> None:
     project_root = Path(__file__).parents[2]
 
-    observation = recognize_photo(project_root / "corpus" / "puzzle_048.jpg", tmp_path)
+    observation = recognize_photo(
+        project_root / "corpus" / "puzzle_048.jpg", tmp_path, ocr_pipeline="whole-token", grid_mesh=False
+    )
 
     for row, column in ((2, 3), (7, 6), (11, 4), (13, 2), (13, 7), (13, 8)):
         assert observation.grid[row - 1][column - 1] == 20

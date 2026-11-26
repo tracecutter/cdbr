@@ -24,11 +24,13 @@ class SolvedPuzzle:
         return bool(self.result.solutions)
 
 
-def solve_observation(observation: PuzzleObservation, lexicon: Lexicon | None = None) -> SolvedPuzzle:
+def solve_observation(
+    observation: PuzzleObservation, lexicon: Lexicon | None = None, *, deadline: float | None = None
+) -> SolvedPuzzle:
     """Solve a recognised observation without depending on a user interface."""
 
     puzzle = CodewordPuzzle.from_observation(observation)
-    result = solve(puzzle, lexicon or english_lexicon())
+    result = solve(puzzle, lexicon or english_lexicon(), deadline=deadline)
     mapping = result.solutions[0].mapping if result.solutions else result.best_mapping
     return SolvedPuzzle(
         observation=observation,

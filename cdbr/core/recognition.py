@@ -32,7 +32,8 @@ HIL_REVIEW_CONFIDENCE = 68.0
 HIL_AMBIGUOUS_NUMBERS = frozenset((5, 6, 8, 9, 16, 18, 19))
 WHOLE_TOKEN_PIPELINE = "whole-token"
 LEGACY_PIPELINE = "legacy"
-OCR_PIPELINES = (LEGACY_PIPELINE, WHOLE_TOKEN_PIPELINE)
+TESSERACT_PIPELINE = "tesseract"
+OCR_PIPELINES = (TESSERACT_PIPELINE, LEGACY_PIPELINE, WHOLE_TOKEN_PIPELINE)
 WHOLE_TOKEN_PROFILE = "book-15x15-v1"
 LOCAL_BACKGROUND_KERNEL = 31
 # Across 520 human-reviewed reference cells, obvious blanks contained at most
@@ -164,19 +165,20 @@ def find_grid_corners(image: np.ndarray, *, reference: np.ndarray | None = None)
     return _ordered_corners(max(candidates, key=lambda candidate: candidate[0])[1])
 
 
-def extract_grid(image: np.ndarray) -> np.ndarray:
+def extract_grid(image: np.ndarray, *, padding: int = 0) -> np.ndarray:
     """Locate the near-square puzzle grid and rectify its perspective."""
 
-    return _warp_grid(image, find_grid_corners(image))
+    return _warp_grid(image, find_grid_corners(image), padding=padding)
 
 
-def _warp_grid(image: np.ndarray, corners: np.ndarray) -> np.ndarray:
+def _warp_grid(image: np.ndarray, corners: np.ndarray, *, padding: int = 0) -> np.ndarray:
     destination = np.array(
         [[0, 0], [WARP_SIZE - 1, 0], [WARP_SIZE - 1, WARP_SIZE - 1], [0, WARP_SIZE - 1]],
         dtype=np.float32,
     )
-    transform = cv2.getPerspectiveTransform(corners, destination)
-    return cv2.warpPerspective(image, transform, (WARP_SIZE, WARP_SIZE))
+    transform = cv2.getPerspectiveTransform(corners, destination + padding)
+    size = WARP_SIZE + 2 * padding
+    return cv2.warpPerspective(image, transform, (size, size))
 
 
 def _grid_line_positions(binary: np.ndarray, *, vertical: bool, grid_size: int = GRID_SIZE) -> list[int] | None:
@@ -265,9 +267,84 @@ def normalize_grid_lattice(grid: np.ndarray, grid_size: int = GRID_SIZE) -> np.n
     )
 
 
+def _cell_edges(length: int, grid_size: int) -> np.ndarray:
+    return np.linspace(0, length, grid_size + 1).round().astype(int)
+
+
+def _trace_grid_rules(gray: np.ndarray, grid_size: int, padding: int) -> np.ndarray:
+    """Estimate the curved row rules from locally visible dark lines."""
+
+    spacing = (WARP_SIZE - 1) / grid_size
+    radius = round(spacing * 0.30)
+    # Thin rules and edges where a white cell meets a solid block both provide
+    # boundary evidence. A flat black interior contributes neither.
+    offset = 7
+    contrast = np.zeros_like(gray)
+    contrast[offset:-offset] = cv2.subtract(np.minimum(gray[: -2 * offset], gray[2 * offset :]), gray[offset:-offset])
+    steps = np.zeros_like(gray)
+    steps[2:-2] = cv2.absdiff(gray[:-4], gray[4:])
+    contrast = cv2.blur(cv2.max(contrast, steps), (41, 3))
+    columns = np.arange(padding + 20, padding + WARP_SIZE - 20, 24)
+    coordinates = np.arange(padding, padding + WARP_SIZE)
+    rules = []
+    for expected in np.linspace(padding, padding + WARP_SIZE - 1, grid_size + 1):
+        low, high = round(expected) - radius, round(expected) + radius + 1
+        samples = contrast[low:high, columns]
+        best = np.argmax(samples, axis=0)
+        valid = samples[best, np.arange(len(columns))] >= 20
+        x = columns[valid]
+        y = low + best[valid]
+        if len(x) >= 10 and np.ptp(x) >= WARP_SIZE * 0.45:
+            for _ in range(3):
+                fit = np.polynomial.Polynomial.fit(x, y, 2)
+                keep = np.abs(y - fit(x)) <= 8
+                if keep.all() or np.count_nonzero(keep) < 10:
+                    break
+                x, y = x[keep], y[keep]
+            curve = np.clip(fit(coordinates), expected - radius, expected + radius)
+        else:
+            curve = np.full(WARP_SIZE, expected)
+        rules.append(curve)
+    observed = np.asarray(rules)
+    nominal = np.linspace(padding, padding + WARP_SIZE - 1, grid_size + 1)[:, None]
+    offsets = observed - nominal
+    # Adjacent rules bend together. A median across nearby offsets prevents
+    # a weak rule from crowding its neighbor without imposing uniform spacing.
+    supported = np.asarray([np.median(offsets[max(0, k - 2) : k + 3], axis=0) for k in range(grid_size + 1)])
+    return nominal + 0.65 * offsets + 0.35 * supported
+
+
+def _grid_vertices(board: np.ndarray, grid_size: int, padding: int) -> np.ndarray:
+    """Intersect curved row and column rules on the padded source board."""
+    gray = cv2.cvtColor(board, cv2.COLOR_BGR2GRAY)
+    horizontal = _trace_grid_rules(gray, grid_size, padding)
+    vertical = _trace_grid_rules(gray.T, grid_size, padding)
+    source = np.arange(padding, padding + WARP_SIZE)
+    x, y = np.meshgrid(
+        np.linspace(source[0], source[-1], grid_size + 1), np.linspace(source[0], source[-1], grid_size + 1)
+    )
+    for _ in range(4):
+        y = np.asarray([np.interp(row, source, rule) for row, rule in zip(x, horizontal, strict=True)])
+        x = np.asarray([np.interp(column, source, rule) for column, rule in zip(y.T, vertical, strict=True)]).T
+    return np.stack((x, y), axis=-1)
+
+
+def _dewarp_vertex_mesh(board: np.ndarray, vertices: np.ndarray) -> np.ndarray:
+    """Sample each Cartesian locker from its four shared source vertices."""
+
+    grid_size = len(vertices) - 1
+    target = np.linspace(0, WARP_SIZE - 1, grid_size + 1)
+    pixels = np.arange(WARP_SIZE)
+    maps = []
+    for axis in range(2):
+        rows = np.asarray([np.interp(pixels, target, row) for row in vertices[:, :, axis]])
+        maps.append(np.asarray([np.interp(pixels, target, column) for column in rows.T], dtype=np.float32).T)
+    return cv2.remap(board, maps[0], maps[1], cv2.INTER_LINEAR)
+
+
 def _cell_images(grid: np.ndarray, grid_size: int = GRID_SIZE) -> list[tuple[int, int, np.ndarray]]:
-    y_edges = np.linspace(0, grid.shape[0], grid_size + 1).round().astype(int)
-    x_edges = np.linspace(0, grid.shape[1], grid_size + 1).round().astype(int)
+    y_edges = _cell_edges(grid.shape[0], grid_size)
+    x_edges = _cell_edges(grid.shape[1], grid_size)
     return [
         (
             row,
@@ -304,14 +381,56 @@ def _foreground_binary(gray: np.ndarray) -> np.ndarray:
     return cv2.threshold(ink, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
 
-def _clean_number(cell: np.ndarray, *, suppress_illumination: bool = False) -> np.ndarray:
+def _number_region(shape: tuple[int, ...]) -> slice:
+    return slice(0, 75) if min(shape[:2]) >= 110 else slice(5, 70)
+
+
+def _number_ink_mask(cell: np.ndarray, *, suppress_illumination: bool, adaptive_crop: bool = False) -> np.ndarray:
     gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
-    region = gray[5:70, 5:70]
+    # The 13×13 lattice yields wider cells. Its printed digits can touch the
+    # top or left rule inside the usual fixed inset.
+    wide_cell = min(gray.shape) >= 110
+    bounds = slice(0, 75) if adaptive_crop else _number_region(gray.shape)
+    region = gray[bounds, bounds]
     binary = (
         _foreground_binary(region)
         if suppress_illumination
         else cv2.threshold(region, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
     )
+    if wide_cell or adaptive_crop:
+        # Retain short glyph strokes while removing rules that span the crop.
+        # Count only strokes inside the crop. OpenCV's neutral default border
+        # can let a short stroke touching the edge pass the long-rule filter.
+        horizontal = cv2.morphologyEx(
+            binary, cv2.MORPH_OPEN, np.ones((1, 50), dtype=np.uint8), borderType=cv2.BORDER_CONSTANT, borderValue=0
+        )
+        vertical = cv2.morphologyEx(
+            binary, cv2.MORPH_OPEN, np.ones((50, 1), dtype=np.uint8), borderType=cv2.BORDER_CONSTANT, borderValue=0
+        )
+        if adaptive_crop:
+            # A joined pair can have a long baseline. Away from the top,
+            # remove only strokes wider than the allowed joined-glyph crop.
+            horizontal[8:] = cv2.morphologyEx(
+                binary[8:],
+                cv2.MORPH_OPEN,
+                np.ones((1, 61), dtype=np.uint8),
+                borderType=cv2.BORDER_CONSTANT,
+                borderValue=0,
+            )
+            vertical[:, 8:] = 0
+        binary = cv2.subtract(binary, cv2.bitwise_or(horizontal, vertical))
+    if adaptive_crop:
+        # A partial top rule can survive the full-length rule filter.
+        top = binary[:8]
+        rule = cv2.morphologyEx(
+            top, cv2.MORPH_OPEN, np.ones((1, 28), dtype=np.uint8), borderType=cv2.BORDER_CONSTANT, borderValue=0
+        )
+        binary[: len(top)] = cv2.subtract(top, rule)
+    return binary
+
+
+def _clean_number(cell: np.ndarray, *, suppress_illumination: bool = False, adaptive_crop: bool = False) -> np.ndarray:
+    binary = _number_ink_mask(cell, suppress_illumination=suppress_illumination, adaptive_crop=adaptive_crop)
     count, labels, statistics, _ = cv2.connectedComponentsWithStats(binary)
     cleaned = np.full_like(binary, 255)
     for index in range(1, count):
@@ -322,14 +441,81 @@ def _clean_number(cell: np.ndarray, *, suppress_illumination: bool = False) -> n
         # the surrounding grid lines.
         if 5 <= width <= 48 and 15 <= height <= 42 and 50 <= area <= 800:
             cleaned[labels == index] = 0
+    if adaptive_crop or (min(cell.shape[:2]) >= 110 and np.all(cleaned == 255)):
+        # Retain the second glyph even when the first already passed the stricter filter.
+        for index, (x, y, width, height, area) in enumerate(statistics[1:], 1):
+            if x <= 50 and y <= 18 and 8 <= width <= 60 and 15 <= height <= 48 and 50 <= area <= 1100:
+                cleaned[labels == index] = 0
+    if adaptive_crop:
+        # A broken leading 1 can have two short pieces stacked in the same column.
+        for top, (x, y, width, height, area) in enumerate(statistics[1:], 1):
+            if not (x <= 38 and y <= 18 and 5 <= width <= 22 and 7 <= height < 15 and area >= 35):
+                continue
+            for bottom, (bx, by, bw, bh, ba) in enumerate(statistics[1:], 1):
+                overlap = min(x + width, bx + bw) - max(x, bx)
+                if 0 <= by - (y + height) <= 6 and overlap >= 3 and 4 <= bw <= 18 and 7 <= bh <= 16 and ba >= 30:
+                    cleaned[(labels == top) | (labels == bottom)] = 0
+        x, y, width, height = cv2.boundingRect(cv2.bitwise_not(cleaned))
+        if width and height:
+            cleaned = cleaned[y : y + height, x : x + width]
+        cleaned = cv2.resize(cleaned, None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
+        if width and height:
+            cleaned = _separate_number_glyphs(_remove_top_overhang(cleaned))
+        return cv2.copyMakeBorder(cleaned, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
     cleaned = cv2.copyMakeBorder(cleaned, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
     return cv2.resize(cleaned, None, fx=5, fy=5, interpolation=cv2.INTER_NEAREST)
+
+
+def _remove_top_overhang(glyph: np.ndarray) -> np.ndarray:
+    """Remove thin horizontal extensions attached near the top of the ink."""
+    ink = cv2.bitwise_not(glyph)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    opened = cv2.morphologyEx(ink, cv2.MORPH_OPEN, kernel)
+    removed = cv2.subtract(ink, opened)
+    _, labels, statistics, _ = cv2.connectedComponentsWithStats(removed)
+    attached = cv2.dilate(opened, np.ones((3, 3), dtype=np.uint8))
+    glyph = glyph.copy()
+    for index, (x, y, width, height, _) in enumerate(statistics[1:], 1):
+        if y > 4 or width < 12 or height > glyph.shape[0] * 0.45:
+            continue
+        component = labels[y : y + height, x : x + width] == index
+        # A long, thin top run can turn down at the edge of the grid.
+        if np.count_nonzero(component[:4], axis=1).max() >= 12 and np.any(
+            component & (attached[y : y + height, x : x + width] != 0)
+        ):
+            glyph[labels == index] = 255
+    return glyph
+
+
+def _separate_number_glyphs(glyph: np.ndarray) -> np.ndarray:
+    height, width = glyph.shape
+    if width < height * 0.95:
+        return glyph
+    ink = (glyph < 128).astype(np.uint8)
+    projection = ink.sum(axis=0)
+    lo, hi = max(1, int(width * 0.26)), min(width - 1, int(width * 0.65))
+    if lo > hi:
+        return glyph
+    split = min(
+        range(lo, hi + 1),
+        key=lambda i: (projection[i - 1] + projection[i]) / 2 + abs(i - width * 0.46) * 0.08,
+    )
+    left = cv2.boundingRect(ink[:, :split])
+    right = cv2.boundingRect(ink[:, split:])
+    if (
+        min(left[3], right[3]) < height * 0.72
+        or min(left[2], right[2]) < width * 0.19
+        or (width < height * 1.18 and projection[split - 1] + projection[split] > height * 0.12)
+    ):
+        return glyph
+    gap = np.full((height, 8), 255, dtype=glyph.dtype)
+    return np.concatenate((glyph[:, :split], gap, glyph[:, split:]), axis=1)
 
 
 def _read_cell(item: tuple[int, int, np.ndarray], work_dir: Path) -> CellReading:
     row, column, cell = item
     image_path = work_dir / f"cell-{row + 1}-{column + 1}.png"
-    cv2.imwrite(str(image_path), _clean_number(cell))
+    cv2.imwrite(str(image_path), _clean_number(cell, adaptive_crop=True))
     return _ocr_image(image_path, row=row, column=column, page_segmentation_mode=7)
 
 
@@ -359,7 +545,9 @@ def _ocr_image(image_path: Path, *, row: int, column: int, page_segmentation_mod
     return CellReading(row=row, column=column, text=text, confidence=confidence)
 
 
-def _retry_cell(reading: CellReading, work_dir: Path, template_value: int | None) -> CellReading:
+def _retry_cell(
+    reading: CellReading, work_dir: Path, template_value: int | None, cell: np.ndarray | None = None
+) -> CellReading:
     """Retry an uncertain glyph and require agreement across OCR layouts."""
 
     image_path = work_dir / f"cell-{reading.row + 1}-{reading.column + 1}.png"
@@ -374,17 +562,29 @@ def _retry_cell(reading: CellReading, work_dir: Path, template_value: int | None
         for mode in (6, 8, 10, 13)
     )
     valid = [attempt for attempt in attempts if attempt.text.isdigit() and 1 <= int(attempt.text) <= 26]
-    if not valid:
-        return max(attempts, key=lambda attempt: attempt.confidence)
-    winner, votes = Counter(attempt.text for attempt in valid).most_common(1)[0]
-    agreeing = [attempt for attempt in valid if attempt.text == winner]
-    if votes >= 3 and template_value is not None and int(winner) == template_value:
-        return CellReading(
-            row=reading.row,
-            column=reading.column,
-            text=winner,
-            confidence=max(MIN_OCR_CONFIDENCE, sum(item.confidence for item in agreeing) / votes),
-        )
+    if valid:
+        winner, votes = Counter(attempt.text for attempt in valid).most_common(1)[0]
+        if votes >= 3 and template_value is not None and int(winner) == template_value:
+            agreeing = [attempt for attempt in valid if attempt.text == winner]
+            return CellReading(
+                row=reading.row,
+                column=reading.column,
+                text=winner,
+                confidence=max(MIN_OCR_CONFIDENCE, sum(item.confidence for item in agreeing) / votes),
+            )
+    if (
+        cell is not None
+        and min(cell.shape[:2]) >= 110
+        and all(attempt.confidence < MIN_OCR_CONFIDENCE for attempt in valid)
+    ):
+        # Retry without the top rule only after the full crop has had a chance.
+        masked = cell.copy()
+        masked[:6] = 255
+        trimmed_path = image_path.with_stem(f"{image_path.stem}-top-trim")
+        cv2.imwrite(str(trimmed_path), _clean_number(masked, adaptive_crop=True))
+        trimmed = _ocr_image(trimmed_path, row=reading.row, column=reading.column, page_segmentation_mode=6)
+        if trimmed.text.isdigit() and 1 <= int(trimmed.text) <= 26 and trimmed.confidence >= MIN_OCR_CONFIDENCE:
+            return trimmed
     return max(attempts, key=lambda attempt: attempt.confidence)
 
 
@@ -426,21 +626,22 @@ def _board_above_reference(board: np.ndarray, reference: np.ndarray) -> bool:
     )
 
 
-def _orient_photo_grid(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _orient_photo_grid(image: np.ndarray, *, padding: int = 0) -> tuple[np.ndarray, np.ndarray]:
     """For a sideways reference strip, test both quarter-turns for its board."""
 
     try:
         strip = find_reference_corners(image)
     except ValueError:
-        return image, extract_grid(image)
+        return image, extract_grid(image, padding=padding)
     if np.ptp(strip[:, 0]) >= np.ptp(strip[:, 1]):
-        return image, extract_grid(image)
+        return image, extract_grid(image, padding=padding)
     for turn in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE):
         turned = cv2.rotate(image, turn)
         try:
             reference = find_reference_corners(turned)
-            grid = _warp_grid(turned, find_grid_corners(turned, reference=reference))
-            detect_grid_size(grid)
+            grid = _warp_grid(turned, find_grid_corners(turned, reference=reference), padding=padding)
+            board = slice(padding, padding + WARP_SIZE)
+            detect_grid_size(grid[board, board])
         except ValueError:
             continue
         return turned, grid
@@ -480,6 +681,53 @@ def _reviewed_number_feature(cell: np.ndarray) -> np.ndarray:
     """Return the compact feature used by the reviewed ambiguity bank."""
 
     return cv2.resize(_number_feature(cell), (20, 30), interpolation=cv2.INTER_AREA)
+
+
+def _review_with_scan_matches(
+    readings: list[CellReading], cells: dict[tuple[int, int], np.ndarray]
+) -> list[CellReading]:
+    """Use repeated numbers from this photograph as evidence for review."""
+    features = (
+        np.asarray(
+            [_reviewed_number_feature(cells[item.row, item.column]).ravel() for item in readings], dtype=np.float32
+        )
+        / 255
+    )
+    if not len(features):
+        return readings
+    has_ink = np.any(features < 1, axis=1)
+    anchors = np.asarray(
+        [i for i, item in enumerate(readings) if item.trusted and item.confidence >= 90 and has_ink[i]], dtype=np.intp
+    )
+    if len(anchors) < 3:
+        return readings
+    samples = features[anchors]
+    squared = np.sum(features * features, axis=1)
+    distances = (squared[:, None] + squared[anchors] - 2 * features @ samples.T) / features.shape[1]
+    distances[anchors, np.arange(len(anchors))] = np.inf
+    reviewed = list(readings)
+    for i, item in enumerate(readings):
+        if not has_ink[i]:
+            continue
+        nearest = np.argsort(distances[i])
+        best, corroborating = nearest[:2]
+        proposed = readings[anchors[best]].text
+        if proposed == item.text or readings[anchors[corroborating]].text != proposed:
+            continue
+        other = next(
+            (j for j in nearest if readings[anchors[j]].text != proposed and np.isfinite(distances[i, j])), None
+        )
+        distance = max(0.0, float(distances[i, corroborating]))
+        if other is None or distance > 0.025 or _relative_margin(distance, float(distances[i, other])) < 0.35:
+            continue
+        reviewed[i] = CellReading(
+            row=item.row,
+            column=item.column,
+            text=item.text if item.trusted else proposed,
+            confidence=item.confidence if item.trusted else 0.0,
+            trusted=False,
+        )
+    return reviewed
 
 
 @lru_cache(maxsize=1)
@@ -525,6 +773,8 @@ def _classify_whole_number(
     if not len(prototypes):
         return CellReading(row=row, column=column, text="", confidence=0.0)
     feature = _reviewed_number_feature(cell).astype(np.float32)
+    if np.all(feature == 255):
+        return CellReading(row=row, column=column, text="", confidence=0.0)
     distances = np.mean((prototypes.astype(np.float32) - feature) ** 2, axis=(1, 2))
     class_scores = sorted((float(np.min(distances[labels == value])), int(value)) for value in np.unique(labels))
     best_score, value = class_scores[0]
@@ -743,8 +993,10 @@ def _reference_templates(reference_grid: np.ndarray) -> dict[int, np.ndarray]:
     }
 
 
-def _template_value(cell: np.ndarray, templates: dict[int, np.ndarray]) -> int:
+def _template_value(cell: np.ndarray, templates: dict[int, np.ndarray]) -> int | None:
     feature = _number_feature(cell).astype(np.float32)
+    if np.all(feature == 255):
+        return None
     return min(
         templates,
         key=lambda value: float(np.mean((feature - templates[value].astype(np.float32)) ** 2)),
@@ -769,13 +1021,7 @@ def _relative_margin(best_score: float, second_score: float) -> float:
 def _digit_glyphs(cell: np.ndarray, *, suppress_illumination: bool = False) -> list[np.ndarray]:
     """Segment one or two glyphs, including digits joined by thresholding."""
 
-    gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
-    region = gray[5:70, 5:70]
-    binary = (
-        _foreground_binary(region)
-        if suppress_illumination
-        else cv2.threshold(region, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-    )
+    binary = _number_ink_mask(cell, suppress_illumination=suppress_illumination)
     count, labels, statistics, _ = cv2.connectedComponentsWithStats(binary)
     components: list[tuple[int, int, int, int, int, int]] = []
     for index in range(1, count):
@@ -1232,13 +1478,40 @@ def create_review_sheet(
     return destination
 
 
+def _write_grid_diagnostics(work_dir: Path, corner_warp: np.ndarray, grid: np.ndarray, grid_size: int) -> None:
+    """Save the pre-crop stages and draw the exact sampling windows."""
+
+    cv2.imwrite(str(work_dir / "grid-corner-warp.png"), corner_warp)
+    overlay = grid.copy()
+    rows = _cell_edges(grid.shape[0], grid_size).tolist()
+    columns = _cell_edges(grid.shape[1], grid_size).tolist()
+    for row, (top, bottom) in enumerate(zip(rows[:-1], rows[1:], strict=True), 1):
+        for column, (left, right) in enumerate(zip(columns[:-1], columns[1:], strict=True), 1):
+            cv2.rectangle(overlay, (left, top), (right - 1, bottom - 1), (240, 210, 0), 1)
+            start, stop, _ = _number_region((bottom - top, right - left)).indices(min(bottom - top, right - left))
+            cv2.rectangle(overlay, (left + start, top + start), (left + stop - 1, top + stop - 1), (0, 165, 255), 1)
+            cv2.putText(
+                overlay,
+                f"{row:02}/{column:02}",
+                (left + 7, bottom - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,
+                (240, 210, 0),
+                1,
+                cv2.LINE_AA,
+            )
+    cv2.imwrite(str(work_dir / "grid-crop-overlay.png"), overlay)
+
+
 def recognize_photo(
     source: Path,
     work_dir: Path,
     *,
     trace: RecognitionTrace | None = None,
     template_exclusion: int | None = None,
-    ocr_pipeline: str = WHOLE_TOKEN_PIPELINE,
+    ocr_pipeline: str = TESSERACT_PIPELINE,
+    geometry_debug: bool = False,
+    grid_mesh: bool = True,
 ) -> PuzzleObservation:
     """Convert a supported square photographed puzzle into a conservative observation."""
 
@@ -1255,28 +1528,61 @@ def recognize_photo(
         trace.record("decode", started)
 
     started = time.perf_counter()
-    image, extracted_grid = _orient_photo_grid(image)
+    if geometry_debug or grid_mesh:
+        padding = WARP_SIZE // 20
+        image, padded_grid = _orient_photo_grid(image, padding=padding)
+        board = slice(padding, padding + WARP_SIZE)
+        extracted_grid = padded_grid[board, board]
+    else:
+        image, extracted_grid = _orient_photo_grid(image)
     grid_size = detect_grid_size(extracted_grid)
-    grid_image = normalize_grid_lattice(extracted_grid, grid_size)
+    if grid_mesh:
+        vertices = _grid_vertices(padded_grid, grid_size, padding)
+        grid_image = _dewarp_vertex_mesh(padded_grid, vertices)
+    else:
+        grid_image = normalize_grid_lattice(extracted_grid, grid_size)
     cv2.imwrite(str(work_dir / "grid.png"), grid_image)
     if trace is not None:
         trace.record("grid", started)
+    if geometry_debug:
+        _write_grid_diagnostics(work_dir, extracted_grid, grid_image, grid_size)
+        cv2.imwrite(str(work_dir / "grid-padded-warp.png"), padded_grid)
+        annotated = padded_grid.copy()
+        edge = padding + WARP_SIZE - 1
+        cv2.rectangle(annotated, (padding, padding), (edge, edge), (255, 174, 0), 2)
+        cv2.imwrite(str(work_dir / "grid-padded-outline.png"), annotated)
+        if not grid_mesh:
+            vertices = _grid_vertices(padded_grid, grid_size, padding)
+        mesh = padded_grid.copy()
+        points = np.rint(vertices).astype(np.int32)
+        for row, column in zip(points, np.swapaxes(points, 0, 1), strict=True):
+            cv2.polylines(mesh, [row, np.ascontiguousarray(column)], False, (255, 210, 0), 1, cv2.LINE_AA)
+        for x, y in points.reshape(-1, 2).tolist():
+            cv2.circle(mesh, (x, y), 3, (0, 180, 255), -1, cv2.LINE_AA)
+        cv2.imwrite(str(work_dir / "grid-vertex-mesh.png"), mesh)
+        cv2.imwrite(
+            str(work_dir / "grid-mesh-dewarped.png"),
+            grid_image if grid_mesh else _dewarp_vertex_mesh(padded_grid, vertices),
+        )
 
+    # The packaged number banks were built for the original 15×15 book.
+    use_templates = grid_size == GRID_SIZE and ocr_pipeline != TESSERACT_PIPELINE
+    templates = None
+    digit_templates = None
     started = time.perf_counter()
     try:
         reference_grid = extract_reference_grid(image)
     except ValueError:
-        templates = None
-        digit_templates = None
         clues: dict[int, str] = {}
         clue_evidence: list[ClueEvidence] = []
     else:
         cv2.imwrite(str(work_dir / "reference-grid.png"), reference_grid)
-        templates = _reference_templates(reference_grid)
-        try:
-            digit_templates = _digit_templates(reference_grid)
-        except ValueError:
-            digit_templates = None
+        if use_templates:
+            templates = _reference_templates(reference_grid)
+            try:
+                digit_templates = _digit_templates(reference_grid)
+            except ValueError:
+                pass
         clue_evidence = []
         clues = extract_clues(reference_grid, work_dir, clue_evidence)
     if trace is not None:
@@ -1290,7 +1596,7 @@ def recognize_photo(
         trace.record("topology", started)
 
     started = time.perf_counter()
-    if digit_templates is not None:
+    if use_templates and digit_templates is not None:
         classification_stage = time.perf_counter()
         if ocr_pipeline == WHOLE_TOKEN_PIPELINE:
             prototypes, prototype_labels = _whole_number_templates(template_exclusion)
@@ -1410,24 +1716,43 @@ def recognize_photo(
             readings = list(executor.map(lambda cell: _read_cell(cell, work_dir), playable))
         if trace is not None:
             trace.record("classify.tesseract", classification_stage)
-    retry = [reading for reading in readings if not reading.trusted]
+    cells_by_position = {(row, column): cell for row, column, cell in playable}
+    if use_templates and ocr_pipeline == WHOLE_TOKEN_PIPELINE:
+        # Give disputed template readings an OCR pass before they can become unknowns.
+        readings = _audit_reviewed_number_families(
+            readings,
+            cells_by_position,
+            excluded_puzzle_id=template_exclusion,
+        )
+    retry = [
+        reading
+        for reading in readings
+        if not reading.trusted
+        and (
+            use_templates
+            or not reading.text.isdigit()
+            or not 1 <= int(reading.text) <= 26
+            or reading.confidence < MIN_OCR_CONFIDENCE
+        )
+    ]
     if retry:
         classification_stage = time.perf_counter()
-        cells_by_position = {(row, column): cell for row, column, cell in playable}
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            first_ocr = list(
-                executor.map(
-                    lambda item: _read_cell(
-                        (
-                            item.row,
-                            item.column,
-                            cells_by_position[(item.row, item.column)],
+        first_ocr = retry
+        if use_templates:
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                first_ocr = list(
+                    executor.map(
+                        lambda item: _read_cell(
+                            (
+                                item.row,
+                                item.column,
+                                cells_by_position[(item.row, item.column)],
+                            ),
+                            work_dir,
                         ),
-                        work_dir,
-                    ),
-                    retry,
+                        retry,
+                    )
                 )
-            )
         with ThreadPoolExecutor(max_workers=8) as executor:
             retried = list(
                 executor.map(
@@ -1436,9 +1761,10 @@ def recognize_photo(
                         work_dir,
                         (
                             _template_value(cells_by_position[(item.row, item.column)], templates)
-                            if templates is not None
+                            if use_templates and templates is not None
                             else None
                         ),
+                        cells_by_position[(item.row, item.column)],
                     ),
                     first_ocr,
                 )
@@ -1464,21 +1790,29 @@ def recognize_photo(
             )
             for item in retried
         ]
-        if ocr_pipeline == WHOLE_TOKEN_PIPELINE:
+        if use_templates and ocr_pipeline == WHOLE_TOKEN_PIPELINE:
             retried = [
                 (
                     item
                     if item.text == original_by_position[(item.row, item.column)].text
+                    or (
+                        not first.text
+                        and item.text.isdigit()
+                        and 1 <= int(item.text) <= 26
+                        and item.confidence >= MIN_OCR_CONFIDENCE
+                        # A blank first read cannot corroborate dropping a digit.
+                        and len(item.text) >= len(original_by_position[(item.row, item.column)].text)
+                    )
                     else original_by_position[(item.row, item.column)]
                 )
-                for item in retried
+                for first, item in zip(first_ocr, retried, strict=True)
             ]
         replacements = {(item.row, item.column): item for item in retried}
         readings = [replacements.get((item.row, item.column), item) for item in readings]
         if trace is not None:
             trace.record("classify.tesseract", classification_stage)
 
-    if templates is not None and ocr_pipeline == LEGACY_PIPELINE:
+    if use_templates and templates is not None and ocr_pipeline == LEGACY_PIPELINE:
         classification_stage = time.perf_counter()
         cells_by_position = {(row, column): cell for row, column, cell in playable}
         board_templates: dict[int, list[np.ndarray]] = {}
@@ -1511,11 +1845,24 @@ def recognize_photo(
         if trace is not None:
             trace.record("classify.whole", classification_stage)
     cells_by_position = {(row, column): cell for row, column, cell in playable}
-    readings = _audit_reviewed_number_families(
-        readings,
-        cells_by_position,
-        excluded_puzzle_id=template_exclusion,
-    )
+    if use_templates:
+        readings = _audit_reviewed_number_families(
+            readings,
+            cells_by_position,
+            excluded_puzzle_id=template_exclusion,
+        )
+    else:
+        readings = [
+            CellReading(
+                row=item.row,
+                column=item.column,
+                text=item.text,
+                confidence=item.confidence,
+                trusted=(item.text.isdigit() and 1 <= int(item.text) <= 26 and item.confidence >= MIN_OCR_CONFIDENCE),
+            )
+            for item in readings
+        ]
+        readings = _review_with_scan_matches(readings, cells_by_position)
     for reading in readings:
         if not reading.trusted:
             cv2.imwrite(

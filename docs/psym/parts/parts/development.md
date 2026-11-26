@@ -37,13 +37,27 @@ recognition is for explicit debugging commands, never benchmark evidence:
 make benchmark
 make benchmark BENCHMARK_ARGS="--puzzle 48"
 make benchmark-audit
+make benchmark-audit BENCHMARK_ARGS="--manifest corpus/telegraph.toml --audit-dir build/telegraph-audit --summary-output build/telegraph-audit/summary.json"
 ```
 
 `make benchmark-audit` reruns OCR and independent search, then regenerates the
 error-first number, reference-clue, publisher-validation, and search-outcome
 pages beneath `build/corpus-audit/`. Corpus benchmarks are engineering tools and
-are intentionally not part of the quick `make check` gate. The same directory
-retains `summary.json` for before-and-after comparisons.
+are intentionally outside the quick `make check` gate. The same directory
+retains `summary.json` for before-and-after comparisons. Add
+`BENCHMARK_ARGS="--no-solve"` when collecting OCR review data alone. Use
+`--solve-timeout` to change the default 120-second budget per puzzle in each
+search lane. The terminal reports progress through those lanes.
+
+The default benchmark calls the same recogniser as the web scanner. For a
+geometry diagnosis, call `recognize_photo(photo, work_dir, geometry_debug=True)`
+to save the corner warp, padding, traced vertex mesh, and final rectified board.
+Keep the source-cell crop and the
+actual cleaned OCR input distinct when comparing reads. Some diagnostic paths
+reuse the cleaned-input filename for the source crop after an untrusted read.
+Use the default Tesseract path when measuring production recognition.
+`--ocr-pipeline legacy`, `--ocr-pipeline whole-token`, and `--no-grid-mesh`
+support explicit comparisons with earlier recognition or geometry paths.
 
 Approved publisher answer keys provide an independent number check. cdbr
 classifies each printed answer letter using templates built from the other

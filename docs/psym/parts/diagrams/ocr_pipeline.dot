@@ -1,45 +1,36 @@
 digraph ocr_pipeline {
-  graph [rankdir=TB, newrank=true, bgcolor="transparent", pad="0.2", nodesep="0.35", ranksep="0.48"];
-  node [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=10, color="#353535", fillcolor="#fffdf8", margin="0.10,0.07"];
-  edge [fontname="DejaVu Sans", fontsize=9, color="#666666", arrowsize=0.7];
+  graph [rankdir=TB, bgcolor="#ffffff", pad=0.18, nodesep=0.42, ranksep=0.40];
+  node [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=11,
+        color="#454545", fontcolor="#202624", fillcolor="#fffdf8", margin="0.16,0.10"];
+  edge [fontname="DejaVu Sans", fontsize=9, color="#727672", fontcolor="#525952", arrowsize=0.72];
 
-  photo [label="Photograph"];
-  geometry [label="Locate page + grids\nPerspective correction"];
-  topology [label="Grid size + topology\nCell crops"];
-  whole [label="Whole-number classifier\nPublisher canon"];
-  samepage [label="Same-page reference\ndigit evidence"];
-  fallback [label="Selective fallback\nReference + Tesseract"];
-  specialist [label="Ambiguity specialists\nfamily · arity · quadrant", fillcolor="#fff0eb", color="#c83327"];
-  clue [label="Reference-clue OCR\nblank-ink guard"];
-  confidence [label="Confidence fusion\n(no silent rewrite)", shape=diamond, fillcolor="#f4f1e8"];
-  hil [label="Human review\noriginal crops", fillcolor="#fff0eb", color="#c83327"];
-  board [label="Approved playable board", fillcolor="#edf6ee", color="#287a3d"];
-  play [label="Play immediately"];
-  solver [label="Solver on hint/reveal\nuses player entries"];
-  lexical [label="Guarded crossing-word\nevidence (planned)", style="rounded,dashed,filled", fillcolor="#ffffff"];
+  photo [label="Photo\nAuto-orient · cap longest side at 1,600 px"];
+  locate [label="Locate and orient board\nDetect the 13×13 or 15×15 grid"];
+  mesh [label="Padded perspective warp\nTrace rules and remap shared vertices"];
+  crops [label="Identify blocked cells\nClean playable number crops"];
+  number [label="Tesseract number OCR\nSingle line, then selective retries"];
+  matches [label="Compare repeats within this scan\nFlag disagreements for review"];
+  strip [label="Rectify the 2×13 reference strip"];
+  clues [label="Read clue letters with Tesseract\nUse ink to detect likely blanks"];
+  observation [label="Scan observation\nBoard, starting clues and review evidence", fillcolor="#ebf2fb", color="#315d87"];
+  review [label="Review your scan\nCompare with photo and confirm edits", fillcolor="#fff0eb", color="#ae3c2b"];
+  retake [label="Retake photo", fillcolor="#fff0eb", color="#ae3c2b"];
+  solve [label="Accept Scan\nTime-bounded solution search", fillcolor="#edf6ee", color="#287a3d"];
+  next_step [label="Show why search stopped\nReview again or play anyway\nKeep searching after a retryable timeout"];
+  play [label="Play\nHints, entry checks and reveal", fillcolor="#edf6ee", color="#287a3d"];
 
-  { rank=same; photo; geometry; topology; }
-  { rank=same; whole; samepage; clue; }
-  { rank=same; fallback; confidence; specialist; }
-  { rank=same; hil; board; }
-  { rank=same; play; solver; lexical; }
-
-  photo -> geometry -> topology;
-  topology -> whole;
-  topology -> samepage;
-  topology -> clue;
-  whole -> confidence;
-  samepage -> confidence;
-  whole -> fallback [label="untrusted only"];
-  fallback -> confidence;
-  confidence -> specialist [label="known family"];
-  specialist -> confidence [label="veto / margin"];
-  clue -> hil;
-  confidence -> hil [label="uncertain"];
-  confidence -> board [label="trusted"];
-  hil -> board [label="confirmed"];
-  board -> play;
-  play -> solver [label="hint / reveal"];
-  solver -> lexical [style=dashed];
-  lexical -> hil [style=dashed, label="close family only"];
+  photo -> locate;
+  locate -> mesh -> crops -> number -> matches -> observation;
+  locate -> strip -> clues -> observation;
+  { rank=same; mesh; strip; }
+  { rank=same; crops; clues; }
+  observation -> review;
+  observation -> retake [label="quality gate"];
+  { rank=same; review; retake; }
+  review -> solve;
+  solve -> play [label="complete mapping"];
+  solve -> next_step [label="no complete mapping"];
+  next_step -> play [label="Play anyway"];
+  next_step:e -> solve:e [constraint=false, style=dashed];
+  next_step:w -> review:w [constraint=false, style=dashed];
 }

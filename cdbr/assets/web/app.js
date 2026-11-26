@@ -41,11 +41,16 @@ const fileMeta = document.querySelector('#file-meta');
 const solveButton = document.querySelector('#solve-button');
 const scanActions = document.querySelector('.scan-actions');
 const reviewState = document.querySelector('#review-state');
-const reviewCells = document.querySelector('#review-cells');
-const reviewClues = document.querySelector('#review-clues');
-const reviewCellGroup = document.querySelector('#review-cell-group');
-const reviewClueGroup = document.querySelector('#review-clue-group');
-const reviewGuidance = document.querySelector('#review-guidance');
+const reviewBoard = document.querySelector('#review-board');
+const reviewPhoto = document.querySelector('#review-photo');
+const reviewReference = document.querySelector('#review-reference');
+const reviewCount = document.querySelector('#review-count');
+const reviewEditor = document.querySelector('#review-editor');
+const reviewValue = document.querySelector('#review-value');
+const reviewValueLabel = document.querySelector('#review-value-label');
+const reviewCrop = document.querySelector('#review-crop');
+const confirmReviewButton = document.querySelector('#confirm-review');
+const reviewError = document.querySelector('#review-error');
 const finishReview = document.querySelector('#finish-review');
 const blankPuzzleShell = document.querySelector('#blank-puzzle-shell');
 const playPuzzleShell = document.querySelector('#play-puzzle-shell');
@@ -58,17 +63,11 @@ const creatorProgressTitle = document.querySelector('#creator-progress-title');
 const creatorProgressDetail = document.querySelector('#creator-progress-detail');
 const publishCreated = document.querySelector('#publish-created');
 const cancelCreated = document.querySelector('#cancel-created');
-const puzzleNumber = document.querySelector('#puzzle-number');
+const puzzleSelect = document.querySelector('#puzzle-select');
 const puzzlePickerStatus = document.querySelector('#puzzle-picker-status');
 const startPuzzleButton = document.querySelector('#start-puzzle');
 const randomPuzzleButton = document.querySelector('#random-puzzle');
 const checkGameButton = document.querySelector('#check-game');
-const hintDialog = document.querySelector('#hint-dialog');
-const hintDialogTitle = document.querySelector('#hint-dialog-title');
-const hintDialogAnswer = document.querySelector('#hint-dialog-answer');
-const hintDialogDetail = document.querySelector('#hint-dialog-detail');
-const hintDialogWarning = document.querySelector('#hint-dialog-warning');
-const hintDialogAccept = document.querySelector('#hint-dialog-accept');
 
 let previewUrl;
 let resultUrl;
@@ -128,36 +127,16 @@ function endSolving() {
   solving = false;
 }
 
-function previewReferenceHint(symbol, hint) {
-  const letter = hint?.letter;
-  const certified = hint?.solution_status === 'certified';
-  hintDialogTitle.textContent = letter ? `Hint for number ${symbol}` : `No hint yet for number ${symbol}`;
-  hintDialogAnswer.textContent = letter ? `${symbol} = ${letter}` : '';
-  hintDialogAnswer.classList.toggle('is-empty', !letter);
-  hintDialogDetail.textContent = letter
-    ? 'The current solution supports this reference-grid letter.'
-    : 'The puzzle is not fully solved, and the current partial solution does not know this letter.';
-  hintDialogWarning.textContent = letter && !certified
-    ? 'Caveat solver: the puzzle is not complete, so this best guess may be wrong.'
-    : letter
-      ? 'This letter comes from a complete, uniquely certified solution.'
-      : 'I cannot give you a hint yet. Add a few letters and ask again; each entry narrows the search.';
-  hintDialogAccept.hidden = !letter;
-  return new Promise((resolve) => {
-    hintDialog.addEventListener('close', () => resolve(letter && hintDialog.returnValue === 'accept'), { once: true });
-    hintDialog.showModal();
-  });
-}
-
 function showMode(mode) {
   document.body.dataset.mode = mode;
   idleWorkspace.hidden = mode !== 'idle';
   playWorkspace.hidden = mode !== 'play';
   gameWorkspace.hidden = mode !== 'game';
   scannerWorkspace.hidden = mode !== 'scanner';
+  reviewState.hidden = mode !== 'review';
   creatorWorkspace.hidden = mode !== 'creator';
   showGameButton.classList.toggle('is-active', mode === 'play' || mode === 'game');
-  showScannerButton.classList.toggle('is-active', mode === 'scanner');
+  showScannerButton.classList.toggle('is-active', mode === 'scanner' || mode === 'review');
   showCreatorButton.classList.toggle('is-active', mode === 'creator');
 }
 
@@ -174,24 +153,52 @@ function renderBlankDesk() {
   }
 }
 
+function setPuzzlePickerStatus(message = '') {
+  puzzlePickerStatus.textContent = message;
+  puzzlePickerStatus.hidden = !message;
+}
+
+function setPuzzlePickerBusy(busy) {
+  const empty = puzzleSelect.options.length <= 1;
+  puzzleSelect.disabled = busy || empty;
+  startPuzzleButton.disabled = busy || !puzzleSelect.value;
+  randomPuzzleButton.disabled = busy || empty;
+}
+
 async function showPuzzlePicker() {
   showMode('play');
-  const response = await fetch('/api/puzzles');
-  if (!response.ok) return;
-  const catalog = await response.json();
-  const serials = catalog.puzzles.map((puzzle) => puzzle.serial);
-  puzzlePickerStatus.textContent = serials.length
-    ? `Available book numbers: ${serials.join(', ')}`
-    : 'No published puzzles are available yet.';
+  const previous = puzzleSelect.value;
+  puzzleSelect.options.length = 1;
+  setPuzzlePickerBusy(true);
+  setPuzzlePickerStatus('Loading puzzles…');
+  try {
+    const response = await fetch('/api/puzzles');
+    if (!response.ok) throw new Error('Catalog unavailable');
+    const { puzzles } = await response.json();
+    puzzleSelect.options.length = 1;
+    for (const { id, serial, title } of puzzles) {
+      puzzleSelect.add(new Option(title, String(id ?? serial)));
+    }
+    if (puzzles.some(({ id, serial }) => String(id ?? serial) === previous)) puzzleSelect.value = previous;
+    setPuzzlePickerStatus(puzzles.length ? '' : 'No published puzzles are available yet.');
+  } catch {
+    setPuzzlePickerStatus('Could not load the puzzle library. Select Play to try again.');
+  } finally {
+    setPuzzlePickerBusy(false);
+  }
 }
 
 async function startCorpusGame(puzzleId) {
+  setPuzzlePickerBusy(true);
+  setPuzzlePickerStatus();
   game = undefined;
-  if (await loadGame(puzzleId)) {
-    puzzlePickerStatus.textContent = '';
-    showMode('game');
-  } else {
-    puzzlePickerStatus.textContent = `Puzzle ${puzzleId} is not in the current collection.`;
+  try {
+    if (!await loadGame(puzzleId)) throw new Error('Puzzle unavailable');
+    if (document.body.dataset.mode === 'play') showMode('game');
+  } catch {
+    setPuzzlePickerStatus('Could not open a puzzle. Please try again.');
+  } finally {
+    setPuzzlePickerBusy(false);
   }
 }
 
@@ -475,10 +482,12 @@ async function referenceClick(symbol) {
     renderGame();
     return;
   }
+  if (!await readyToSolveFromProgress()) return;
   beginSolving('Solving the puzzle…', `Finding a reliable hint for ${symbol}.`);
-  let response;
+  let response, hint;
   try {
     response = await fetch(`/api/sessions/${game.session_id}/reveal/${symbol}`, solveRequest());
+    hint = await response.json();
   } catch (_) {
     endSolving();
     selectedSymbol = undefined;
@@ -489,21 +498,8 @@ async function referenceClick(symbol) {
   }
   endSolving();
   if (!response.ok) {
-    await previewReferenceHint(symbol);
-    gameGuidance.textContent = `The partial solution does not know ${symbol} yet. Your entries are untouched.`;
+    gameGuidance.textContent = typeof hint.detail === 'string' ? hint.detail : `No hint available for ${symbol}.`;
     selectedSymbol = undefined;
-    renderReference();
-    renderGame();
-    return;
-  }
-  const hint = await response.json();
-  const accepted = hint.solution_status === 'certified'
-    ? true
-    : await previewReferenceHint(symbol, hint);
-  if (!accepted) {
-    selectedSymbol = undefined;
-    draftLetter = undefined;
-    gameGuidance.textContent = `Hint for ${symbol} left unused.`;
     renderReference();
     renderGame();
     return;
@@ -513,7 +509,9 @@ async function referenceClick(symbol) {
   incorrectSymbols.delete(symbol);
   selectedSymbol = undefined;
   draftLetter = undefined;
-  gameGuidance.textContent = `${symbol}=${hint.letter} revealed and written throughout the puzzle.`;
+  gameGuidance.textContent = hint.solution_status === 'certified'
+    ? `${symbol}=${hint.letter} revealed.`
+    : `${symbol}=${hint.letter} revealed as a tentative hint. It may be wrong.`;
   renderReference();
   renderGame();
 }
@@ -547,14 +545,10 @@ async function loadGame(puzzleId) {
 
 showGameButton.addEventListener('click', showPuzzlePicker);
 startPuzzleButton.addEventListener('click', () => {
-  const serial = puzzleNumber.value.trim();
-  if (serial) startCorpusGame(serial);
-  else puzzlePickerStatus.textContent = 'Enter the puzzle number printed in the book.';
+  if (puzzleSelect.value) startCorpusGame(puzzleSelect.value);
 });
 randomPuzzleButton.addEventListener('click', () => startCorpusGame('random'));
-puzzleNumber.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') startPuzzleButton.click();
-});
+puzzleSelect.addEventListener('change', () => setPuzzlePickerBusy(false));
 function abandonGame() {
   if (document.body.dataset.mode !== 'game') return true;
   return window.confirm('Abandon game?');
@@ -602,17 +596,7 @@ document.addEventListener('keydown', (event) => {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
   if (handleGameKey(event.key)) event.preventDefault();
 });
-checkGameButton.addEventListener('click', async () => {
-  if (!game || solving) return;
-  commitSelection();
-  const entries = playerEntries();
-  if (Object.keys(entries).length === 0) {
-    incorrectSymbols.clear();
-    gameGuidance.textContent = 'Enter at least one letter before checking.';
-    renderGame();
-    renderReference();
-    return;
-  }
+async function checkPlayerEntries(entries) {
   beginSolving('Checking your entries…', 'Comparing your letters without revealing the answers.');
   let response;
   try {
@@ -624,12 +608,12 @@ checkGameButton.addEventListener('click', async () => {
   } catch (_) {
     endSolving();
     gameGuidance.textContent = 'I could not check the puzzle. Your entries are untouched.';
-    return;
+    return null;
   }
   endSolving();
   if (!response.ok) {
     gameGuidance.textContent = 'I could not obtain a reliable answer for checking yet. Keep playing.';
-    return;
+    return null;
   }
   const result = await response.json();
   incorrectSymbols = new Set(result.incorrect_symbols);
@@ -642,9 +626,41 @@ checkGameButton.addEventListener('click', async () => {
   }
   renderGame();
   renderReference();
+  return result;
+}
+
+async function readyToSolveFromProgress() {
+  const entries = playerEntries();
+  const count = Object.keys(entries).length;
+  if (!count) return true;
+  const current = game;
+  const result = await checkPlayerEntries(entries);
+  if (!result || game !== current) return false;
+  if (result.incorrect_symbols.length) return false;
+  if (result.checked_symbols.length !== count) {
+    gameGuidance.textContent = 'I could not verify every entry yet. Clear any guesses you are unsure of before solving from your progress.';
+    return false;
+  }
+  return true;
+}
+
+checkGameButton.addEventListener('click', async () => {
+  if (!game || solving) return;
+  commitSelection();
+  const entries = playerEntries();
+  if (Object.keys(entries).length === 0) {
+    incorrectSymbols.clear();
+    gameGuidance.textContent = 'Enter at least one letter before checking.';
+    renderGame();
+    renderReference();
+    return;
+  }
+  await checkPlayerEntries(entries);
 });
 document.querySelector('#reveal-all').addEventListener('click', async () => {
   if (!game || solving || !window.confirm('Reveal the complete puzzle?')) return;
+  commitSelection();
+  if (!await readyToSolveFromProgress()) return;
   beginSolving('Solving the puzzle…', 'Preparing the best available solution.');
   let response;
   try {
@@ -875,7 +891,10 @@ dropZone.addEventListener('drop', (event) => {
 document.querySelector('#change-photo').addEventListener('click', chooseAgain);
 document.querySelector('#try-again').addEventListener('click', chooseAgain);
 document.querySelector('#solve-another').addEventListener('click', chooseAgain);
-document.querySelector('#cancel-review').addEventListener('click', chooseAgain);
+document.querySelector('#cancel-review').addEventListener('click', () => {
+  showMode('scanner');
+  chooseAgain();
+});
 document.querySelector('#quit-scan').addEventListener('click', () => {
   clearInterval(stageTimer);
   workingState.hidden = true;
@@ -893,110 +912,294 @@ document.querySelector('#quit-scan').addEventListener('click', () => {
   showMode('idle');
 });
 
-function showReview(prepared) {
-  scanJob = prepared;
-  reviewCells.replaceChildren();
-  reviewClues.replaceChildren();
-  prepared.review_clues.forEach((item) => {
-    const label = document.createElement('label');
-    label.className = 'review-cell review-clue';
-    const image = document.createElement('img');
-    image.src = item.image;
-    image.alt = `Original reference clue for symbol ${item.symbol}`;
-    const detail = document.createElement('span');
-    const coordinate = document.createElement('strong');
-    coordinate.textContent = `Reference ${item.symbol}`;
-    const confidence = document.createElement('small');
-    confidence.textContent = item.proposed === null
-      ? 'Scanner sees a blank cell — confirm or enter a letter'
-      : `Scanner suggests ${item.proposed} · ${item.confidence}% agreement`;
-    const value = document.createElement('input');
-    value.type = 'text';
-    value.maxLength = 1;
-    value.pattern = '[A-Za-z]';
-    value.value = item.proposed ?? '';
-    value.dataset.symbol = item.symbol;
-    value.autocapitalize = 'characters';
-    value.setAttribute('aria-label', `Letter for reference symbol ${item.symbol}`);
-    detail.append(coordinate, confidence);
-    label.append(image, detail, value);
-    reviewClues.append(label);
-  });
-  prepared.review_cells.forEach((item) => {
-    const label = document.createElement('label');
-    label.className = 'review-cell';
-    const image = document.createElement('img');
-    image.src = item.image;
-    image.alt = `Original crop at row ${item.row}, column ${item.column}`;
-    const detail = document.createElement('span');
-    const coordinate = document.createElement('strong');
-    coordinate.textContent = `Row ${item.row}, column ${item.column}`;
-    const confidence = document.createElement('small');
-    confidence.textContent = item.proposed === null
-      ? 'No reliable reading'
-      : `Scanner suggests ${item.proposed} · ${item.confidence}%`;
-    const value = document.createElement('input');
-    value.type = 'number';
-    value.min = '1';
-    value.max = '26';
-    value.required = true;
-    value.value = item.proposed ?? '';
-    value.dataset.row = item.row;
-    value.dataset.column = item.column;
-    value.setAttribute('aria-label', `Value at row ${item.row}, column ${item.column}`);
-    detail.append(coordinate, confidence);
-    label.append(image, detail, value);
-    reviewCells.append(label);
-  });
-  reviewClueGroup.hidden = prepared.review_clues.length === 0;
-  reviewCellGroup.hidden = prepared.review_cells.length === 0;
-  reviewGuidance.textContent = prepared.review_cells.length
-    ? `Review ${prepared.review_clues.length} reference candidate${prepared.review_clues.length === 1 ? '' : 's'} and confirm ${prepared.review_cells.length} uncertain numbered cell${prepared.review_cells.length === 1 ? '' : 's'}. Blank reference inputs mean no clue is present.`
-    : `Review ${prepared.review_clues.length} reference candidate${prepared.review_clues.length === 1 ? '' : 's'} before playing. Blank inputs mean no clue is present.`;
-  scanActions.hidden = true;
-  reviewState.hidden = false;
+let reviewItems = new Map();
+let reviewQueue = new Set();
+let reviewSelection;
+let reviewPreview;
+let submittingReview = false;
+
+function paintReview() {
+  const selected = reviewItems.get(reviewPreview ?? reviewSelection);
+  const match = selected?.symbol ?? (selected ? Number(selected.draft) : 0);
+  for (const [key, item] of reviewItems) {
+    const number = item.symbol ?? Number(item.draft);
+    item.button.classList.toggle('review-pending', reviewQueue.has(key));
+    item.button.classList.toggle('review-match', match > 0 && number === match);
+    item.button.classList.toggle('review-selected', key === reviewSelection);
+    item.button.classList.toggle('review-preview', key === reviewPreview);
+    item.button.setAttribute('aria-pressed', String(key === (reviewPreview ?? reviewSelection)));
+    item.button.setAttribute('aria-label', `${item.label}, ${item.draft || (item.symbol ? 'blank' : 'unknown')}${reviewQueue.has(key) ? ', needs review' : ''}`);
+    item.value.textContent = item.draft || (item.symbol ? '' : '?');
+  }
+  const count = reviewQueue.size;
+  reviewCount.textContent = count ? `${count} cell${count === 1 ? '' : 's'} to check` : 'Review complete';
+  finishReview.disabled = submittingReview || count > 0;
 }
 
-async function completeScan(cells, clues) {
-  if (!scanJob) return;
-  finishReview.disabled = true;
-  finishReview.textContent = 'Solving…';
+function selectReview(key, { preview = false } = {}) {
+  reviewPreview = preview ? key : undefined;
+  if (!preview) reviewSelection = key;
+  const item = reviewItems.get(key);
+  reviewEditor.dataset.inactive = 'false';
+  reviewValue.disabled = preview;
+  confirmReviewButton.disabled = preview;
+  reviewValueLabel.textContent = preview
+    ? `${item.label} · Click again to edit`
+    : item.symbol ? `${item.label} (blank if empty)` : `${item.label} (1–26)`;
+  reviewValue.value = item.draft;
+  reviewValue.maxLength = item.symbol ? 1 : 2;
+  reviewValue.inputMode = item.symbol ? 'text' : 'numeric';
+  reviewCrop.src = item.image;
+  reviewError.hidden = true;
+  paintReview();
+  if (!preview) {
+    reviewValue.focus();
+    reviewValue.select();
+  }
+}
+
+function clearReviewSelection() {
+  reviewSelection = undefined;
+  reviewPreview = undefined;
+  reviewEditor.dataset.inactive = 'true';
+  reviewValueLabel.textContent = 'Select a cell to review';
+  reviewValue.value = '';
+  reviewValue.disabled = true;
+  confirmReviewButton.disabled = true;
+  reviewCrop.removeAttribute('src');
+  reviewError.hidden = true;
+}
+
+function confirmReview() {
+  if (submittingReview || reviewPreview !== undefined) return;
+  const item = reviewItems.get(reviewSelection);
+  if (!item) return;
+  const value = item.draft.trim().toUpperCase();
+  const valid = item.symbol ? /^[A-Z]?$/.test(value) : /^(?:[1-9]|1[0-9]|2[0-6])$/.test(value);
+  if (!valid) {
+    reviewError.textContent = item.symbol ? 'Enter one letter or leave the clue blank.' : 'Enter a number from 1 to 26.';
+    reviewError.hidden = false;
+    reviewValue.focus();
+    return;
+  }
+  item.confirmed = value;
+  item.draft = value;
+  const keys = [...reviewQueue];
+  const next = keys[(keys.indexOf(reviewSelection) + 1) % keys.length];
+  reviewQueue.delete(reviewSelection);
+  if (reviewQueue.size) {
+    selectReview(next);
+  } else {
+    clearReviewSelection();
+    paintReview();
+    finishReview.focus();
+  }
+}
+
+function addReviewItem(key, item, container) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = item.symbol ? 'reference-cell' : 'puzzle-cell';
+  if (item.symbol) {
+    const number = document.createElement('small');
+    number.textContent = item.symbol;
+    button.append(number);
+  }
+  const value = document.createElement('strong');
+  button.append(value);
+  item.button = button;
+  item.value = value;
+  reviewItems.set(key, item);
+  button.addEventListener('click', () => {
+    if (submittingReview) return;
+    if (key === reviewPreview) {
+      if (reviewQueue.size) reviewQueue.add(key);
+      selectReview(key);
+    } else if (!reviewQueue.size && (key !== reviewSelection || reviewPreview !== undefined)) {
+      reviewSelection = undefined;
+      selectReview(key, { preview: true });
+    } else if (key === reviewSelection) {
+      if (reviewPreview === undefined) confirmReview();
+      else selectReview(key);
+    } else if (reviewQueue.has(key)) {
+      selectReview(key);
+    } else {
+      const selected = reviewItems.get(reviewSelection);
+      const number = item.symbol ?? Number(item.draft);
+      if (number > 0 && number === (selected?.symbol ?? Number(selected?.draft))) {
+        selectReview(key, { preview: true });
+      } else {
+        selectReview(key);
+      }
+    }
+  });
+  container.append(button);
+}
+
+function syncReviewPhoto() {
+  reviewBoard.classList.toggle('has-scan-photo', reviewPhoto.checked);
+}
+
+reviewPhoto.addEventListener('change', syncReviewPhoto);
+
+function showReview(prepared) {
+  scanJob = prepared;
+  reviewItems = new Map();
+  reviewQueue = new Set();
+  document.querySelector('#review-guidance').textContent = 'Red outlines mark cells to check. Click a blue match to preview it, then click it again to edit.';
+  clearReviewSelection();
+  reviewBoard.style.setProperty('--grid-size', prepared.grid[0].length);
+  reviewBoard.replaceChildren();
+  reviewReference.replaceChildren();
+  const flagged = new Map(prepared.review_cells.map((item) => [`${item.row}/${item.column}`, item]));
+  const flaggedClues = new Map(prepared.review_clues.map((item) => [item.symbol, item]));
+  const base = `/api/scan-jobs/${prepared.job_id}`;
+  reviewBoard.style.setProperty('--scan-photo', `url("${base}/grid")`);
+  syncReviewPhoto();
+  prepared.grid.forEach((values, rowIndex) => values.forEach((number, columnIndex) => {
+    if (number === '.') {
+      const block = document.createElement('span');
+      block.className = 'puzzle-cell is-block';
+      reviewBoard.append(block);
+      return;
+    }
+    const row = rowIndex + 1;
+    const column = columnIndex + 1;
+    const key = `${row}/${column}`;
+    const flag = flagged.get(key);
+    if (flag) reviewQueue.add(key);
+    addReviewItem(key, {
+      row, column, label: `Row ${row}, column ${column}`,
+      draft: String((flag ? flag.proposed : number) ?? ''),
+      image: `${base}/cells/${key}`,
+    }, reviewBoard);
+    const cell = reviewItems.get(key).button;
+    cell.style.setProperty('--scan-x', `${columnIndex * 100 / (values.length - 1)}%`);
+    cell.style.setProperty('--scan-y', `${rowIndex * 100 / (prepared.grid.length - 1)}%`);
+  }));
+  for (let symbol = 1; symbol <= 26; symbol += 1) {
+    const key = `clue-${symbol}`;
+    const flag = flaggedClues.get(symbol);
+    if (flag) reviewQueue.add(key);
+    addReviewItem(key, {
+      symbol, label: `Reference ${symbol}`,
+      draft: (flag ? flag.proposed : prepared.clues[symbol]) ?? '',
+      image: `${base}/clues/${symbol}`,
+    }, reviewReference);
+  }
+  showMode('review');
+  const first = reviewQueue.values().next().value;
+  if (first !== undefined) selectReview(first);
+  else paintReview();
+}
+
+reviewValue.addEventListener('input', () => {
+  const item = reviewItems.get(reviewSelection);
+  if (!item) return;
+  item.draft = reviewValue.value.toUpperCase();
+  reviewQueue.add(reviewSelection);
+  reviewError.hidden = true;
+  paintReview();
+});
+document.querySelector('#review-edit-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  confirmReview();
+});
+
+const scanSolveDialog = document.querySelector('#scan-solve-dialog');
+const scanSolveTitle = document.querySelector('#scan-solve-title');
+const scanSolveMessage = document.querySelector('#scan-solve-message');
+const scanSolveProgress = document.querySelector('#scan-solve-progress');
+const scanSolveProgressDetail = document.querySelector('#scan-solve-progress-detail');
+const keepSearchingButton = document.querySelector('#keep-searching');
+let nextScanSearchRound;
+
+async function finishScanReview(checkSolution, searchRound = 0) {
+  if (!scanJob || submittingReview || reviewQueue.size) return;
+  const job = scanJob;
+  const cells = [];
+  const clues = [];
+  for (const item of reviewItems.values()) {
+    if (item.confirmed === undefined) continue;
+    if (item.symbol) clues.push({ symbol: item.symbol, letter: item.confirmed });
+    else cells.push({ row: item.row, column: item.column, value: Number(item.confirmed) });
+  }
+  submittingReview = true;
+  reviewError.hidden = true;
+  paintReview();
+  let progressTimer;
   try {
-    const response = await fetch(`/api/scan-jobs/${scanJob.job_id}/complete`, {
+    if (checkSolution) {
+      let stage = 0;
+      scanSolveProgressDetail.textContent = solvingStages[stage];
+      scanSolveProgress.hidden = false;
+      reviewBoard.setAttribute('aria-busy', 'true');
+      progressTimer = window.setInterval(() => {
+        stage = (stage + 1) % solvingStages.length;
+        scanSolveProgressDetail.textContent = solvingStages[stage];
+      }, 1800);
+    }
+    const response = await fetch(`/api/scan-jobs/${job.job_id}/complete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cells, clues }),
+      body: JSON.stringify({ cells, clues, check_solution: checkSolution, search_round: searchRound }),
     });
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.detail || 'The reviewed puzzle could not be solved.');
+    const data = await response.json();
+    scanSolveProgress.hidden = true;
+    if (scanJob !== job || document.body.dataset.mode !== 'review') return;
+    if (response.status === 409 && data.detail?.code === 'scan_solve_check') {
+      nextScanSearchRound = data.detail.next_search_round;
+      const canKeepSearching = Number.isInteger(nextScanSearchRound);
+      keepSearchingButton.hidden = !canKeepSearching;
+      if (data.detail.status === 'no_complete_solution') {
+        scanSolveTitle.textContent = 'Check the scan?';
+        scanSolveMessage.textContent =
+          'The search finished without finding a solution in the current dictionary. Check that the numbers and starting clues match the photo.';
+        document.querySelector('#review-guidance').textContent =
+          'Compare the scanned numbers with the board, especially 1s and 4s, and 6s and 8s.';
+      } else if (canKeepSearching) {
+        scanSolveTitle.textContent = 'Keep looking?';
+        scanSolveMessage.textContent = 'I ran out of time. I can search longer, or you can start playing.';
+      } else if (data.detail.status === 'unavailable') {
+        scanSolveTitle.textContent = 'Couldn’t check the scan';
+        scanSolveMessage.textContent = 'You can review the board again or start playing.';
+      } else {
+        scanSolveTitle.textContent = 'Search limit reached';
+        scanSolveMessage.textContent = 'The search stopped before finding a complete solution. You can review the board or start playing.';
+      }
+      scanSolveDialog.returnValue = '';
+      scanSolveDialog.showModal();
+      if (canKeepSearching) keepSearchingButton.focus();
+      return;
     }
-    installGame(await response.json());
+    if (!response.ok) {
+      throw new Error(typeof data.detail === 'string' ? data.detail : 'Check the reviewed cells and try again.');
+    }
+    installGame(data);
+    scanJob = undefined;
     selectedFile = undefined;
     input.value = '';
     showMode('game');
   } catch (error) {
-    errorState.hidden = false;
-    errorMessage.textContent = error instanceof Error ? error.message : 'Please check the reviewed cells.';
-    retakeTips.hidden = true;
+    if (scanJob !== job || document.body.dataset.mode !== 'review') return;
+    reviewError.textContent = error instanceof Error ? error.message : 'The puzzle could not be opened.';
+    reviewError.hidden = false;
   } finally {
-    finishReview.disabled = false;
-    finishReview.textContent = 'Confirm and open puzzle';
+    window.clearInterval(progressTimer);
+    scanSolveProgress.hidden = true;
+    reviewBoard.removeAttribute('aria-busy');
+    submittingReview = false;
+    paintReview();
   }
 }
 
-finishReview.addEventListener('click', () => {
-  const inputs = [...reviewCells.querySelectorAll('input')];
-  const clueInputs = [...reviewClues.querySelectorAll('input')];
-  if (![...inputs, ...clueInputs].every((item) => item.reportValidity())) return;
-  completeScan(inputs.map((item) => ({
-    row: Number(item.dataset.row),
-    column: Number(item.dataset.column),
-    value: Number(item.value),
-  })), clueInputs.map((item) => ({
-    symbol: Number(item.dataset.symbol),
-    letter: item.value.toUpperCase(),
-  })));
+finishReview.addEventListener('click', () => finishScanReview(true));
+scanSolveDialog.addEventListener('close', () => {
+  if (scanSolveDialog.returnValue === 'play') {
+    finishScanReview(false);
+  } else if (scanSolveDialog.returnValue === 'search' && Number.isInteger(nextScanSearchRound)) {
+    finishScanReview(true, nextScanSearchRound);
+  }
 });
 
 form.addEventListener('submit', async (event) => {
@@ -1036,12 +1239,7 @@ form.addEventListener('submit', async (event) => {
     const prepared = await response.json();
     workingState.hidden = true;
     previewState.classList.remove('is-working');
-    scanJob = prepared;
-    if (prepared.review_cells.length || prepared.review_clues.length) {
-      showReview(prepared);
-    } else {
-      await completeScan([], []);
-    }
+    showReview(prepared);
   } catch (error) {
     workingState.hidden = true;
     previewState.classList.remove('is-working');

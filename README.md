@@ -11,7 +11,7 @@ Open a puzzle from the collection, scan one from your book, or create your own.
 The hosted app runs in your browser and needs no installation or account.
 
 <p align="center">
-  <a href="https://codebreak.foghub.com"><img src="docs/psym/assets/gameplay.png" width="900" alt="Puzzle 47 in progress with the numbered board and reference grid side by side"></a>
+  <a href="https://codebreak.foghub.com"><img src="docs/psym/assets/gameplay.png" width="900" alt="Puzzle 78 with its printed starting letters on both the board and reference grid"></a>
 </p>
 
 <p align="center">
@@ -193,13 +193,11 @@ cdbrd --host 127.0.0.1 --port 8000
 Then open http://127.0.0.1:8000/. The web interface can play a corpus puzzle,
 scan a photograph into the playable board, or create a new puzzle. Uploaded
 photographs and game sessions are currently held only for the lifetime of the
-service; no database is required. Photograph recognition asks for human review
-of every detected clue and any apparently blank reference cell whose measured
-ink approaches handwriting; clean blank cells are accepted automatically. This
-keeps omitted clues visible without demanding 23 routine blank confirmations.
-The lexical solver runs only when a hint or solution reveal is requested. During play, select any
-numbered cell and type a letter to preview
-that entry everywhere the number occurs. Enter or selecting another number
+service; no database is required. A successful scan opens a board review.
+Accepting the scan checks for a complete solution before play, with the option
+to review again or play anyway if the search cannot finish. During play, select
+any numbered cell and type a letter to preview that entry everywhere the number
+occurs. Enter or selecting another number
 commits it, Escape cancels it, and Backspace clears a player-entered letter.
 The letter rails above and below the board cross out letters already assigned,
 with a compact vowel rail repeating the same state. The one-to-one code prevents
@@ -209,10 +207,12 @@ throughout both the puzzle and reference grid without revealing replacements.
 On a narrow screen the puzzle, 2x13 reference grid, and an on-screen QWERTY
 keyboard form one compact play surface. Two-finger pinch gestures enlarge only
 the puzzle board, which can then be panned without losing the reference grid.
-Play can select a numbered corpus puzzle or ask cdbr to choose one at random.
-Hint and solution requests use the player's current entries as solver constraints
-and show their progress over the board; an unsuccessful search returns to the
-unchanged game so play can continue.
+In Play, choose a named puzzle from either collection or use **Pick one** to
+open a random board. Packaged puzzles start with their printed clues. Click the
+same reference cell twice to put a hint directly on both grids when a letter is
+available. Hint and reveal requests can search from checked player entries, and
+show progress over the board. A tentative hint carries a warning in the game
+panel.
 
 `cdbrd --reload` is intended for local development. Container deployments should
 set `PORT` and run a single service process.
@@ -276,13 +276,27 @@ recognition is for explicit debugging commands, never benchmark evidence:
 make benchmark
 make benchmark BENCHMARK_ARGS="--puzzle 48"
 make benchmark-audit
+make benchmark-audit BENCHMARK_ARGS="--manifest corpus/telegraph.toml --audit-dir build/telegraph-audit --summary-output build/telegraph-audit/summary.json"
 ```
 
 `make benchmark-audit` reruns OCR and independent search, then regenerates the
 error-first number, reference-clue, publisher-validation, and search-outcome
 pages beneath `build/corpus-audit/`. Corpus benchmarks are engineering tools and
-are intentionally not part of the quick `make check` gate. The same directory
-retains `summary.json` for before-and-after comparisons.
+are intentionally outside the quick `make check` gate. The same directory
+retains `summary.json` for before-and-after comparisons. Add
+`BENCHMARK_ARGS="--no-solve"` when collecting OCR review data alone. Use
+`--solve-timeout` to change the default 120-second budget per puzzle in each
+search lane. The terminal reports progress through those lanes.
+
+The default benchmark calls the same recogniser as the web scanner. For a
+geometry diagnosis, call `recognize_photo(photo, work_dir, geometry_debug=True)`
+to save the corner warp, padding, traced vertex mesh, and final rectified board.
+Keep the source-cell crop and the
+actual cleaned OCR input distinct when comparing reads. Some diagnostic paths
+reuse the cleaned-input filename for the source crop after an untrusted read.
+Use the default Tesseract path when measuring production recognition.
+`--ocr-pipeline legacy`, `--ocr-pipeline whole-token`, and `--no-grid-mesh`
+support explicit comparisons with earlier recognition or geometry paths.
 
 Approved publisher answer keys provide an independent number check. cdbr
 classifies each printed answer letter using templates built from the other
@@ -420,6 +434,15 @@ System tests require ImageMagick and Tesseract. The project configuration in
 ---
 
 ## Changelog
+
+### 2.3.0 — 2026-11-26
+
+- Add Telegraph puzzles 1–10 to Play alongside the original collection. Choose a puzzle by name or use **Pick one**. Restore the three printed starting clues to original puzzles 71–100.
+- Use a shared-vertex mesh and adaptive number crops on both 13×13 and 15×15 scans. Preserve the second digit, remove thin grid-rule remnants, and separate joined digits when the ink supports a split.
+- Read both publishers with Tesseract first. Retry weak reads and flag disagreements using repeated numbers from the current photo. Keep historical template banks available for explicit benchmark comparisons.
+- Review OCR on the playable board with source numbers, matching-number previews, and a queue for confirmed edits. Inspect any numbered cell, including readings the scanner did not flag.
+- Check for a solution when accepting a scan. Distinguish a timeout from a completed search with no solution. Review again, keep searching when more time is available, or play anyway. During play, a second click on a reference cell reveals an available hint directly in both grids.
+- Update the OCR guide and pipeline diagram to reflect the shared scan path and the pre-play solution check.
 
 ### 0.2.2 — 2026-11-24
 

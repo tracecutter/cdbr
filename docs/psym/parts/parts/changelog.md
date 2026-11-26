@@ -1,3 +1,12 @@
+### 2.3.0 — 2026-11-26
+
+- Add Telegraph puzzles 1–10 to Play alongside the original collection. Choose a puzzle by name or use **Pick one**. Restore the three printed starting clues to original puzzles 71–100.
+- Use a shared-vertex mesh and adaptive number crops on both 13×13 and 15×15 scans. Preserve the second digit, remove thin grid-rule remnants, and separate joined digits when the ink supports a split.
+- Read both publishers with Tesseract first. Retry weak reads and flag disagreements using repeated numbers from the current photo. Keep historical template banks available for explicit benchmark comparisons.
+- Review OCR on the playable board with source numbers, matching-number previews, and a queue for confirmed edits. Inspect any numbered cell, including readings the scanner did not flag.
+- Check for a solution when accepting a scan. Distinguish a timeout from a completed search with no solution. Review again, keep searching when more time is available, or play anyway. During play, a second click on a reference cell reveals an available hint directly in both grids.
+- Update the OCR guide and pipeline diagram to reflect the shared scan path and the pre-play solution check.
+
 ### 0.2.2 — 2026-11-24
 
 - Use JPEG fixtures for Puzzle 47 geometry regression tests so release CI can run them without decoding HEIC.

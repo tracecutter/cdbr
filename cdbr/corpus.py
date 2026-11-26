@@ -26,7 +26,7 @@ from cdbr.core.model import CodewordPuzzle, extract_slots
 from cdbr.core.puzzle import BLOCK, UNKNOWN
 from cdbr.core.recognition import (
     OCR_PIPELINES,
-    WHOLE_TOKEN_PIPELINE,
+    TESSERACT_PIPELINE,
     WARP_SIZE,
     RecognitionTrace,
     _block_mask,
@@ -43,6 +43,7 @@ class CorpusEntry:
     photo: Path
     solution: Path
     truth: Path | None = None
+    collection: str = "puzzle"
 
 
 def load_manifest(source: Path) -> tuple[CorpusEntry, ...]:
@@ -52,9 +53,13 @@ def load_manifest(source: Path) -> tuple[CorpusEntry, ...]:
         document = tomllib.load(stream)
     if document.get("format_version") != 1:
         raise ValueError("Unsupported corpus manifest format")
+    collection = document.get("collection", "puzzle")
+    if collection not in ("puzzle", "telegraph"):
+        raise ValueError("Unsupported corpus collection")
     entries = tuple(
         CorpusEntry(
             puzzle_id=int(item["id"]),
+            collection=collection,
             photo=(source.parent / str(item["photo"])).resolve(),
             solution=(source.parent / str(item["solution"])).resolve(),
             truth=(
@@ -311,8 +316,10 @@ def benchmark_entry(
     entry: CorpusEntry,
     work_root: Path,
     review_threshold: float,
-    ocr_pipeline: str = WHOLE_TOKEN_PIPELINE,
+    ocr_pipeline: str = TESSERACT_PIPELINE,
     leave_one_out: bool = False,
+    *,
+    grid_mesh: bool = True,
 ) -> dict[str, Any]:
     """Recognise one photograph without invoking the lexical solver."""
 
@@ -326,6 +333,7 @@ def benchmark_entry(
             trace=trace,
             template_exclusion=entry.puzzle_id if leave_one_out else None,
             ocr_pipeline=ocr_pipeline,
+            grid_mesh=grid_mesh,
         )
         expected_blocks = _solution_blocks(entry.solution, observation.width) if entry.solution.is_file() else ()
     except Exception as exc:  # noqa: BLE001 - one failed photograph must not stop a corpus run
@@ -395,6 +403,8 @@ def benchmark_entry(
         "photo_sha256": _digest(entry.photo),
         "cdbr_version": __version__,
         "ocr_pipeline": ocr_pipeline,
+        "grid_mesh": grid_mesh,
+        "number_crop": "adaptive-v4-scan-matches",
         "evaluation_mode": "leave-one-out" if leave_one_out else "publisher-canon",
         "elapsed_seconds": round(trace.elapsed_seconds, 6),
         "stage_seconds": {name: round(seconds, 6) for name, seconds in trace.stage_seconds.items()},
@@ -820,6 +830,8 @@ def publish_corpus_assets(
         if any(value not in {BLOCK, "."} and not isinstance(value, int) for row in grid for value in row):
             continue
         clues = _truth_clues(truth, entry.truth)
+        if not clues or any(solution[symbol] != letter for symbol, letter in clues.items()):
+            continue
         lines = [
             "format_version = 1",
             f"serial = {entry.puzzle_id}",
@@ -833,10 +845,10 @@ def publish_corpus_assets(
             *(f'"{symbol}" = "{letter}"' for symbol, letter in sorted(clues.items())),
             "",
         ]
-        (destination / f"puzzle-{entry.puzzle_id}.toml").write_text("\n".join(lines))
+        (destination / f"{entry.collection}-{entry.puzzle_id}.toml").write_text("\n".join(lines))
         if private_destination is not None:
             private_destination.mkdir(parents=True, exist_ok=True)
-            (private_destination / f"puzzle_{entry.puzzle_id:03d}.toml").write_text(
+            (private_destination / f"{entry.collection}_{entry.puzzle_id:03d}.toml").write_text(
                 "[solution]\n" + "".join(f'"{symbol}" = "{solution[symbol]}"\n' for symbol in range(1, 27))
             )
         published.append(entry.puzzle_id)
@@ -867,7 +879,8 @@ def publish_corpus_assets(
 @click.option("--from-puzzle", "minimum_puzzle_id", type=int, help="Include this puzzle number and all later IDs.")
 @click.option("--workers", type=click.IntRange(1, 4), default=1, show_default=True)
 @click.option("--review-threshold", type=click.FloatRange(0.0, 100.0), default=70.0, show_default=True)
-@click.option("--ocr-pipeline", type=click.Choice(OCR_PIPELINES), default=WHOLE_TOKEN_PIPELINE, show_default=True)
+@click.option("--ocr-pipeline", type=click.Choice(OCR_PIPELINES), default=TESSERACT_PIPELINE, show_default=True)
+@click.option("--grid-mesh/--no-grid-mesh", default=True, show_default=True, help="Use the shared-vertex warp for OCR.")
 @click.option(
     "--leave-one-out/--publisher-canon",
     default=False,
@@ -907,6 +920,7 @@ def main(
     workers: int,
     review_threshold: float,
     ocr_pipeline: str,
+    grid_mesh: bool,
     leave_one_out: bool,
     summary_output: Path | None,
     resume: bool,
@@ -946,7 +960,10 @@ def main(
     prior = [
         result
         for result in (read_results(output) if resume else [])
-        if result.get("ocr_pipeline") == ocr_pipeline and result.get("evaluation_mode") == evaluation_mode
+        if result.get("ocr_pipeline") == ocr_pipeline
+        and result.get("evaluation_mode") == evaluation_mode
+        and result.get("grid_mesh", False) == grid_mesh
+        and result.get("number_crop") == "adaptive-v4-scan-matches"
     ]
     completed_ids = {int(result["puzzle_id"]) for result in prior if result.get("status") == "ok"}
     pending = [entry for entry in entries if entry.puzzle_id not in completed_ids]
@@ -955,7 +972,15 @@ def main(
     with output.open(mode) as stream:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
-                executor.submit(benchmark_entry, entry, work_root, review_threshold, ocr_pipeline, leave_one_out): entry
+                executor.submit(
+                    benchmark_entry,
+                    entry,
+                    work_root,
+                    review_threshold,
+                    ocr_pipeline,
+                    leave_one_out,
+                    grid_mesh=grid_mesh,
+                ): entry
                 for entry in pending
             }
             for future in as_completed(futures):
@@ -977,6 +1002,7 @@ def main(
     publisher_number_truth = derive_publisher_number_truth(entries, latest)
     summary: dict[str, Any] = {
         "ocr_pipeline": ocr_pipeline,
+        "grid_mesh": grid_mesh,
         "evaluation_mode": evaluation_mode,
         **summarize(latest.values()),
         "number_ocr": summarize_accuracy(latest.values(), "number"),

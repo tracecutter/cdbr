@@ -29,3 +29,8 @@ review_status = "pending"
 "24" = "G"
 "25" = "Q"
 "26" = "H"
+
+[clues]
+"1" = "F"
+"2" = "L"
+"3" = "N"

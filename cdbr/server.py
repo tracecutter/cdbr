@@ -8,9 +8,10 @@ Serve the Code Break web application and HTTP API.
 
 [[daemon.section.overview]]
 cdbrd runs the lightweight HTTP service used by the Code Break browser
-application. The service can play packaged puzzles, scan photographed puzzles,
-and construct new puzzles using the same recognition, solving, and generation
-engines as the cdbr command-line program.
+application. Choose a named puzzle from either collection in Play, or use
+Pick one to open a random board. Packaged puzzles open with their printed
+starting letters. The service also scans photographed puzzles and constructs
+new ones using the same engines as the cdbr command-line program.
 
 Sessions, uploaded photographs, scan-review jobs, and generated candidates are
 ephemeral. They remain in memory or temporary storage only for the lifetime of
@@ -107,6 +108,8 @@ MAX_GENERATION_JOBS = 20
 MAX_SCAN_JOBS = 20
 MIN_RETAKE_REVIEW_CELLS = 20
 MAX_SCAN_REVIEW_FRACTION = 0.25
+SCAN_SOLVE_SECONDS = 10.0
+SCAN_SOLVE_RETRY_SECONDS = (30.0, 120.0)
 
 
 @dataclass(kw_only=True)
@@ -151,6 +154,8 @@ class ClueCorrection(BaseModel):
 class ScanCorrectionRequest(BaseModel):
     cells: list[CellCorrection] = Field(default_factory=list, max_length=225)
     clues: list[ClueCorrection] = Field(default_factory=list, max_length=26)
+    check_solution: bool = False
+    search_round: int = Field(default=0, ge=0, le=len(SCAN_SOLVE_RETRY_SECONDS))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -203,14 +208,16 @@ def favicon() -> FileResponse:
 
 
 def _playable_puzzle(puzzle_id: str) -> tuple[dict[str, object], dict[int, str] | None]:
+    telegraph = puzzle_id.startswith("telegraph-")
     try:
-        serial = int(puzzle_id)
+        serial = int(puzzle_id.removeprefix("telegraph-"))
     except ValueError:
         raise HTTPException(status_code=404, detail="Puzzle not found") from None
-    if serial in _runtime_corpus:
+    if not telegraph and serial in _runtime_corpus:
         return _runtime_corpus[serial]
-    source_path = PUZZLE_ROOT / f"puzzle-{serial}.toml"
-    if serial == 1:
+    collection = "telegraph" if telegraph else "puzzle"
+    source_path = PUZZLE_ROOT / f"{collection}-{serial}.toml"
+    if not telegraph and serial == 1:
         source_path = PUZZLE_ROOT / "seed-437.toml"
     if not source_path.is_file():
         raise HTTPException(status_code=404, detail="Puzzle not found")
@@ -220,7 +227,7 @@ def _playable_puzzle(puzzle_id: str) -> tuple[dict[str, object], dict[int, str] 
         [None if value == "##" else int(value) for value in str(row).split()] for row in source["grid"]
     ]
     private_root = Path(os.environ.get("CDBR_SOLUTIONS_DIR", "solutions/playable"))
-    private_path = private_root / f"puzzle_{serial:03d}.toml"
+    private_path = private_root / f"{collection}_{serial:03d}.toml"
     if not private_path.is_file():
         private_path = private_root / source_path.name
     answers = source
@@ -243,9 +250,9 @@ def _playable_puzzle(puzzle_id: str) -> tuple[dict[str, object], dict[int, str] 
     clues = {int(symbol): str(letter) for symbol, letter in source["clues"].items()}
     used_symbols = sorted({symbol for row in grid for symbol in row if symbol is not None})
     puzzle: dict[str, object] = {
-        "id": str(serial),
+        "id": f"telegraph-{serial}" if telegraph else str(serial),
         "serial": serial,
-        "title": f"Puzzle {serial}",
+        "title": f"Telegraph {serial}" if telegraph else f"Puzzle {serial}",
         "grid": grid,
         "clues": clues,
         "symbols": list(range(1, 27)),
@@ -254,11 +261,12 @@ def _playable_puzzle(puzzle_id: str) -> tuple[dict[str, object], dict[int, str] 
     return puzzle, solution
 
 
-def _packaged_corpus_ids() -> list[int]:
-    identifiers = [1] if (PUZZLE_ROOT / "seed-437.toml").is_file() else []
-    for source in PUZZLE_ROOT.glob("puzzle-*.toml"):
+def _packaged_corpus_ids(collection: str = "puzzle") -> list[int]:
+    identifiers = [1] if collection == "puzzle" and (PUZZLE_ROOT / "seed-437.toml").is_file() else []
+    prefix = f"{collection}-"
+    for source in PUZZLE_ROOT.glob(f"{prefix}*.toml"):
         try:
-            identifiers.append(int(source.stem.removeprefix("puzzle-")))
+            identifiers.append(int(source.stem.removeprefix(prefix)))
         except ValueError:
             continue
     return sorted(set(identifiers))
@@ -321,6 +329,12 @@ def _solve_session(session: PuzzleSession, entries: dict[int, str] | None = None
     """Populate a session solution on demand without invalidating play on failure."""
 
     requested = _solve_entries(session, entries or {})
+    if (
+        session.solution_status == "certified"
+        and not session.solve_entries
+        and all((session.solution or {}).get(symbol) == letter for symbol, letter in requested)
+    ):
+        return
     if (session.observation is None and session.solution_status == "certified") or (
         session.solution_status != "not_requested" and requested == session.solve_entries
     ):
@@ -413,7 +427,7 @@ def _scan_public(job: ScanJob) -> dict[str, object]:
 @app.post("/api/sessions/from-corpus/{puzzle_id}", status_code=201)
 def corpus_session_endpoint(puzzle_id: str) -> dict[str, object]:
     if puzzle_id == "random":
-        puzzle_id = str(secrets.choice([*_packaged_corpus_ids(), *_runtime_corpus.keys()]))
+        puzzle_id = secrets.choice([str(puzzle.get("id", puzzle["serial"])) for puzzle in _corpus_catalog()])
     return _create_corpus_session(puzzle_id).public()
 
 
@@ -423,9 +437,10 @@ def _create_corpus_session(puzzle_id: str) -> PuzzleSession:
     if solution is None:
         grid = puzzle["grid"]
         clues = puzzle["clues"]
+        asset = f"{puzzle['id']}.toml" if puzzle_id.startswith("telegraph-") else f"puzzle-{puzzle['id']}.toml"
         assert isinstance(grid, list) and isinstance(clues, dict)
         observation = PuzzleObservation(
-            source=PUZZLE_ROOT / f"puzzle-{puzzle_id}.toml",
+            source=PUZZLE_ROOT / asset,
             source_format="TOML",
             grid=tuple(tuple(BLOCK if value is None else value for value in row) for row in grid),
             clues=clues,
@@ -447,7 +462,11 @@ def session_reveal_endpoint(session_id: str, symbol: int, request: SolveRequest 
     if symbol not in solution:
         raise HTTPException(
             status_code=409,
-            detail="No reliable hint is available for that letter yet; you can keep playing.",
+            detail=(
+                f"The puzzle is solved. Number {symbol} has no letter in this grid."
+                if session.solution_status == "certified"
+                else f"No hint is available for number {symbol} yet. Your entries are unchanged."
+            ),
         )
     return {"symbol": symbol, "letter": solution[symbol], "solution_status": session.solution_status}
 
@@ -659,10 +678,17 @@ def publish_generation_job_endpoint(job_id: str) -> dict[str, object]:
     return _create_session({**puzzle, "provenance": "corpus"}, solution).public()
 
 
+def _corpus_catalog() -> list[dict[str, int | str]]:
+    serials = sorted(set(_packaged_corpus_ids()) | set(_runtime_corpus))
+    catalog: list[dict[str, int | str]] = [{"serial": serial, "title": f"Puzzle {serial}"} for serial in serials]
+    for serial in _packaged_corpus_ids("telegraph"):
+        catalog.append({"id": f"telegraph-{serial}", "serial": serial, "title": f"Telegraph {serial}"})
+    return catalog
+
+
 @app.get("/api/puzzles")
 def puzzles_endpoint() -> dict[str, object]:
-    serials = sorted(set(_packaged_corpus_ids()) | set(_runtime_corpus))
-    return {"puzzles": [{"serial": serial, "title": f"Puzzle {serial}"} for serial in serials]}
+    return {"puzzles": _corpus_catalog()}
 
 
 @app.get("/api/puzzles/{puzzle_id}")
@@ -756,16 +782,6 @@ async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, o
             raise ValueError("Could not prepare cell review images")
         if reference_grid is None:
             raise ValueError("Could not prepare reference-grid review images")
-        for item in review_cells:
-            row = item.row - 1
-            column = item.column - 1
-            cell_height = grid_image.shape[0] / observation.height
-            cell_width = grid_image.shape[1] / observation.width
-            cell = grid_image[
-                round(row * cell_height) : round((row + 1) * cell_height),
-                round(column * cell_width) : round((column + 1) * cell_width),
-            ]
-            cv2.imwrite(str(work_dir / f"review-{item.row}-{item.column}.jpg"), cell)
         clue_symbols = {item.symbol for item in observation.clue_evidence}
         review_clues = []
         for symbol in range(1, 27):
@@ -775,7 +791,6 @@ async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, o
             ink_pixels = clue_ink_pixels(cell)
             if symbol in clue_symbols or ink_pixels >= MIN_CLUE_REVIEW_INK_PIXELS:
                 review_clues.append((symbol, ink_pixels))
-                cv2.imwrite(str(work_dir / f"review-clue-{symbol}.jpg"), cell)
     except (CdbrCoreError, ValueError) as exc:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -790,25 +805,55 @@ async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, o
     return _scan_public(job)
 
 
-@app.get("/api/scan-jobs/{job_id}/cells/{row}/{column}", response_class=FileResponse)
-def scan_cell_endpoint(job_id: str, row: int, column: int) -> FileResponse:
-    source = _scan_job(job_id).work_dir / f"review-{row}-{column}.jpg"
-    if not source.is_file():
+def _scan_crop(source: Path, row: int, column: int, rows: int, columns: int) -> Response:
+    image = cv2.imread(str(source))
+    if image is None:
+        raise HTTPException(status_code=404, detail="Review image not found")
+    height, width = image.shape[:2]
+    cell = image[
+        round((row - 1) * height / rows) : round(row * height / rows),
+        round((column - 1) * width / columns) : round(column * width / columns),
+    ]
+    success, jpeg = cv2.imencode(".jpg", cell)
+    if not success:
+        raise HTTPException(status_code=500, detail="Could not prepare review image")
+    return Response(jpeg.tobytes(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/scan-jobs/{job_id}/grid", response_class=Response)
+def scan_grid_endpoint(job_id: str) -> Response:
+    job = _scan_job(job_id)
+    grid = cv2.imread(str(job.work_dir / "grid.png"))
+    if grid is None:
+        raise HTTPException(status_code=404, detail="Review image not found")
+    preview = cv2.resize(grid, (900, 900), interpolation=cv2.INTER_AREA)
+    success, jpeg = cv2.imencode(".jpg", preview, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    if not success:
+        raise HTTPException(status_code=500, detail="Could not prepare review image")
+    return Response(jpeg.tobytes(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/scan-jobs/{job_id}/cells/{row}/{column}", response_class=Response)
+def scan_cell_endpoint(job_id: str, row: int, column: int) -> Response:
+    job = _scan_job(job_id)
+    board = job.observation
+    if not (1 <= row <= board.height and 1 <= column <= board.width) or board.grid[row - 1][column - 1] == BLOCK:
         raise HTTPException(status_code=404, detail="Review cell not found")
-    return FileResponse(source, media_type="image/jpeg")
+    return _scan_crop(job.work_dir / "grid.png", row, column, board.height, board.width)
 
 
-@app.get("/api/scan-jobs/{job_id}/clues/{symbol}", response_class=FileResponse)
-def scan_clue_endpoint(job_id: str, symbol: int) -> FileResponse:
-    source = _scan_job(job_id).work_dir / f"review-clue-{symbol}.jpg"
-    if not source.is_file():
+@app.get("/api/scan-jobs/{job_id}/clues/{symbol}", response_class=Response)
+def scan_clue_endpoint(job_id: str, symbol: int) -> Response:
+    job = _scan_job(job_id)
+    if not 1 <= symbol <= 26:
         raise HTTPException(status_code=404, detail="Reference clue not found")
-    return FileResponse(source, media_type="image/jpeg")
+    row, column = divmod(symbol - 1, 13)
+    return _scan_crop(job.work_dir / "reference-grid.png", row + 1, column + 1, 2, 13)
 
 
 @app.post("/api/scan-jobs/{job_id}/complete", status_code=201)
 def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[str, object]:
-    """Apply reviewed OCR values and enter play without requiring a solution."""
+    """Apply reviewed OCR values and optionally check for a solution before play."""
 
     job = _scan_job(job_id)
     required = {(item.row, item.column) for item in job.observation.evidence if needs_hil_review(item)}
@@ -823,18 +868,16 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
     if missing_clues:
         symbols = ", ".join(str(symbol) for symbol in sorted(missing_clues))
         raise HTTPException(status_code=422, detail=f"Confirm every reference clue: {symbols}")
-    extra_clues = reviewed_clues.keys() - required_clues
-    if extra_clues:
-        symbols = ", ".join(str(symbol) for symbol in sorted(extra_clues))
-        raise HTTPException(status_code=422, detail=f"Unexpected reference clues: {symbols}")
-    clue_corrections = {symbol: letter for symbol, letter in reviewed_clues.items() if letter}
+    clue_corrections = {
+        symbol: letter for symbol, letter in {**job.observation.clues, **reviewed_clues}.items() if letter
+    }
     if len(set(clue_corrections.values())) != len(clue_corrections):
         raise HTTPException(status_code=422, detail="Reference clues must use different letters")
 
     grid = [list(row) for row in job.observation.grid]
     for (row, column), value in corrections.items():
-        if (row, column) not in required:
-            raise HTTPException(status_code=422, detail=f"Cell r{row:02d}c{column:02d} is not awaiting review")
+        if row > job.observation.height or column > job.observation.width or grid[row - 1][column - 1] == BLOCK:
+            raise HTTPException(status_code=422, detail=f"Cell r{row:02d}c{column:02d} is not a numbered square")
         grid[row - 1][column - 1] = value
     corrected = PuzzleObservation(
         source=job.observation.source,
@@ -856,10 +899,41 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
         "used_symbols": used_symbols,
         "provenance": "photo",
     }
-    session = _create_session(puzzle, observation=corrected).public()
+    solved = None
+    if request.check_solution:
+        budgets = (SCAN_SOLVE_SECONDS, *SCAN_SOLVE_RETRY_SECONDS)
+        deadline = time.monotonic() + budgets[request.search_round]
+        try:
+            solved = solve_observation(corrected, deadline=deadline)
+        except (CdbrCoreError, ValueError):
+            pass
+        if solved is None or not solved.complete:
+            if solved is None:
+                status = "unavailable"
+            elif solved.result.exhausted:
+                status = "no_complete_solution"
+            elif time.monotonic() >= deadline:
+                status = "time_limit"
+            else:
+                status = "search_limit"
+            next_round = request.search_round + 1
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "scan_solve_check",
+                    "status": status,
+                    "next_search_round": next_round if status == "time_limit" and next_round < len(budgets) else None,
+                },
+            )
+    session = _create_session(puzzle, observation=corrected)
+    if solved is not None:
+        session.solution = dict(solved.mapping)
+        session.solution_status = (
+            "certified" if solved.result.exhausted and len(solved.result.solutions) == 1 else "candidate"
+        )
     _scan_jobs.pop(job_id, None)
     shutil.rmtree(job.work_dir, ignore_errors=True)
-    return session
+    return session.public()
 
 
 @app.post("/api/sessions/from-photo")

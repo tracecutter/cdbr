@@ -1,0 +1,63 @@
+format_version = 1
+collection = "telegraph"
+description = "Telegraph Codewords 1–10, with printed solution grids."
+
+[[puzzles]]
+id = 1
+photo = "telegraph_001.jpg"
+solution = "../solutions/telegraph_001.jpg"
+truth = "../solutions/truth/telegraph_001.toml"
+
+[[puzzles]]
+id = 2
+photo = "telegraph_002.jpg"
+solution = "../solutions/telegraph_002.jpg"
+truth = "../solutions/truth/telegraph_002.toml"
+
+[[puzzles]]
+id = 3
+photo = "telegraph_003.jpg"
+solution = "../solutions/telegraph_003.jpg"
+truth = "../solutions/truth/telegraph_003.toml"
+
+[[puzzles]]
+id = 4
+photo = "telegraph_004.jpg"
+solution = "../solutions/telegraph_004.jpg"
+truth = "../solutions/truth/telegraph_004.toml"
+
+[[puzzles]]
+id = 5
+photo = "telegraph_005.jpg"
+solution = "../solutions/telegraph_005.jpg"
+truth = "../solutions/truth/telegraph_005.toml"
+
+[[puzzles]]
+id = 6
+photo = "telegraph_006.jpg"
+solution = "../solutions/telegraph_006.jpg"
+truth = "../solutions/truth/telegraph_006.toml"
+
+[[puzzles]]
+id = 7
+photo = "telegraph_007.jpg"
+solution = "../solutions/telegraph_007.jpg"
+truth = "../solutions/truth/telegraph_007.toml"
+
+[[puzzles]]
+id = 8
+photo = "telegraph_008.jpg"
+solution = "../solutions/telegraph_008.jpg"
+truth = "../solutions/truth/telegraph_008.toml"
+
+[[puzzles]]
+id = 9
+photo = "telegraph_009.jpg"
+solution = "../solutions/telegraph_009.jpg"
+truth = "../solutions/truth/telegraph_009.toml"
+
+[[puzzles]]
+id = 10
+photo = "telegraph_010.jpg"
+solution = "../solutions/telegraph_010.jpg"
+truth = "../solutions/truth/telegraph_010.toml"

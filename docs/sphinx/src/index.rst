@@ -12,7 +12,7 @@ Solve Code Break puzzles from photographs.
 .. image:: ../../psym/assets/gameplay.png
    :align: center
    :width: 900px
-   :alt: Puzzle 47 in progress with the numbered board and reference grid side by side
+   :alt: Puzzle 78 with its printed starting letters on both the board and reference grid
    :target: https://codebreak.foghub.com
 
 .. toctree::

@@ -7,8 +7,8 @@
     <meta name="description" content="Turn a photograph of a Code Break puzzle into a solved page.">
     <title>Code Break Solver</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="/static/app.css?v=20261123-3">
-    <script src="/static/app.js?v=20261123-3" defer></script>
+    <link rel="stylesheet" href="/static/app.css?v=20261125-5">
+    <script src="/static/app.js?v=20261126-1" defer></script>
   </head>
   <body data-mode="idle">
     <header class="site-header">
@@ -90,20 +90,15 @@
             </div>
 
             <aside class="game-side play-side" aria-label="Choose a puzzle">
-              <div class="reference-heading">
-                <div>
-                  <p class="eyebrow">Puzzle library</p>
-                  <h2>Pick a number—or let us choose.</h2>
-                </div>
-                <p>Use the number printed in the book, or let cdbr choose from the current collection.</p>
-              </div>
               <label class="puzzle-picker">
-                <span>Puzzle number</span>
-                <input id="puzzle-number" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 31">
+                <span>Puzzle</span>
+                <select id="puzzle-select" disabled>
+                  <option value="">Choose a puzzle</option>
+                </select>
               </label>
-              <p class="form-note" id="puzzle-picker-status"></p>
-              <button class="primary-button" id="start-puzzle" type="button">Play puzzle number</button>
-              <button class="secondary-button" id="random-puzzle" type="button">Let cdbr pick</button>
+              <p class="form-note" id="puzzle-picker-status" role="status" hidden></p>
+              <button class="primary-button" id="start-puzzle" type="button" disabled>Play selected puzzle</button>
+              <button class="secondary-button" id="random-puzzle" type="button" disabled>Pick one</button>
             </aside>
           </div>
         </section>
@@ -228,19 +223,57 @@
         </div>
         </section>
 
-        <dialog class="hint-dialog" id="hint-dialog">
+        <dialog class="hint-dialog" id="scan-solve-dialog" aria-labelledby="scan-solve-title">
           <form method="dialog">
-            <p class="eyebrow">Reference-grid hint</p>
-            <h2 id="hint-dialog-title">A possible letter</h2>
-            <div class="hint-dialog-answer" id="hint-dialog-answer" aria-live="polite"></div>
-            <p id="hint-dialog-detail"></p>
-            <p class="hint-dialog-warning" id="hint-dialog-warning"></p>
+            <h2 id="scan-solve-title">Check the scan?</h2>
+            <p id="scan-solve-message"></p>
             <div class="hint-dialog-actions">
-              <button class="secondary-button" value="cancel" type="submit">Not now</button>
-              <button class="primary-button" id="hint-dialog-accept" value="accept" type="submit">Use this hint</button>
+              <button class="primary-button" id="keep-searching" value="search" type="submit" hidden>Keep searching</button>
+              <button class="secondary-button" value="play" type="submit">Play anyway</button>
+              <button class="primary-button" value="review" type="submit" autofocus>Review again</button>
             </div>
           </form>
         </dialog>
+
+        <section id="review-state" aria-labelledby="review-title" hidden>
+          <div class="game-heading">
+            <div><p class="eyebrow">Scanned puzzle</p><h2 id="review-title">Review your scan</h2></div>
+            <p class="game-status" id="review-count" aria-live="polite"></p>
+          </div>
+          <div class="game-play-area">
+            <div class="puzzle-board-stage review-board-stage">
+              <div class="puzzle-shell" id="review-board" aria-label="Puzzle number review"></div>
+              <div class="solver-progress" id="scan-solve-progress" hidden>
+                <div class="progress-track" aria-hidden="true"><span></span></div>
+                <h3>Solving the puzzle…</h3>
+                <p id="scan-solve-progress-detail" role="status">Checking the crossing words.</p>
+              </div>
+            </div>
+            <aside class="game-side review-side" aria-label="Scan review controls">
+              <p id="review-guidance">Red outlines mark cells to check. Click a blue match to preview it, then click it again to edit.</p>
+              <label class="review-photo-toggle"><input id="review-photo" type="checkbox" checked> Show scanned numbers</label>
+              <div class="review-reference-section">
+                <p class="eyebrow">Reference grid</p>
+                <div class="reference-grid" id="review-reference" aria-label="Reference clue review"></div>
+              </div>
+              <div class="review-editor" id="review-editor" data-inactive="true">
+                <div class="review-crop-frame"><img id="review-crop" alt="Selected cell in the scanned photo"></div>
+                <form id="review-edit-form">
+                  <label id="review-value-label" for="review-value">Select a cell to review</label>
+                  <div class="review-edit-controls">
+                    <input id="review-value" autocomplete="off" spellcheck="false" disabled>
+                    <button class="secondary-button" id="confirm-review" type="submit" disabled>Confirm cell</button>
+                  </div>
+                </form>
+              </div>
+              <p id="review-error" role="alert" hidden></p>
+              <div class="game-actions review-actions">
+                <button class="primary-button" id="finish-review" type="button">Accept Scan</button>
+                <button class="text-button" id="cancel-review" type="button">Choose another photo</button>
+              </div>
+            </aside>
+          </div>
+        </section>
 
         <section class="scanner-workspace" id="scanner-workspace" aria-label="Puzzle scanner" hidden>
         <div class="game-heading scanner-heading">
@@ -319,21 +352,6 @@
                 <button class="text-button scan-quit" id="quit-scan" type="button">Back to puzzle desk</button>
               </div>
 
-              <div class="review-state" id="review-state" hidden>
-                <p class="eyebrow">Check the reading</p>
-                <h2>One quick human pass.</h2>
-                <p id="review-guidance">Confirm the cells the scanner was least certain about.</p>
-                <section class="review-group" id="review-clue-group">
-                  <h3>Reference clues</h3>
-                  <div class="review-cells" id="review-clues"></div>
-                </section>
-                <section class="review-group" id="review-cell-group">
-                  <h3>Numbered cells</h3>
-                  <div class="review-cells" id="review-cells"></div>
-                </section>
-                <button class="solve-button" id="finish-review" type="button">Confirm and open puzzle</button>
-                <button class="text-button scan-quit" id="cancel-review" type="button">Choose another photo</button>
-              </div>
 
               <div class="error-state" id="error-state" hidden role="alert">
                 <span aria-hidden="true">!</span>

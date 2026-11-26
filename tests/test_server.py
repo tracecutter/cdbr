@@ -25,7 +25,7 @@ def test_home_serves_upload_experience():
     assert 'action="/solve"' in response.text
     assert 'id="game-workspace" aria-labelledby="game-title" hidden' in response.text
     assert ">Create</button>" in response.text
-    assert 'id="puzzle-number" type="number"' in response.text
+    assert '<select id="puzzle-select"' in response.text
     assert 'id="game-keyboard"' in response.text
     assert 'data-key="Backspace"' in response.text
     assert 'id="random-puzzle"' in response.text
@@ -57,18 +57,15 @@ def test_revealing_an_answer_clears_its_stale_incorrect_marker():
     assert "incorrectSymbols.clear();" in script[full_reveal:full_render]
 
 
-def test_reference_hint_is_immediate_when_certified_and_previews_partial_answers():
+def test_reference_hint_reveals_directly_and_labels_tentative_answers():
     page = client.get("/").text
     script = client.get("/static/app.js").text
+    reference_click = script[script.index("async function referenceClick(") : script.index("function installGame(")]
 
-    assert 'id="hint-dialog"' in page
-    preview = script.index("const accepted = hint.solution_status === 'certified'")
-    commit = script.index("revealed.set(symbol, hint.letter);")
-    assert preview < commit
-    assert "await previewReferenceHint(symbol, hint)" in script[preview:commit]
-    assert "? true" in script[preview:commit]
-    assert "the puzzle is not complete, so this best guess may be wrong" in script
-    assert "I cannot give you a hint yet." in script
+    assert 'id="hint-dialog"' not in page
+    assert "showModal" not in reference_click
+    assert "revealed.set(symbol, hint.letter);" in reference_click
+    assert "revealed as a tentative hint" in reference_click
 
 
 def test_leaving_a_game_requires_confirmation_and_scan_starts_fresh():
@@ -159,6 +156,42 @@ def test_corpus_catalog_and_random_session(monkeypatch):
     assert created.status_code == 201
     assert created.json()["serial"] == 1
     assert created.json()["title"] == "Puzzle 1"
+
+
+def test_playable_collections_load_printed_starting_clues(monkeypatch):
+    catalog = client.get("/api/puzzles").json()["puzzles"]
+    assert [puzzle["title"] for puzzle in catalog if "id" in puzzle] == [
+        f"Telegraph {serial}" for serial in range(1, 11)
+    ]
+
+    for serial in range(71, 101):
+        game = client.post(f"/api/sessions/from-corpus/{serial}").json()
+        assert len(game["clues"]) == 3
+        if serial == 78:
+            assert game["clues"]["3"] == "F"
+
+    for serial in range(1, 11):
+        response = client.post(f"/api/sessions/from-corpus/telegraph-{serial}")
+        assert response.status_code == 201
+        game = response.json()
+        assert game["id"] == f"telegraph-{serial}"
+        assert len(game["clues"]) == 2
+        assert game["solution_status"] == "certified"
+
+    def choose_telegraph(choices):
+        assert "telegraph-7" in choices
+        return "telegraph-7"
+
+    monkeypatch.setattr(server_module.secrets, "choice", choose_telegraph)
+    game = client.post("/api/sessions/from-corpus/random").json()
+    assert game["id"] == "telegraph-7"
+    assert game["serial"] == 7
+    assert game["title"] == "Telegraph 7"
+    assert game["clues"] == {"3": "T", "20": "L"}
+    assert len(game["grid"]) == 13
+    assert game["solution_status"] == "certified"
+    assert "solution" not in game
+    assert client.post(f"/api/sessions/{game['session_id']}/reveal/1").status_code == 200
 
 
 def test_packaged_corpus_preserves_sparse_book_number(tmp_path, monkeypatch):
@@ -303,6 +336,9 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
     missed_clue_crop = client.get(review["review_clues"][1]["image"])
     assert missed_clue_crop.status_code == 200
     assert missed_clue_crop.headers["content-type"] == "image/jpeg"
+    assert client.get(f"/api/scan-jobs/{review['job_id']}/cells/1/1").status_code == 200
+    assert client.get(f"/api/scan-jobs/{review['job_id']}/cells/3/1").status_code == 404
+    assert client.get(f"/api/scan-jobs/{review['job_id']}/clues/3").status_code == 200
 
     incomplete = client.post(
         f"/api/scan-jobs/{review['job_id']}/complete",
@@ -327,15 +363,16 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
         f"/api/scan-jobs/{review['job_id']}/complete",
         json={
             "cells": [
+                {"row": 1, "column": 1, "value": 18},
                 {"row": 1, "column": 2, "value": 2},
                 {"row": 2, "column": 1, "value": 6},
             ],
-            "clues": [{"symbol": 1, "letter": "A"}, {"symbol": 2, "letter": "B"}],
+            "clues": [{"symbol": 1, "letter": "A"}, {"symbol": 2, "letter": "B"}, {"symbol": 3, "letter": "E"}],
         },
     )
     assert completed.status_code == 201
-    assert completed.json()["grid"] == [[1, 2], [6, 4]]
-    assert completed.json()["clues"] == {"1": "A", "2": "B"}
+    assert completed.json()["grid"] == [[18, 2], [6, 4]]
+    assert completed.json()["clues"] == {"1": "A", "2": "B", "3": "E"}
     assert completed.json()["provenance"] == "photo"
     assert completed.json()["solution_status"] == "not_requested"
     assert solved_observations == []
@@ -344,7 +381,66 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
 
     assert hint.json() == {"symbol": 4, "letter": "D", "solution_status": "certified"}
     assert len(solved_observations) == 1
-    assert solved_observations[0].clues == {1: "A", 2: "B"}
+    assert solved_observations[0].clues == {1: "A", 2: "B", 3: "E"}
+
+
+def test_scan_gate_preserves_review_and_allows_play_anyway(monkeypatch, tmp_path):
+    observation = PuzzleObservation(
+        source=tmp_path / "upload.jpg",
+        source_format="JPEG",
+        grid=((1, 4), (6, 8)),
+        clues={},
+        uncertainties=(),
+    )
+    work = tmp_path / "scan"
+    work.mkdir()
+    job = server_module.ScanJob(job_id="gate-test", work_dir=work, observation=observation, review_clues=())
+    server_module._remember_scan(job)
+    monkeypatch.setattr(server_module, "SCAN_SOLVE_SECONDS", 0)
+    monkeypatch.setattr(server_module, "SCAN_SOLVE_RETRY_SECONDS", (0, 0))
+    monkeypatch.setattr(
+        server_module,
+        "solve_observation",
+        lambda observation, *, deadline: SimpleNamespace(complete=False, result=SimpleNamespace(exhausted=False)),
+    )
+    url = f"/api/scan-jobs/{job.job_id}/complete"
+    checked = client.post(url, json={"check_solution": True})
+    assert checked.status_code == 409
+    detail = checked.json()["detail"]
+    assert detail["status"] == "time_limit"
+    assert detail["code"] == "scan_solve_check"
+    assert detail["next_search_round"] == 1
+    for search_round, next_round in ((1, 2), (2, None)):
+        continued = client.post(url, json={"check_solution": True, "search_round": search_round})
+        assert continued.status_code == 409
+        assert continued.json()["detail"]["next_search_round"] == next_round
+
+    monkeypatch.setattr(
+        server_module,
+        "solve_observation",
+        lambda observation, *, deadline: SimpleNamespace(complete=False, result=SimpleNamespace(exhausted=True)),
+    )
+    finished = client.post(url, json={"check_solution": True})
+    assert finished.status_code == 409
+    assert finished.json()["detail"]["status"] == "no_complete_solution"
+    assert finished.json()["detail"]["next_search_round"] is None
+
+    monkeypatch.setattr(server_module, "SCAN_SOLVE_SECONDS", 10)
+    monkeypatch.setattr(
+        server_module,
+        "solve_observation",
+        lambda observation, *, deadline: SimpleNamespace(complete=False, result=SimpleNamespace(exhausted=False)),
+    )
+    limited = client.post(url, json={"check_solution": True})
+    assert limited.status_code == 409
+    assert limited.json()["detail"]["status"] == "search_limit"
+    assert limited.json()["detail"]["next_search_round"] is None
+
+    assert work.is_dir()
+    opened = client.post(url, json={"check_solution": False})
+    assert opened.status_code == 201
+    assert opened.json()["solution_status"] == "not_requested"
+    assert not work.exists()
 
 
 def test_failed_lazy_solution_keeps_scanned_session_playable(monkeypatch):
@@ -375,7 +471,7 @@ def test_failed_lazy_solution_keeps_scanned_session_playable(monkeypatch):
     revealed = client.post(f"/api/sessions/{session.session_id}/reveal")
 
     assert hint.status_code == 409
-    assert "keep playing" in hint.json()["detail"]
+    assert hint.json()["detail"] == "No hint is available for number 2 yet. Your entries are unchanged."
     assert resumed.status_code == 200
     assert resumed.json()["solution_status"] == "unavailable"
     assert revealed.json() == {
