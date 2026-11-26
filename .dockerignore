@@ -11,6 +11,7 @@ build
 dist
 docs
 corpus
+import
 solutions/*
 !solutions/playable/
 !solutions/playable/*.toml
