@@ -73,12 +73,12 @@ import tempfile
 import threading
 import time
 import tomllib
-from typing import Annotated
+from typing import Annotated, Literal
 
 import cdbr.ui as click
 import cv2
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import uvicorn
@@ -86,7 +86,7 @@ import uvicorn
 from cdbr import __version__
 from cdbr.core.exceptions import CdbrCoreError
 from cdbr.core.generator import GeneratedPuzzle, GenerationLimits, generate_puzzle
-from cdbr.core.lexicon import english_lexicon
+from cdbr.core.lexicon import Lexicon, english_lexicon
 from cdbr.core.photo import PhotoFormat, detect_photo_format
 from cdbr.core.pipeline import solve_observation, solve_photo
 from cdbr.core.puzzle import BLOCK, PuzzleObservation
@@ -110,6 +110,17 @@ MIN_RETAKE_REVIEW_CELLS = 20
 MAX_SCAN_REVIEW_FRACTION = 0.25
 SCAN_SOLVE_SECONDS = 10.0
 SCAN_SOLVE_RETRY_SECONDS = (30.0, 120.0)
+SCAN_DICTIONARY_LABEL = "British English"
+_scan_lexicon: Lexicon | None = None
+_scan_lexicon_lock = threading.Lock()
+
+
+def _scan_solution_lexicon() -> Lexicon:
+    global _scan_lexicon
+    with _scan_lexicon_lock:
+        if _scan_lexicon is None:
+            _scan_lexicon = english_lexicon()
+        return _scan_lexicon
 
 
 @dataclass(kw_only=True)
@@ -197,9 +208,11 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=WEB_ROOT), name="static")
 
 
-@app.get("/", response_class=FileResponse, include_in_schema=False)
-def index() -> FileResponse:
-    return FileResponse(WEB_ROOT / "index.html")
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def index() -> HTMLResponse:
+    page = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+    page = page.replace("{{ app_version }}", __version__)
+    return HTMLResponse(page.replace("{{ dictionary_label }}", SCAN_DICTIONARY_LABEL))
 
 
 @app.get("/favicon.png", response_class=FileResponse, include_in_schema=False)
@@ -352,7 +365,7 @@ def _solve_session(session: PuzzleSession, entries: dict[int, str] | None = None
         clues = {**session.observation.clues, **dict(requested)}
         observation = replace(session.observation, clues=clues)
         try:
-            solved = solve_observation(observation)
+            solved = solve_observation(observation, _scan_solution_lexicon())
         except (CdbrCoreError, ValueError):
             session.solution = clues
             session.solution_status = "unavailable"
@@ -560,7 +573,7 @@ def _run_generation_job(job: GenerationJob) -> None:
             job.progress = message
 
     try:
-        lexicon = english_lexicon()
+        lexicon = _scan_solution_lexicon()
         while job.deadline is not None:
             remaining = job.deadline - time.monotonic()
             if remaining <= 0:
@@ -851,6 +864,17 @@ def scan_clue_endpoint(job_id: str, symbol: int) -> Response:
     return _scan_crop(job.work_dir / "reference-grid.png", row + 1, column + 1, 2, 13)
 
 
+@app.get("/api/scan-dictionary")
+def scan_dictionary_status() -> dict[str, bool]:
+    return {"loaded": _scan_lexicon is not None}
+
+
+@app.post("/api/scan-dictionary")
+def load_scan_dictionary(language: Literal["en-GB"] = "en-GB") -> dict[str, bool]:
+    _scan_solution_lexicon()
+    return {"loaded": True}
+
+
 @app.post("/api/scan-jobs/{job_id}/complete", status_code=201)
 def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[str, object]:
     """Apply reviewed OCR values and optionally check for a solution before play."""
@@ -902,9 +926,10 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
     solved = None
     if request.check_solution:
         budgets = (SCAN_SOLVE_SECONDS, *SCAN_SOLVE_RETRY_SECONDS)
-        deadline = time.monotonic() + budgets[request.search_round]
         try:
-            solved = solve_observation(corrected, deadline=deadline)
+            lexicon = _scan_solution_lexicon()
+            deadline = time.monotonic() + budgets[request.search_round]
+            solved = solve_observation(corrected, lexicon, deadline=deadline)
         except (CdbrCoreError, ValueError):
             pass
         if solved is None or not solved.complete:

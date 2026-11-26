@@ -8,7 +8,7 @@
     <title>Code Break Solver</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="stylesheet" href="/static/app.css?v=20261125-5">
-    <script src="/static/app.js?v=20261126-1" defer></script>
+    <script src="/static/app.js?v=20261126-5" defer></script>
   </head>
   <body data-mode="idle">
     <header class="site-header">
@@ -223,6 +223,23 @@
         </div>
         </section>
 
+        <dialog class="hint-dialog" id="scan-dictionary-dialog" aria-labelledby="scan-dictionary-title">
+          <form id="scan-dictionary-form">
+            <h2 id="scan-dictionary-title">Choose a dictionary</h2>
+            <label class="puzzle-picker">
+              <span>Dictionary</span>
+              <select id="scan-dictionary-choice">
+                <option value="en-GB">{{ dictionary_label }}</option>
+              </select>
+            </label>
+            <p id="scan-dictionary-status" role="status">Load the dictionary before opening this workspace.</p>
+            <div class="hint-dialog-actions">
+              <button class="secondary-button" id="cancel-scan-dictionary" type="button">Cancel</button>
+              <button class="primary-button" id="load-scan-dictionary" type="submit">Load Dictionary</button>
+            </div>
+          </form>
+        </dialog>
+
         <dialog class="hint-dialog" id="scan-solve-dialog" aria-labelledby="scan-solve-title">
           <form method="dialog">
             <h2 id="scan-solve-title">Check the scan?</h2>
@@ -394,7 +411,7 @@
 
     <footer>
       <div>
-        <p><strong>Code Break Solver</strong> · British English · No account required</p>
+        <p><strong>Codewords Breaker</strong> v{{ app_version }} · <span id="footer-dictionary">{{ dictionary_label }}</span> · No account required</p>
         <p class="footer-credit">Anava Designs · powered by npkg</p>
       </div>
       <p>Made with unreasonable enthusiasm for small numbered squares.</p>

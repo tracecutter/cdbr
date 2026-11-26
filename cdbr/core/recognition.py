@@ -512,18 +512,24 @@ def _separate_number_glyphs(glyph: np.ndarray) -> np.ndarray:
     return np.concatenate((glyph[:, :split], gap, glyph[:, split:]), axis=1)
 
 
-def _read_cell(item: tuple[int, int, np.ndarray], work_dir: Path) -> CellReading:
+def _write_number_crop(item: tuple[int, int, np.ndarray], work_dir: Path) -> Path:
     row, column, cell = item
     image_path = work_dir / f"cell-{row + 1}-{column + 1}.png"
     cv2.imwrite(str(image_path), _clean_number(cell, adaptive_crop=True))
+    return image_path
+
+
+def _read_cell(item: tuple[int, int, np.ndarray], work_dir: Path) -> CellReading:
+    row, column, _ = item
+    image_path = _write_number_crop(item, work_dir)
     return _ocr_image(image_path, row=row, column=column, page_segmentation_mode=7)
 
 
-def _ocr_image(image_path: Path, *, row: int, column: int, page_segmentation_mode: int) -> CellReading:
+def _ocr_pages(source: Path, page_segmentation_mode: int) -> dict[int, tuple[str, float]]:
     result = _run(
         [
             "tesseract",
-            str(image_path),
+            str(source),
             "stdout",
             "--psm",
             str(page_segmentation_mode),
@@ -534,32 +540,61 @@ def _ocr_image(image_path: Path, *, row: int, column: int, page_segmentation_mod
             "tsv",
         ]
     )
-    readings = []
+    readings: dict[int, tuple[str, float]] = {}
     for line in result.stdout.splitlines()[1:]:
         fields = line.split("\t")
         if len(fields) == 12 and fields[0] == "5" and fields[11].strip():
-            readings.append((fields[11].strip(), float(fields[10])))
-    if not readings:
-        return CellReading(row=row, column=column, text="", confidence=0.0)
-    text, confidence = max(readings, key=lambda reading: reading[1])
+            page = int(fields[1])
+            confidence = float(fields[10])
+            if page not in readings or confidence > readings[page][1]:
+                readings[page] = (fields[11].strip(), confidence)
+    return readings
+
+
+def _ocr_image(image_path: Path, *, row: int, column: int, page_segmentation_mode: int) -> CellReading:
+    text, confidence = _ocr_pages(image_path, page_segmentation_mode).get(1, ("", 0.0))
     return CellReading(row=row, column=column, text=text, confidence=confidence)
 
 
+def _ocr_batch(positions: list[tuple[int, int]], work_dir: Path, modes: tuple[int, ...]) -> list[list[CellReading]]:
+    """Read a list of separate images in one Tesseract process per mode."""
+    image_list = work_dir / "number-images.txt"
+    image_list.write_text(
+        "".join(f"{work_dir.resolve() / f'cell-{row + 1}-{column + 1}.png'}\n" for row, column in positions)
+    )
+    attempts: list[list[CellReading]] = [[] for _ in positions]
+    for mode in modes:
+        pages = _ocr_pages(image_list, mode)
+        for page, (row, column) in enumerate(positions, 1):
+            text, confidence = pages.get(page, ("", 0.0))
+            attempts[page - 1].append(CellReading(row=row, column=column, text=text, confidence=confidence))
+    return attempts
+
+
 def _retry_cell(
-    reading: CellReading, work_dir: Path, template_value: int | None, cell: np.ndarray | None = None
+    reading: CellReading,
+    work_dir: Path,
+    template_value: int | None,
+    cell: np.ndarray | None = None,
+    *,
+    alternatives: list[CellReading] | None = None,
 ) -> CellReading:
     """Retry an uncertain glyph and require agreement across OCR layouts."""
 
     image_path = work_dir / f"cell-{reading.row + 1}-{reading.column + 1}.png"
     attempts = [reading]
     attempts.extend(
-        _ocr_image(
-            image_path,
-            row=reading.row,
-            column=reading.column,
-            page_segmentation_mode=mode,
+        alternatives
+        if alternatives is not None
+        else (
+            _ocr_image(
+                image_path,
+                row=reading.row,
+                column=reading.column,
+                page_segmentation_mode=mode,
+            )
+            for mode in (6, 8, 10, 13)
         )
-        for mode in (6, 8, 10, 13)
     )
     valid = [attempt for attempt in attempts if attempt.text.isdigit() and 1 <= int(attempt.text) <= 26]
     if valid:
@@ -1712,8 +1747,10 @@ def recognize_photo(
                 trace.record("classify.audit", classification_stage)
     else:
         classification_stage = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            readings = list(executor.map(lambda cell: _read_cell(cell, work_dir), playable))
+        for cell in playable:
+            _write_number_crop(cell, work_dir)
+        positions = [(row, column) for row, column, _ in playable]
+        readings = [attempt for (attempt,) in _ocr_batch(positions, work_dir, (7,))] if positions else []
         if trace is not None:
             trace.record("classify.tesseract", classification_stage)
     cells_by_position = {(row, column): cell for row, column, cell in playable}
@@ -1753,10 +1790,15 @@ def recognize_photo(
                         retry,
                     )
                 )
+        alternatives = (
+            _ocr_batch([(item.row, item.column) for item in retry], work_dir, (6, 8, 10, 13))
+            if ocr_pipeline == TESSERACT_PIPELINE
+            else [None for _ in retry]
+        )
         with ThreadPoolExecutor(max_workers=8) as executor:
             retried = list(
                 executor.map(
-                    lambda item: _retry_cell(
+                    lambda item, earlier: _retry_cell(
                         item,
                         work_dir,
                         (
@@ -1765,8 +1807,10 @@ def recognize_photo(
                             else None
                         ),
                         cells_by_position[(item.row, item.column)],
+                        alternatives=earlier,
                     ),
                     first_ocr,
+                    alternatives,
                 )
             )
         original_by_position = {(item.row, item.column): item for item in retry}

@@ -21,6 +21,10 @@ def test_home_serves_upload_experience():
     response = client.get("/")
 
     assert response.status_code == 200
+    assert f"<strong>Codewords Breaker</strong> v{__version__}" in response.text
+    label = server_module.SCAN_DICTIONARY_LABEL
+    assert f'<option value="en-GB">{label}</option>' in response.text
+    assert f'<span id="footer-dictionary">{label}</span>' in response.text
     assert "Choose how to begin." in response.text
     assert 'action="/solve"' in response.text
     assert 'id="game-workspace" aria-labelledby="game-title" hidden' in response.text
@@ -72,9 +76,14 @@ def test_leaving_a_game_requires_confirmation_and_scan_starts_fresh():
     script = client.get("/static/app.js").text
 
     assert "window.confirm('Abandon game?')" in script
-    assert "showScannerButton.addEventListener('click', openScanner);" in script
-    assert "showCreatorButton.addEventListener('click', openCreator);" in script
-    assert "document.querySelector('#scan-from-game').addEventListener('click', openScanner);" in script
+    assert "showGameButton.addEventListener('click', () => openWithDictionary(showPuzzlePicker));" in script
+    assert "finishReview.addEventListener('click', () => finishScanReview(true));" in script
+    assert "showScannerButton.addEventListener('click', () => openWithDictionary(openScanner));" in script
+    assert "showCreatorButton.addEventListener('click', () => openWithDictionary(openCreator));" in script
+    assert (
+        "document.querySelector('#scan-from-game').addEventListener('click', () => openWithDictionary(openScanner));"
+        in script
+    )
     scanner = script[script.index("function openScanner()") : script.index("function openCreator()")]
     assert "if (!abandonGame()) return;" in scanner
     assert "resetScanner();" in scanner
@@ -285,7 +294,7 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
     monkeypatch.setattr(server_module.cv2, "imread", fake_imread)
     solved_observations = []
 
-    def fake_solve_observation(corrected):
+    def fake_solve_observation(corrected, lexicon):
         solved_observations.append(corrected)
         return solved
 
@@ -384,6 +393,23 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
     assert solved_observations[0].clues == {1: "A", 2: "B", 3: "E"}
 
 
+def test_scan_dictionary_loads_once(monkeypatch):
+    dictionary = object()
+    builds = []
+
+    def build_dictionary():
+        builds.append(dictionary)
+        return dictionary
+
+    monkeypatch.setattr(server_module, "_scan_lexicon", None)
+    monkeypatch.setattr(server_module, "english_lexicon", build_dictionary)
+    assert client.get("/api/scan-dictionary").json() == {"loaded": False}
+    assert client.post("/api/scan-dictionary").json() == {"loaded": True}
+    assert client.get("/api/scan-dictionary").json() == {"loaded": True}
+    assert client.post("/api/scan-dictionary").json() == {"loaded": True}
+    assert builds == [dictionary]
+
+
 def test_scan_gate_preserves_review_and_allows_play_anyway(monkeypatch, tmp_path):
     observation = PuzzleObservation(
         source=tmp_path / "upload.jpg",
@@ -396,12 +422,15 @@ def test_scan_gate_preserves_review_and_allows_play_anyway(monkeypatch, tmp_path
     work.mkdir()
     job = server_module.ScanJob(job_id="gate-test", work_dir=work, observation=observation, review_clues=())
     server_module._remember_scan(job)
+    monkeypatch.setattr(server_module, "_scan_solution_lexicon", lambda: object())
     monkeypatch.setattr(server_module, "SCAN_SOLVE_SECONDS", 0)
     monkeypatch.setattr(server_module, "SCAN_SOLVE_RETRY_SECONDS", (0, 0))
     monkeypatch.setattr(
         server_module,
         "solve_observation",
-        lambda observation, *, deadline: SimpleNamespace(complete=False, result=SimpleNamespace(exhausted=False)),
+        lambda observation, lexicon, *, deadline: SimpleNamespace(
+            complete=False, result=SimpleNamespace(exhausted=False)
+        ),
     )
     url = f"/api/scan-jobs/{job.job_id}/complete"
     checked = client.post(url, json={"check_solution": True})
@@ -418,7 +447,9 @@ def test_scan_gate_preserves_review_and_allows_play_anyway(monkeypatch, tmp_path
     monkeypatch.setattr(
         server_module,
         "solve_observation",
-        lambda observation, *, deadline: SimpleNamespace(complete=False, result=SimpleNamespace(exhausted=True)),
+        lambda observation, lexicon, *, deadline: SimpleNamespace(
+            complete=False, result=SimpleNamespace(exhausted=True)
+        ),
     )
     finished = client.post(url, json={"check_solution": True})
     assert finished.status_code == 409
@@ -429,7 +460,9 @@ def test_scan_gate_preserves_review_and_allows_play_anyway(monkeypatch, tmp_path
     monkeypatch.setattr(
         server_module,
         "solve_observation",
-        lambda observation, *, deadline: SimpleNamespace(complete=False, result=SimpleNamespace(exhausted=False)),
+        lambda observation, lexicon, *, deadline: SimpleNamespace(
+            complete=False, result=SimpleNamespace(exhausted=False)
+        ),
     )
     limited = client.post(url, json={"check_solution": True})
     assert limited.status_code == 409
@@ -463,7 +496,7 @@ def test_failed_lazy_solution_keeps_scanned_session_playable(monkeypatch):
     monkeypatch.setattr(
         server_module,
         "solve_observation",
-        lambda _observation: (_ for _ in ()).throw(ValueError("no solution")),
+        lambda _observation, _lexicon: (_ for _ in ()).throw(ValueError("no solution")),
     )
 
     hint = client.post(f"/api/sessions/{session.session_id}/reveal/2")
@@ -500,7 +533,7 @@ def test_lazy_solution_uses_current_player_entries(monkeypatch):
     session = server_module._create_session(puzzle, observation=observation)
     solved_observations = []
 
-    def fake_solve_observation(current):
+    def fake_solve_observation(current, lexicon):
         solved_observations.append(current)
         return SimpleNamespace(
             mapping=current.clues,
@@ -634,7 +667,7 @@ def test_generation_job_keeps_best_certified_candidate(monkeypatch):
         except StopIteration:
             raise ValueError("budget exhausted") from None
 
-    monkeypatch.setattr(server_module, "english_lexicon", lambda: object())
+    monkeypatch.setattr(server_module, "_scan_solution_lexicon", lambda: object())
     monkeypatch.setattr(server_module, "generate_puzzle", fake_generate)
     job = server_module.GenerationJob(
         job_id="best-test",

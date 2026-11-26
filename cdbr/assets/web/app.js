@@ -79,6 +79,7 @@ let selectedSymbol;
 let draftLetter;
 let solving = false;
 let solverStatusTimer;
+let solverProgressTimer;
 let generationJob;
 let generationPoll;
 let revealed = new Map();
@@ -104,21 +105,24 @@ const solvingStages = [
 
 function beginSolving(title, detail) {
   solving = true;
-  solverProgressTitle.textContent = title;
-  solverProgressDetail.textContent = detail;
-  solverProgress.hidden = false;
   puzzleBoardWrap.setAttribute('aria-busy', 'true');
   document.querySelector('#reveal-all').disabled = true;
   checkGameButton.disabled = true;
-  let stage = 0;
-  window.clearInterval(solverStatusTimer);
-  solverStatusTimer = window.setInterval(() => {
-    solverProgressDetail.textContent = solvingStages[stage % solvingStages.length];
-    stage += 1;
-  }, 1800);
+  if (game?.solution_status === 'certified') return;
+  solverProgressTimer = window.setTimeout(() => {
+    solverProgressTitle.textContent = title;
+    solverProgressDetail.textContent = detail;
+    solverProgress.hidden = false;
+    let stage = 0;
+    solverStatusTimer = window.setInterval(() => {
+      solverProgressDetail.textContent = solvingStages[stage % solvingStages.length];
+      stage += 1;
+    }, 1800);
+  }, 300);
 }
 
 function endSolving() {
+  window.clearTimeout(solverProgressTimer);
   window.clearInterval(solverStatusTimer);
   solverProgress.hidden = true;
   puzzleBoardWrap.removeAttribute('aria-busy');
@@ -504,6 +508,7 @@ async function referenceClick(symbol) {
     renderGame();
     return;
   }
+  game.solution_status = hint.solution_status;
   revealed.set(symbol, hint.letter);
   entrySources.set(symbol, 'solver');
   incorrectSymbols.delete(symbol);
@@ -543,7 +548,7 @@ async function loadGame(puzzleId) {
   return true;
 }
 
-showGameButton.addEventListener('click', showPuzzlePicker);
+showGameButton.addEventListener('click', () => openWithDictionary(showPuzzlePicker));
 startPuzzleButton.addEventListener('click', () => {
   if (puzzleSelect.value) startCorpusGame(puzzleSelect.value);
 });
@@ -584,9 +589,9 @@ function openCreator() {
   showMode('creator');
 }
 
-showScannerButton.addEventListener('click', openScanner);
-showCreatorButton.addEventListener('click', openCreator);
-document.querySelector('#scan-from-game').addEventListener('click', openScanner);
+showScannerButton.addEventListener('click', () => openWithDictionary(openScanner));
+showCreatorButton.addEventListener('click', () => openWithDictionary(openCreator));
+document.querySelector('#scan-from-game').addEventListener('click', () => openWithDictionary(openScanner));
 document.querySelector('#quit-game').addEventListener('click', () => showMode('idle'));
 document.querySelector('#reset-game').addEventListener('click', loadGame);
 document.addEventListener('keydown', (event) => {
@@ -616,6 +621,7 @@ async function checkPlayerEntries(entries) {
     return null;
   }
   const result = await response.json();
+  game.solution_status = result.solution_status;
   incorrectSymbols = new Set(result.incorrect_symbols);
   if (result.checked_symbols.length === 0) {
     gameGuidance.textContent = 'No entries could be checked reliably yet. Keep playing.';
@@ -676,6 +682,7 @@ document.querySelector('#reveal-all').addEventListener('click', async () => {
     return;
   }
   const data = await response.json();
+  game.solution_status = data.solution_status;
   Object.entries(data.mapping).forEach(([symbol, letter]) => {
     const numericSymbol = Number(symbol);
     if (!originalHints.has(numericSymbol)) {
@@ -917,6 +924,7 @@ let reviewQueue = new Set();
 let reviewSelection;
 let reviewPreview;
 let submittingReview = false;
+let checkingDictionary = false;
 
 function paintReview() {
   const selected = reviewItems.get(reviewPreview ?? reviewSelection);
@@ -1193,7 +1201,71 @@ async function finishScanReview(checkSolution, searchRound = 0) {
   }
 }
 
+const dictionaryDialog = document.querySelector('#scan-dictionary-dialog');
+const dictionaryStatus = document.querySelector('#scan-dictionary-status');
+const loadDictionaryButton = document.querySelector('#load-scan-dictionary');
+const cancelDictionaryButton = document.querySelector('#cancel-scan-dictionary');
+const dictionaryChoice = document.querySelector('#scan-dictionary-choice');
+
+let dictionaryDestination;
+const dictionaryPrompt = 'Load the dictionary before opening this workspace.';
+
+async function openWithDictionary(openWorkspace) {
+  if (checkingDictionary || dictionaryDialog.open) return;
+  checkingDictionary = true;
+  const startingMode = document.body.dataset.mode;
+  let loaded = false;
+  try {
+    const response = await fetch('/api/scan-dictionary', { cache: 'no-store' });
+    loaded = response.ok && (await response.json()).loaded;
+  } catch {
+    // The dialog lets the player retry loading if the status request failed.
+  } finally {
+    checkingDictionary = false;
+  }
+  if (document.body.dataset.mode !== startingMode) return;
+  if (loaded) {
+    openWorkspace();
+  } else {
+    dictionaryDestination = openWorkspace;
+    dictionaryStatus.textContent = dictionaryPrompt;
+    dictionaryDialog.showModal();
+  }
+}
+
 finishReview.addEventListener('click', () => finishScanReview(true));
+dictionaryDialog.addEventListener('close', () => {
+  dictionaryDestination = undefined;
+});
+cancelDictionaryButton.addEventListener('click', () => dictionaryDialog.close());
+dictionaryDialog.addEventListener('cancel', event => {
+  if (loadDictionaryButton.disabled) event.preventDefault();
+});
+document.querySelector('#scan-dictionary-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (loadDictionaryButton.disabled) return;
+  loadDictionaryButton.disabled = true;
+  cancelDictionaryButton.disabled = true;
+  dictionaryChoice.disabled = true;
+  const label = dictionaryChoice.selectedOptions[0].textContent;
+  dictionaryStatus.textContent = `Loading ${label}…`;
+  try {
+    const query = new URLSearchParams({ language: dictionaryChoice.value });
+    const response = await fetch(`/api/scan-dictionary?${query}`, { method: 'POST' });
+    if (!response.ok || !(await response.json()).loaded) throw new Error('Dictionary unavailable');
+    document.querySelector('#footer-dictionary').textContent = label;
+    const destination = dictionaryDestination;
+    dictionaryDialog.close();
+    destination?.();
+  } catch {
+    dictionaryStatus.textContent = 'Couldn’t load the dictionary. Try again or cancel.';
+  } finally {
+    loadDictionaryButton.disabled = false;
+    cancelDictionaryButton.disabled = false;
+    dictionaryChoice.disabled = false;
+  }
+});
+
 scanSolveDialog.addEventListener('close', () => {
   if (scanSolveDialog.returnValue === 'play') {
     finishScanReview(false);

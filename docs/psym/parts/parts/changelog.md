@@ -1,4 +1,11 @@
-### 2.3.0 — 2026-11-26
+### 0.2.4 — 2026-11-26
+
+- Batch board-number OCR by Tesseract mode to reduce process startup overhead during scan review.
+- Offer explicit **Load Dictionary** when Play, Scan, or Create needs the British English dictionary. Reuse the loaded dictionary across all three modes and start the scan's solve timer after loading.
+- Reveal hints and complete puzzles from certified solutions without flashing the solving overlay. Show progress for longer searches.
+- Show the installed version and active dictionary in the **Codewords Breaker** footer.
+
+### 0.2.3 — 2026-11-26
 
 - Add Telegraph puzzles 1–10 to Play alongside the original collection. Choose a puzzle by name or use **Pick one**. Restore the three printed starting clues to original puzzles 71–100.
 - Use a shared-vertex mesh and adaptive number crops on both 13×13 and 15×15 scans. Preserve the second digit, remove thin grid-rule remnants, and separate joined digits when the ink supports a split.
