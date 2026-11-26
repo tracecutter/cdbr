@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from dataclasses import field
+from dataclasses import field, replace
 from pathlib import Path
 from functools import lru_cache
 import subprocess
@@ -718,6 +718,78 @@ def _reviewed_number_feature(cell: np.ndarray) -> np.ndarray:
     return cv2.resize(_number_feature(cell), (20, 30), interpolation=cv2.INTER_AREA)
 
 
+def _four_without_crossbar(cell: np.ndarray) -> bool:
+    ink = cv2.bitwise_not(_clean_number(cell, adaptive_crop=True))
+    x, y, width, height = cv2.boundingRect(ink)
+    if not height or width > 0.48 * height:
+        return False
+    # The middle of a printed 4 usually carries a wide horizontal stroke.
+    # A narrow token with little ink there can be a 1 read as a 4.
+    middle = ink[y + int(0.38 * height) : y + int(0.78 * height), x : x + width]
+    return bool(middle.size and np.count_nonzero(middle, axis=1).max() <= 0.30 * height)
+
+
+def _trim_four_to_stem(cell: np.ndarray) -> np.ndarray | None:
+    crop = _clean_number(cell, adaptive_crop=True)
+    ink = cv2.bitwise_not(crop)
+    x, y, width, height = cv2.boundingRect(ink)
+    if not height:
+        return None
+    glyph = ink[y : y + height, x : x + width]
+    lower_stem = np.count_nonzero(glyph[int(0.77 * height) :], axis=0)
+    stem = int(np.argmax(lower_stem))
+    left_of_stem = glyph[int(0.40 * height) : int(0.76 * height), : max(0, stem - int(0.14 * height))]
+    if np.count_nonzero(left_of_stem) > 0.025 * height**2:
+        return None
+    stem_edge = int(np.flatnonzero(lower_stem >= 0.55 * lower_stem.max())[0])
+    # Retain a narrow shoulder so the input does not become a plain vertical bar.
+    cutoff = max(0, x + stem_edge - 6)
+    crop[:, :cutoff] = 255
+    return crop
+
+
+def _suggest_one_from_trimmed_fours(
+    readings: list[CellReading], cells: dict[tuple[int, int], np.ndarray], work_dir: Path
+) -> list[CellReading]:
+    candidates = []
+    retry_dir = work_dir / "trimmed-fours"
+    for index, item in enumerate(readings):
+        if item.text != "4" or item.confidence < MIN_OCR_CONFIDENCE:
+            continue
+        trimmed = _trim_four_to_stem(cells[item.row, item.column])
+        if trimmed is None:
+            continue
+        retry_dir.mkdir(exist_ok=True)
+        cv2.imwrite(str(retry_dir / f"cell-{item.row + 1}-{item.column + 1}.png"), trimmed)
+        candidates.append(index)
+    if not candidates:
+        return readings
+    positions = [(readings[index].row, readings[index].column) for index in candidates]
+    reviewed = readings.copy()
+    for index, attempts in zip(candidates, _ocr_batch(positions, retry_dir, (7, 13)), strict=True):
+        confidence = max((attempt.confidence for attempt in attempts if attempt.text == "1"), default=0.0)
+        if confidence >= MIN_OCR_CONFIDENCE:
+            reviewed[index] = replace(readings[index], text="1", confidence=confidence, trusted=False)
+    return reviewed
+
+
+def _review_six_nine_disagreements(readings: list[CellReading], work_dir: Path) -> list[CellReading]:
+    candidates = [
+        index
+        for index, item in enumerate(readings)
+        if item.trusted and item.text in {"6", "9"} and item.confidence < 90.0
+    ]
+    if not candidates:
+        return readings
+    positions = [(readings[index].row, readings[index].column) for index in candidates]
+    reviewed = readings.copy()
+    for index, (second,) in zip(candidates, _ocr_batch(positions, work_dir, (6,)), strict=True):
+        first = readings[index]
+        if {first.text, second.text} == {"6", "9"} and second.confidence >= MIN_OCR_CONFIDENCE:
+            reviewed[index] = replace(first, trusted=False)
+    return reviewed
+
+
 def _review_with_scan_matches(
     readings: list[CellReading], cells: dict[tuple[int, int], np.ndarray]
 ) -> list[CellReading]:
@@ -1257,6 +1329,22 @@ def clue_ink_pixels(cell: np.ndarray) -> int:
     return int(np.count_nonzero(_foreground_binary(gray)))
 
 
+def _clue_ocr(source: Path, mode: int) -> str:
+    return _run(
+        [
+            "tesseract",
+            str(source),
+            "stdout",
+            "--psm",
+            str(mode),
+            "-l",
+            "eng",
+            "-c",
+            "tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        ]
+    ).stdout
+
+
 def extract_clues(
     reference_grid: np.ndarray,
     work_dir: Path,
@@ -1264,7 +1352,7 @@ def extract_clues(
 ) -> dict[int, str]:
     """Read the large printed letters from the numbered reference cells."""
 
-    clues: dict[int, str] = {}
+    crops: list[tuple[int, Path, np.ndarray]] = []
     for value in range(1, 27):
         row = 0 if value <= 13 else 1
         column = (value - 1) % 13
@@ -1290,27 +1378,26 @@ def extract_clues(
         cleaned = cv2.resize(cleaned, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST)
         image_path = work_dir / f"clue-{value}.png"
         cv2.imwrite(str(image_path), cleaned)
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            attempts = list(
-                executor.map(
-                    lambda mode, image_path=image_path: _run(
-                        [
-                            "tesseract",
-                            str(image_path),
-                            "stdout",
-                            "--psm",
-                            str(mode),
-                            "-l",
-                            "eng",
-                            "-c",
-                            "tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-                        ]
-                    )
-                    .stdout.strip()
-                    .upper(),
-                    (10, 13, 6),
-                )
-            )
+        crops.append((value, image_path, cleaned))
+    if not crops:
+        return {}
+
+    image_list = work_dir / "clue-images.txt"
+    image_list.write_text("".join(f"{path.resolve()}\n" for _, path, _ in crops))
+    modes = (10, 13, 6)
+    pages_by_mode: list[list[str]] = []
+    for mode in modes:
+        pages = _clue_ocr(image_list, mode).split("\f")
+        if len(pages) == len(crops) + 1 and not pages[-1].strip():
+            pages.pop()
+        if len(pages) != len(crops):
+            # Preserve reference indices if a Tesseract build omits a page separator.
+            pages = [_clue_ocr(path, mode) for _, path, _ in crops]
+        pages_by_mode.append(pages)
+
+    clues: dict[int, str] = {}
+    for (value, _, cleaned), readings in zip(crops, zip(*pages_by_mode, strict=True), strict=True):
+        attempts = [page.strip().upper() for page in readings]
         clue = _adjudicate_clue_topology(cleaned, _select_clue(attempts))
         if evidence is not None:
             agreement = sum(clue in set(attempt) for attempt in attempts) / len(attempts) if clue is not None else 0.0
@@ -1907,6 +1994,26 @@ def recognize_photo(
             for item in readings
         ]
         readings = _review_with_scan_matches(readings, cells_by_position)
+        if ocr_pipeline == TESSERACT_PIPELINE:
+            ambiguity_started = time.perf_counter()
+            readings = _review_six_nine_disagreements(readings, work_dir)
+            if trace is not None:
+                trace.record("classify.review_six_nine", ambiguity_started)
+        readings = [
+            (
+                replace(item, trusted=False)
+                if item.trusted
+                and item.text == "4"
+                and _four_without_crossbar(cells_by_position[item.row, item.column])
+                else item
+            )
+            for item in readings
+        ]
+        if ocr_pipeline == TESSERACT_PIPELINE:
+            ambiguity_started = time.perf_counter()
+            readings = _suggest_one_from_trimmed_fours(readings, cells_by_position, work_dir)
+            if trace is not None:
+                trace.record("classify.review_one_four", ambiguity_started)
     for reading in readings:
         if not reading.trusted:
             cv2.imwrite(

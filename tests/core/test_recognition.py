@@ -5,6 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from cdbr.core import recognition
 from cdbr.core.recognition import (
     CellReading,
     _adjudicate_clue_topology,
@@ -36,6 +37,51 @@ def test_hil_review_keeps_low_margin_counter_family_readings_visible() -> None:
     assert not needs_hil_review(CellReading(row=1, column=1, text="6", confidence=68.0, trusted=True))
     assert not needs_hil_review(CellReading(row=1, column=1, text="23", confidence=60.0, trusted=True))
     assert needs_hil_review(CellReading(row=1, column=1, text="23", confidence=90.0, trusted=False))
+
+
+def test_six_nine_second_opinion_flags_only_confident_disagreement(tmp_path, monkeypatch) -> None:
+    readings = [
+        CellReading(row=0, column=column, text=text, confidence=confidence, trusted=True)
+        for column, (text, confidence) in enumerate([("6", 84), ("9", 86), ("6", 96), ("4", 85)])
+    ]
+
+    def batch(positions, work_dir, modes):
+        assert positions == [(0, 0), (0, 1)]
+        assert work_dir == tmp_path
+        assert modes == (6,)
+        return [
+            [CellReading(row=0, column=0, text="9", confidence=92)],
+            [CellReading(row=0, column=1, text="6", confidence=70)],
+        ]
+
+    monkeypatch.setattr(recognition, "_ocr_batch", batch)
+    reviewed = recognition._review_six_nine_disagreements(readings, tmp_path)
+    assert [item.text for item in reviewed] == ["6", "9", "6", "4"]
+    assert [needs_hil_review(item) for item in reviewed] == [True, False, False, False]
+
+
+def test_trimmed_four_suggests_one_only_for_review(tmp_path, monkeypatch) -> None:
+    one = np.full((100, 90), 255, dtype=np.uint8)
+    one[16:78, 45:56] = 0
+    one[20:32, 34:45] = 0
+    four = one.copy()
+    four[46:57, 18:45] = 0
+    monkeypatch.setattr(recognition, "_clean_number", lambda cell, **kwargs: cell.copy())
+
+    def batch(positions, work_dir, modes):
+        assert positions == [(0, 0)]
+        assert modes == (7, 13)
+        trimmed = cv2.imread(str(work_dir / "cell-1-1.png"), cv2.IMREAD_GRAYSCALE)
+        assert np.all(trimmed[:, :39] == 255)
+        assert np.array_equal(trimmed[:, 39:], one[:, 39:])
+        return [[CellReading(row=0, column=0, text="1", confidence=91)]]
+
+    monkeypatch.setattr(recognition, "_ocr_batch", batch)
+    readings = [CellReading(row=0, column=i, text="4", confidence=96, trusted=True) for i in range(2)]
+    reviewed = recognition._suggest_one_from_trimmed_fours(readings, {(0, 0): one, (0, 1): four}, tmp_path)
+    assert reviewed[0].text == "1"
+    assert needs_hil_review(reviewed[0])
+    assert reviewed[1] == readings[1]
 
 
 def test_grid_geometry_adapts_to_supported_square_sizes() -> None:
@@ -144,6 +190,31 @@ def test_select_clue_prefers_agreement_across_ocr_modes() -> None:
     assert _select_clue(["", "PO", "P"]) == "P"
     assert _select_clue(["", "OP", ""]) == "P"
     assert _select_clue(["", "BB", "B"]) == "B"
+
+
+def test_clue_batch_keeps_reference_indices_after_blank_ocr_page(tmp_path, monkeypatch) -> None:
+    reference = np.full((200, 1300, 3), 255, dtype=np.uint8)
+    for column in (0, 3, 8):
+        cv2.rectangle(reference, (column * 100 + 30, 42), (column * 100 + 53, 83), (0, 0, 0), -1)
+
+    def ocr(source: Path, mode: int) -> str:
+        assert source.name == "clue-images.txt"
+        assert [Path(path).name for path in source.read_text().splitlines()] == [
+            "clue-1.png",
+            "clue-4.png",
+            "clue-9.png",
+        ]
+        return "A\n\f\fB\n\f"
+
+    monkeypatch.setattr(recognition, "_clue_ocr", ocr)
+    monkeypatch.setattr(recognition, "_adjudicate_clue_topology", lambda image, clue: clue)
+    evidence = []
+    assert recognition.extract_clues(reference, tmp_path, evidence) == {1: "A", 9: "B"}
+    assert [(item.symbol, item.reading, item.confidence) for item in evidence] == [
+        (1, "A", 100.0),
+        (4, "", 0.0),
+        (9, "B", 100.0),
+    ]
 
 
 def test_clue_topology_separates_a_from_x() -> None:

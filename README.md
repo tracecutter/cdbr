@@ -435,6 +435,12 @@ System tests require ImageMagick and Tesseract. The project configuration in
 
 ## Changelog
 
+### 0.2.5 — 2026-11-26
+
+- Batch reference-clue OCR by Tesseract mode to reduce scan time.
+- Flag borderline `6` and `9` reads when the block-mode retry confidently disagrees.
+- Flag narrow `4` reads with little crossbar ink. Retry low-ink candidates after trimming the left side of the glyph and suggest a confident `1` for the player to confirm.
+
 ### 0.2.4 — 2026-11-26
 
 - Batch board-number OCR by Tesseract mode to reduce process startup overhead during scan review.
