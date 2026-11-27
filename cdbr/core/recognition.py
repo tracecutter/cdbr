@@ -29,6 +29,7 @@ MIN_NINE_NINETEEN_PROMOTION_MARGIN = 0.23
 STRONG_NINE_NINETEEN_PROMOTION_MARGIN = 0.30
 MAX_SINGLE_NINE_INK_PIXELS = 450
 HIL_REVIEW_CONFIDENCE = 68.0
+HIL_AUTO_ACCEPT_CONFIDENCE = 90.0
 HIL_AMBIGUOUS_NUMBERS = frozenset((5, 6, 8, 9, 16, 18, 19))
 WHOLE_TOKEN_PIPELINE = "whole-token"
 LEGACY_PIPELINE = "legacy"
@@ -55,9 +56,11 @@ class CellReading:
 def needs_hil_review(reading: CellReading | CellEvidence) -> bool:
     """Return whether gameplay should ask a human to confirm this fresh reading."""
 
+    text = reading.text if isinstance(reading, CellReading) else reading.reading
+    if reading.confidence > HIL_AUTO_ACCEPT_CONFIDENCE and text.isdecimal() and 1 <= int(text) <= 26:
+        return False
     if not reading.trusted:
         return True
-    text = reading.text if isinstance(reading, CellReading) else reading.reading
     return reading.confidence < HIL_REVIEW_CONFIDENCE and text.isdigit() and int(text) in HIL_AMBIGUOUS_NUMBERS
 
 
@@ -421,9 +424,10 @@ def _number_ink_mask(cell: np.ndarray, *, suppress_illumination: bool, adaptive_
         binary = cv2.subtract(binary, cv2.bitwise_or(horizontal, vertical))
     if adaptive_crop:
         # A partial top rule can survive the full-length rule filter.
+        # Preserve shorter runs here: a wide printed 7 can have a 28-pixel cap.
         top = binary[:8]
         rule = cv2.morphologyEx(
-            top, cv2.MORPH_OPEN, np.ones((1, 28), dtype=np.uint8), borderType=cv2.BORDER_CONSTANT, borderValue=0
+            top, cv2.MORPH_OPEN, np.ones((1, 38), dtype=np.uint8), borderType=cv2.BORDER_CONSTANT, borderValue=0
         )
         binary[: len(top)] = cv2.subtract(top, rule)
     return binary

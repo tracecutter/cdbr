@@ -1164,7 +1164,7 @@ async function finishScanReview(checkSolution, searchRound = 0) {
         scanSolveMessage.textContent =
           'The search finished without finding a solution in the current dictionary. Check that the numbers and starting clues match the photo.';
         document.querySelector('#review-guidance').textContent =
-          'Compare the scanned numbers with the board, especially 1s and 4s, and 6s and 8s.';
+          'Compare the scanned numbers and starting clues with the photo. If the print is hard to read, choose another photo.';
       } else if (canKeepSearching) {
         scanSolveTitle.textContent = 'Keep looking?';
         scanSolveMessage.textContent = 'I ran out of time. I can search longer, or you can start playing.';

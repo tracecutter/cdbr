@@ -37,6 +37,8 @@ def test_hil_review_keeps_low_margin_counter_family_readings_visible() -> None:
     assert not needs_hil_review(CellReading(row=1, column=1, text="6", confidence=68.0, trusted=True))
     assert not needs_hil_review(CellReading(row=1, column=1, text="23", confidence=60.0, trusted=True))
     assert needs_hil_review(CellReading(row=1, column=1, text="23", confidence=90.0, trusted=False))
+    assert not needs_hil_review(CellReading(row=1, column=1, text="23", confidence=90.1, trusted=False))
+    assert needs_hil_review(CellReading(row=1, column=1, text="48", confidence=95.0, trusted=False))
 
 
 def test_six_nine_second_opinion_flags_only_confident_disagreement(tmp_path, monkeypatch) -> None:
@@ -60,7 +62,7 @@ def test_six_nine_second_opinion_flags_only_confident_disagreement(tmp_path, mon
     assert [needs_hil_review(item) for item in reviewed] == [True, False, False, False]
 
 
-def test_trimmed_four_suggests_one_only_for_review(tmp_path, monkeypatch) -> None:
+def test_trimmed_four_preserves_disagreement_evidence(tmp_path, monkeypatch) -> None:
     one = np.full((100, 90), 255, dtype=np.uint8)
     one[16:78, 45:56] = 0
     one[20:32, 34:45] = 0
@@ -80,7 +82,8 @@ def test_trimmed_four_suggests_one_only_for_review(tmp_path, monkeypatch) -> Non
     readings = [CellReading(row=0, column=i, text="4", confidence=96, trusted=True) for i in range(2)]
     reviewed = recognition._suggest_one_from_trimmed_fours(readings, {(0, 0): one, (0, 1): four}, tmp_path)
     assert reviewed[0].text == "1"
-    assert needs_hil_review(reviewed[0])
+    assert not reviewed[0].trusted
+    assert not needs_hil_review(reviewed[0])
     assert reviewed[1] == readings[1]
 
 
@@ -105,7 +108,8 @@ def test_trailing_four_retry_keeps_the_leading_digit(tmp_path, monkeypatch) -> N
     ]
     reviewed = recognition._suggest_one_from_trimmed_fours(readings, {(0, 0): pair, (0, 1): genuine}, tmp_path)
     assert reviewed[0].text == "11"
-    assert needs_hil_review(reviewed[0])
+    assert not reviewed[0].trusted
+    assert not needs_hil_review(reviewed[0])
     assert reviewed[1] == readings[1]
 
 

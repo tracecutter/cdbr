@@ -435,6 +435,12 @@ System tests require ImageMagick and Tesseract. The project configuration in
 
 ## Changelog
 
+### 0.2.7 — 2026-11-27
+
+- Preserve printed crossbars, including the Telegraph 7s, during grid-line cleanup.
+- Skip manual confirmation for valid grid numbers above 90% OCR confidence.
+- If a scan cannot be solved, ask the player to compare the board with the photo or retake it.
+
 ### 0.2.6 — 2026-11-26
 
 - Retry the trailing glyph in `14` and `24` when a clean gap isolates a narrow, low-ink candidate. Suggest a confident `11` or `21` for the player to confirm.
