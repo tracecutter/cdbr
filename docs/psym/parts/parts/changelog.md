@@ -1,3 +1,8 @@
+### 0.2.12 — 2026-11-27
+
+- Make Helvetica-first number recognition the web default at the 0.16 distance cutoff. Retain the Tesseract-first rollback setting.
+- Use OpenCV bounding boxes for glyph features and keep Helvetica inputs in memory until Tesseract needs a crop.
+
 ### 0.2.11 — 2026-11-27
 
 - Add an opt-in Helvetica mode that checks within-scan agreement only for cells the bank deferred.

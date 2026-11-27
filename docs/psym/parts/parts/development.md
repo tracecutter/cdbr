@@ -184,12 +184,11 @@ include the later solve request. Timings are emitted on the response
 without retaining samples or adding log entries. Omit the request header
 to leave timing off.
 
-The web scanner accepts `X-CDBR-Scan-OCR: helvetica` to try the Helvetica
-number bank before Tesseract. Send `tesseract` to use the original path.
-Set the runtime variable `CDBR_SCAN_OCR=helvetica` to enable the hybrid
-for ordinary browser requests. Unset it or set it to `tesseract` to turn
-it off without publishing a release. The request header overrides the
-runtime default. Use `helvetica-deferred` for within-scan matching only on
+The web scanner defaults to Helvetica-first number recognition with a
+maximum distance of 0.16 and a minimum runner-up margin of 0.015.
+Set the runtime variable `CDBR_SCAN_OCR=tesseract` to roll back without
+publishing another release. Unset the variable to restore the default.
+The `X-CDBR-Scan-OCR` request header overrides the runtime setting. Use `helvetica-deferred` for within-scan matching only on
 cells deferred by the Helvetica bank. High-confidence reads still serve
 as comparison anchors. On Linux containers with readable cgroup counters,
 the same request returns `X-CDBR-Scan-Memory` with starting usage, sampled

@@ -587,13 +587,10 @@ def _helvetica_bank() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return matrix, labels, (matrix * matrix).sum(axis=1)
 
 
-def _helvetica_distances(positions: list[tuple[int, int]], work_dir: Path) -> dict[int, np.ndarray]:
+def _helvetica_distances(glyphs: list[np.ndarray]) -> dict[int, np.ndarray]:
     features = []
     indices = []
-    for index, (row, column) in enumerate(positions):
-        glyph = cv2.imread(str(work_dir / f"cell-{row + 1}-{column + 1}.png"), cv2.IMREAD_GRAYSCALE)
-        if glyph is None:
-            continue
+    for index, glyph in enumerate(glyphs):
         ink = cv2.bitwise_not(glyph)
         x, y, width, height = cv2.boundingRect(ink)
         if not height:
@@ -621,9 +618,9 @@ def _helvetica_distances(positions: list[tuple[int, int]], work_dir: Path) -> di
     return dict(zip(indices, by_number, strict=True))
 
 
-def _helvetica_first_pass(positions: list[tuple[int, int]], work_dir: Path) -> dict[int, CellReading]:
+def _helvetica_first_pass(positions: list[tuple[int, int]], glyphs: list[np.ndarray]) -> dict[int, CellReading]:
     accepted = {}
-    for index, distances in _helvetica_distances(positions, work_dir).items():
+    for index, distances in _helvetica_distances(glyphs).items():
         best, runner_up = np.argsort(distances)[:2]
         if distances[best] <= HELVETICA_MAX_DISTANCE and distances[runner_up] - distances[best] >= HELVETICA_MIN_MARGIN:
             row, column = positions[index]
@@ -755,16 +752,11 @@ def extract_reference_grid(image: np.ndarray) -> np.ndarray:
 
 def _number_feature(cell: np.ndarray, *, suppress_illumination: bool = False) -> np.ndarray:
     cleaned = _clean_number(cell, suppress_illumination=suppress_illumination)
-    y_coordinates, x_coordinates = np.where(cleaned < 128)
+    x, y, width, height = cv2.boundingRect(cv2.bitwise_not(cleaned))
     feature = np.full((80, 120), 255, dtype=np.uint8)
-    if not len(x_coordinates):
+    if not width:
         return feature
-    x_values = [int(value) for value in x_coordinates]
-    y_values = [int(value) for value in y_coordinates]
-    crop = cleaned[
-        min(y_values) : max(y_values) + 1,
-        min(x_values) : max(x_values) + 1,
-    ]
+    crop = cleaned[y : y + height, x : x + width]
     scale = min(100 / crop.shape[1], 60 / crop.shape[0])
     resized = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
     y = (feature.shape[0] - resized.shape[0]) // 2
@@ -1924,16 +1916,29 @@ def recognize_photo(
                 trace.record("classify.audit", classification_stage)
     else:
         classification_stage = time.perf_counter()
-        for cell in playable:
-            _write_number_crop(cell, work_dir)
+        positions = [(row, column) for row, column, _ in playable]
+        bank_glyphs: list[np.ndarray] = []
+        if helvetica_first:
+            bank_glyphs = [_clean_number(cell, adaptive_crop=True) for _, _, cell in playable]
+        else:
+            for cell in playable:
+                _write_number_crop(cell, work_dir)
         if trace is not None:
             trace.record("classify.crops", classification_stage)
             classification_stage = time.perf_counter()
-        positions = [(row, column) for row, column, _ in playable]
-        bank_reads = _helvetica_first_pass(positions, work_dir) if helvetica_first else {}
-        if helvetica_first and trace is not None:
-            trace.record("classify.helvetica", classification_stage)
-            classification_stage = time.perf_counter()
+        if helvetica_first:
+            bank_reads = _helvetica_first_pass(positions, bank_glyphs)
+            if trace is not None:
+                trace.record("classify.helvetica", classification_stage)
+                classification_stage = time.perf_counter()
+            # Retry candidates come from the fallback reads. Bank reads carry
+            # a score of 100 and the 1/4 retry writes its own trimmed crops.
+            for index, (row, column) in enumerate(positions):
+                if index not in bank_reads:
+                    cv2.imwrite(str(work_dir / f"cell-{row + 1}-{column + 1}.png"), bank_glyphs[index])
+            if trace is not None:
+                trace.record("classify.crop_io", classification_stage)
+                classification_stage = time.perf_counter()
         fallback_positions = [position for index, position in enumerate(positions) if index not in bank_reads]
         fallback = iter(_ocr_batch(fallback_positions, work_dir, (7,)) if fallback_positions else [])
         readings = [bank_reads[index] if index in bank_reads else next(fallback)[0] for index in range(len(positions))]

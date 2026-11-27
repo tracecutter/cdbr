@@ -255,9 +255,22 @@ def test_legacy_photo_session_cannot_bypass_human_review():
 
 
 @pytest.mark.parametrize(
-    ("timing", "ocr"), [(False, None), (True, "tesseract"), (True, "helvetica"), (True, "helvetica-deferred")]
+    ("timing", "ocr", "runtime_mode"),
+    [
+        (False, None, None),
+        (True, None, "tesseract"),
+        (True, "tesseract", "helvetica"),
+        (True, "helvetica", "tesseract"),
+        (True, "helvetica-deferred", None),
+    ],
 )
-def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatch, timing, ocr):
+def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatch, timing, ocr, runtime_mode):
+    if runtime_mode is None:
+        monkeypatch.delenv("CDBR_SCAN_OCR", raising=False)
+    else:
+        monkeypatch.setenv("CDBR_SCAN_OCR", runtime_mode)
+    mode = ocr or runtime_mode or "helvetica"
+
     def fake_scan_memory():
         assert timing
         return SimpleNamespace(start_bytes=100, peak_bytes=200, limit_bytes=300, finish=lambda: None)
@@ -287,8 +300,8 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
 
     def fake_recognize(_source, _work_dir, *, trace=None, helvetica_first=False, match_deferred_only=False):
         assert (trace is not None) == timing
-        assert helvetica_first == (ocr in {"helvetica", "helvetica-deferred"})
-        assert match_deferred_only == (ocr == "helvetica-deferred")
+        assert helvetica_first == (mode in {"helvetica", "helvetica-deferred"})
+        assert match_deferred_only == (mode == "helvetica-deferred")
         if trace is not None:
             trace.stage_seconds["decode"] = 0.125
             trace.elapsed_seconds = 0.25
@@ -755,7 +768,7 @@ def test_scan_requests_retake_when_too_many_numbers_need_review(monkeypatch):
         ),
     )
     monkeypatch.setattr(server_module, "detect_photo_format", lambda _: PhotoFormat.JPEG)
-    monkeypatch.setattr(server_module, "recognize_photo", lambda *_: observation)
+    monkeypatch.setattr(server_module, "recognize_photo", lambda *_, **__: observation)
 
     response = client.post("/api/scan-jobs", files={"photo": ("puzzle.jpg", b"pretend jpeg", "image/jpeg")})
 

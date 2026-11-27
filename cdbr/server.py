@@ -830,7 +830,7 @@ async def scan_job_endpoint(
         await _save_upload(photo, source)
         if detect_photo_format(source) is PhotoFormat.UNKNOWN:
             raise ValueError("Unsupported or unrecognised image format")
-        ocr_mode = x_cdbr_scan_ocr or os.getenv("CDBR_SCAN_OCR")
+        ocr_mode = x_cdbr_scan_ocr or os.getenv("CDBR_SCAN_OCR", "helvetica")
         if trace is not None:
             trace.record("prepare", scan_started)
         if ocr_mode in {"helvetica", "helvetica-deferred"}:
