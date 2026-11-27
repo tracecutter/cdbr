@@ -25,3 +25,10 @@
   materially stronger than its alternative; otherwise leave the cell for human
   review. Never use an unconstrained solver result to silently rewrite arbitrary
   OCR.
+
+## Mobile scan review
+
+- Support pinch-to-zoom on the review board so printed and recognized numbers
+  are readable on iPhone. Keep the selected-cell crop, editor, and Confirm cell
+  action within reach while navigating the board. Keep Accept Scan accessible
+  without requiring a scroll after each correction.
