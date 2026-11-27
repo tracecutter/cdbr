@@ -77,7 +77,7 @@ from typing import Annotated, Literal
 
 import cdbr.ui as click
 import cv2
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -93,6 +93,7 @@ from cdbr.core.puzzle import BLOCK, PuzzleObservation
 from cdbr.core.presentation import write_solution_photo
 from cdbr.core.recognition import (
     MIN_CLUE_REVIEW_INK_PIXELS,
+    RecognitionTrace,
     clue_ink_pixels,
     needs_hil_review,
     normalize_photo,
@@ -769,9 +770,15 @@ async def photo_preview_endpoint(photo: Annotated[UploadFile, File()]) -> Respon
 
 
 @app.post("/api/scan-jobs", status_code=201)
-async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, object]:
+async def scan_job_endpoint(
+    photo: Annotated[UploadFile, File()],
+    response: Response,
+    x_cdbr_scan_timing: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
     """Recognise a photograph and pause before solving when cells need review."""
 
+    trace = RecognitionTrace() if x_cdbr_scan_timing == "1" else None
+    scan_started = time.perf_counter() if trace is not None else 0.0
     suffix = Path(photo.filename or "upload").suffix.lower()
     if suffix not in {".avif", ".heic", ".heif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}:
         suffix = ".img"
@@ -781,7 +788,12 @@ async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, o
         await _save_upload(photo, source)
         if detect_photo_format(source) is PhotoFormat.UNKNOWN:
             raise ValueError("Unsupported or unrecognised image format")
-        observation = recognize_photo(source, work_dir)
+        if trace is None:
+            observation = recognize_photo(source, work_dir)
+        else:
+            trace.record("prepare", scan_started)
+            observation = recognize_photo(source, work_dir, trace=trace)
+        review_started = time.perf_counter() if trace is not None else 0.0
         review_cells = [item for item in observation.evidence if needs_hil_review(item)]
         if len(review_cells) >= MIN_RETAKE_REVIEW_CELLS and len(review_cells) > MAX_SCAN_REVIEW_FRACTION * len(
             observation.evidence
@@ -815,7 +827,15 @@ async def scan_job_endpoint(photo: Annotated[UploadFile, File()]) -> dict[str, o
         review_clues=tuple(review_clues),
     )
     _remember_scan(job)
-    return _scan_public(job)
+    payload = _scan_public(job)
+    if trace is not None:
+        trace.record("review", review_started)
+        trace.stage_seconds["recognition"] = trace.elapsed_seconds
+        trace.record("scan", scan_started)
+        response.headers["Server-Timing"] = ", ".join(
+            f"{name};dur={seconds * 1000:.1f}" for name, seconds in trace.stage_seconds.items()
+        )
+    return payload
 
 
 def _scan_crop(source: Path, row: int, column: int, rows: int, columns: int) -> Response:

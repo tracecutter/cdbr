@@ -113,6 +113,15 @@ Next steps and future directions
 
 **Operate the current release.** In DigitalOcean App Platform, verify the HTTP readiness check for ``/health`` on the service port and enable a liveness probe with enough consecutive failures to tolerate brief OCR or solver load. Readiness controls traffic and liveness can restart a stuck instance. Enable failed deployment and restart-count alerts. Use the Insights graphs for memory and request duration when investigating scans that slow down. After deployment, open a corpus puzzle and run one real scan through review and play to exercise the workflow behind the health endpoint.
 
+Send ``X-CDBR-Scan-Timing: 1`` on a ``POST /api/scan-jobs`` request to receive a ``Server-Timing`` response header on success.
+
+.. code:: sh
+
+   curl -sS -D - -o /dev/null -H 'X-CDBR-Scan-Timing: 1' \
+     -F 'photo=@corpus/puzzle_056.jpg' https://codebreak.foghub.com/api/scan-jobs
+
+Durations are wall-clock milliseconds. The ``scan`` total starts after the framework has parsed the multipart upload. It covers preparation, recognition, and review payload construction. The ``recognition`` and ``classify`` metrics include their sub-stages. The scan timing does not include the later solve request. Timings are emitted on the response without retaining samples or adding log entries. Omit the request header to leave timing off. For a controlled Tesseract comparison, try ``OMP_THREAD_LIMIT=1`` as a separate runtime change and repeat the same uploads.
+
 **Make game and corpus state durable.** Active games, pending scan jobs, and newly created puzzles currently live in the server process. A restart or redeploy can interrupt that work. The packaged corpus ships with the image. Plan to store game progress, puzzle metadata, and answer keys in SQL, with source photos and derived images in Spaces. Define stable puzzle identifiers and publisher provenance before migrating the file corpus. Keep publisher and book numbers available for lookup. Add an admin review and import workflow when the storage model is ready.
 
 **Measure scan quality from capture to play.** Keep the difficult Puzzle 47 photos as real-world regressions and use the synthetic sweeps to isolate changes in perspective, curl, and lighting. Strong curl is the next dewarping target. Score grid recovery, number and clue accuracy, review burden, retake decisions, and time separately. Check new thresholds on held-out photos and a second publisher before treating them as general. Use fresh OCR and solver passes when measuring the end-to-end experience.

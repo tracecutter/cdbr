@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import cv2
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 import cdbr.server as server_module
@@ -253,7 +254,8 @@ def test_legacy_photo_session_cannot_bypass_human_review():
     assert "/api/scan-jobs" in response.json()["detail"]
 
 
-def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatch):
+@pytest.mark.parametrize("timing", [False, True])
+def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatch, timing):
     observation = PuzzleObservation(
         source=server_module.Path("upload.jpg"),
         source_format="JPEG",
@@ -275,7 +277,15 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
         result=SimpleNamespace(exhausted=True, solutions=(object(),)),
     )
     monkeypatch.setattr(server_module, "detect_photo_format", lambda _: PhotoFormat.JPEG)
-    monkeypatch.setattr(server_module, "recognize_photo", lambda _source, _work_dir: observation)
+
+    def fake_recognize(_source, _work_dir, *, trace=None):
+        assert (trace is not None) == timing
+        if trace is not None:
+            trace.stage_seconds["decode"] = 0.125
+            trace.elapsed_seconds = 0.25
+        return observation
+
+    monkeypatch.setattr(server_module, "recognize_photo", fake_recognize)
     grid_image = np.full((1500, 1500, 3), 255, dtype=np.uint8)
     reference_image = np.full((200, 1300, 3), 245, dtype=np.uint8)
     cv2.putText(
@@ -303,10 +313,17 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
 
     scanned = client.post(
         "/api/scan-jobs",
+        headers={"X-CDBR-Scan-Timing": "1"} if timing else {},
         files={"photo": ("puzzle.jpg", b"pretend jpeg", "image/jpeg")},
     )
 
     assert scanned.status_code == 201
+    if timing:
+        assert "decode;dur=125.0" in scanned.headers["Server-Timing"]
+        assert "recognition;dur=250.0" in scanned.headers["Server-Timing"]
+        assert "scan;dur=" in scanned.headers["Server-Timing"]
+    else:
+        assert "Server-Timing" not in scanned.headers
     review = scanned.json()
     assert review["status"] == "review"
     assert review["review_cells"] == [

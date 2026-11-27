@@ -1,3 +1,7 @@
+### 0.2.8 — 2026-11-27
+
+- Add opt-in scan stage timings to help diagnose hosted OCR latency.
+
 ### 0.2.7 — 2026-11-27
 
 - Preserve printed crossbars, including the Telegraph 7s, during grid-line cleanup.

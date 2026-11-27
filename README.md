@@ -407,6 +407,24 @@ request duration when investigating scans that slow down. After deployment,
 open a corpus puzzle and run one real scan through review and play to exercise
 the workflow behind the health endpoint.
 
+Send `X-CDBR-Scan-Timing: 1` on a `POST /api/scan-jobs` request to receive
+a `Server-Timing` response header on success.
+
+```sh
+curl -sS -D - -o /dev/null -H 'X-CDBR-Scan-Timing: 1' \
+  -F 'photo=@corpus/puzzle_056.jpg' https://codebreak.foghub.com/api/scan-jobs
+```
+
+Durations are wall-clock milliseconds. The `scan` total starts after the
+framework has parsed the multipart upload. It covers preparation,
+recognition, and review payload construction. The `recognition` and
+`classify` metrics include their sub-stages. The scan timing does not
+include the later solve request. Timings are emitted on the response
+without retaining samples or adding log entries. Omit the request header
+to leave timing off. For a controlled Tesseract comparison, try
+`OMP_THREAD_LIMIT=1` as a separate runtime change and repeat the same uploads.
+
+
 **Make game and corpus state durable.** Active games, pending scan jobs, and
 newly created puzzles currently live in the server process. A restart or
 redeploy can interrupt that work. The packaged corpus ships with the image.
@@ -434,6 +452,10 @@ System tests require ImageMagick and Tesseract. The project configuration in
 ---
 
 ## Changelog
+
+### 0.2.8 — 2026-11-27
+
+- Add opt-in scan stage timings to help diagnose hosted OCR latency.
 
 ### 0.2.7 — 2026-11-27
 
