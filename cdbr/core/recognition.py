@@ -1857,10 +1857,13 @@ def recognize_photo(
         classification_stage = time.perf_counter()
         for cell in playable:
             _write_number_crop(cell, work_dir)
+        if trace is not None:
+            trace.record("classify.crops", classification_stage)
+            classification_stage = time.perf_counter()
         positions = [(row, column) for row, column, _ in playable]
         readings = [attempt for (attempt,) in _ocr_batch(positions, work_dir, (7,))] if positions else []
         if trace is not None:
-            trace.record("classify.tesseract", classification_stage)
+            trace.record("classify.first_ocr", classification_stage)
     cells_by_position = {(row, column): cell for row, column, cell in playable}
     if use_templates and ocr_pipeline == WHOLE_TOKEN_PIPELINE:
         # Give disputed template readings an OCR pass before they can become unknowns.
@@ -1962,7 +1965,7 @@ def recognize_photo(
         replacements = {(item.row, item.column): item for item in retried}
         readings = [replacements.get((item.row, item.column), item) for item in readings]
         if trace is not None:
-            trace.record("classify.tesseract", classification_stage)
+            trace.record("classify.retry", classification_stage)
 
     if use_templates and templates is not None and ocr_pipeline == LEGACY_PIPELINE:
         classification_stage = time.perf_counter()
@@ -2014,7 +2017,10 @@ def recognize_photo(
             )
             for item in readings
         ]
+        match_started = time.perf_counter() if trace is not None else 0.0
         readings = _review_with_scan_matches(readings, cells_by_position)
+        if trace is not None:
+            trace.record("classify.scan_matches", match_started)
         if ocr_pipeline == TESSERACT_PIPELINE:
             ambiguity_started = time.perf_counter()
             readings = _review_six_nine_disagreements(readings, work_dir)

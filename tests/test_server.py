@@ -256,6 +256,11 @@ def test_legacy_photo_session_cannot_bypass_human_review():
 
 @pytest.mark.parametrize("timing", [False, True])
 def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatch, timing):
+    def fake_scan_memory():
+        assert timing
+        return SimpleNamespace(start_bytes=100, peak_bytes=200, limit_bytes=300, finish=lambda: None)
+
+    monkeypatch.setattr(server_module, "_ScanMemory", fake_scan_memory)
     observation = PuzzleObservation(
         source=server_module.Path("upload.jpg"),
         source_format="JPEG",
@@ -322,8 +327,10 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
         assert "decode;dur=125.0" in scanned.headers["Server-Timing"]
         assert "recognition;dur=250.0" in scanned.headers["Server-Timing"]
         assert "scan;dur=" in scanned.headers["Server-Timing"]
+        assert scanned.headers["X-CDBR-Scan-Memory"] == "start=100, peak=200, limit=300"
     else:
         assert "Server-Timing" not in scanned.headers
+        assert "X-CDBR-Scan-Memory" not in scanned.headers
     review = scanned.json()
     assert review["status"] == "review"
     assert review["review_cells"] == [

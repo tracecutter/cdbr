@@ -769,6 +769,46 @@ async def photo_preview_endpoint(photo: Annotated[UploadFile, File()]) -> Respon
         return Response(content=destination.read_bytes(), media_type="image/jpeg")
 
 
+class _ScanMemory:
+    """Sample Linux cgroup memory across the scan, including OCR subprocesses."""
+
+    def __init__(self) -> None:
+        self.current = Path("/sys/fs/cgroup/memory.current")
+        self.maximum = Path("/sys/fs/cgroup/memory.max")
+        if not self.current.is_file():
+            self.current = Path("/sys/fs/cgroup/memory/memory.usage_in_bytes")
+            self.maximum = Path("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+        self.start_bytes = self._read(self.current)
+        self.peak_bytes = self.start_bytes
+        self.limit_bytes = self._read(self.maximum)
+        self.stop = threading.Event()
+        self.worker = threading.Thread(target=self._sample_until_stopped)
+        if self.start_bytes is not None:
+            self.worker.start()
+
+    @staticmethod
+    def _read(path: Path) -> int | None:
+        try:
+            return int(path.read_text())
+        except (OSError, ValueError):
+            return None
+
+    def _sample(self) -> None:
+        sample = self._read(self.current)
+        if sample is not None:
+            self.peak_bytes = max(self.peak_bytes or 0, sample)
+
+    def _sample_until_stopped(self) -> None:
+        while not self.stop.wait(0.02):
+            self._sample()
+
+    def finish(self) -> None:
+        if self.start_bytes is not None:
+            self.stop.set()
+            self.worker.join()
+            self._sample()
+
+
 @app.post("/api/scan-jobs", status_code=201)
 async def scan_job_endpoint(
     photo: Annotated[UploadFile, File()],
@@ -784,6 +824,7 @@ async def scan_job_endpoint(
         suffix = ".img"
     work_dir = Path(tempfile.mkdtemp(prefix="cdbr-scan-"))
     source = work_dir / f"upload{suffix}"
+    memory = _ScanMemory() if trace is not None else None
     try:
         await _save_upload(photo, source)
         if detect_photo_format(source) is PhotoFormat.UNKNOWN:
@@ -819,6 +860,9 @@ async def scan_job_endpoint(
     except (CdbrCoreError, ValueError) as exc:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    finally:
+        if memory is not None:
+            memory.finish()
 
     job = ScanJob(
         job_id=secrets.token_urlsafe(12),
@@ -834,6 +878,10 @@ async def scan_job_endpoint(
         trace.record("scan", scan_started)
         response.headers["Server-Timing"] = ", ".join(
             f"{name};dur={seconds * 1000:.1f}" for name, seconds in trace.stage_seconds.items()
+        )
+    if memory is not None and memory.peak_bytes is not None:
+        response.headers["X-CDBR-Scan-Memory"] = f"start={memory.start_bytes}, peak={memory.peak_bytes}" + (
+            f", limit={memory.limit_bytes}" if memory.limit_bytes is not None else ""
         )
     return payload
 

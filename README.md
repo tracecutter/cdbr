@@ -421,7 +421,11 @@ recognition, and review payload construction. The `recognition` and
 `classify` metrics include their sub-stages. The scan timing does not
 include the later solve request. Timings are emitted on the response
 without retaining samples or adding log entries. Omit the request header
-to leave timing off. For a controlled Tesseract comparison, try
+to leave timing off. On Linux containers with readable cgroup counters,
+the same request returns `X-CDBR-Scan-Memory` with starting usage, sampled
+peak, and the finite limit when available, in bytes. The 20 ms samples cover
+scan preparation through review-image preparation and include other work
+and file cache charged to the same cgroup. For a controlled Tesseract comparison, try
 `OMP_THREAD_LIMIT=1` as a separate runtime change and repeat the same uploads.
 
 
@@ -452,6 +456,11 @@ System tests require ImageMagick and Tesseract. The project configuration in
 ---
 
 ## Changelog
+
+### 0.2.9 — 2026-11-27
+
+- Report the first OCR pass, retries, and within-scan digit matching separately.
+- Include sampled Linux container memory in opted-in scan responses.
 
 ### 0.2.8 — 2026-11-27
 

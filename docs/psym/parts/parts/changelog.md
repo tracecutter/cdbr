@@ -1,3 +1,8 @@
+### 0.2.9 — 2026-11-27
+
+- Report the first OCR pass, retries, and within-scan digit matching separately.
+- Include sampled Linux container memory in opted-in scan responses.
+
 ### 0.2.8 — 2026-11-27
 
 - Add opt-in scan stage timings to help diagnose hosted OCR latency.
