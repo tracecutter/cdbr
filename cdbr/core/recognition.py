@@ -575,6 +575,63 @@ def _ocr_batch(positions: list[tuple[int, int]], work_dir: Path, modes: tuple[in
     return attempts
 
 
+HELVETICA_MAX_DISTANCE = 0.16
+HELVETICA_MIN_MARGIN = 0.015
+
+
+@lru_cache(maxsize=1)
+def _helvetica_bank() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    path = Path(__file__).parents[1] / "assets" / "ocr" / "helvetica-numbers.npz"
+    with np.load(path) as data:
+        matrix, labels = data["matrix"], data["labels"]
+    return matrix, labels, (matrix * matrix).sum(axis=1)
+
+
+def _helvetica_distances(positions: list[tuple[int, int]], work_dir: Path) -> dict[int, np.ndarray]:
+    features = []
+    indices = []
+    for index, (row, column) in enumerate(positions):
+        glyph = cv2.imread(str(work_dir / f"cell-{row + 1}-{column + 1}.png"), cv2.IMREAD_GRAYSCALE)
+        if glyph is None:
+            continue
+        ink = cv2.bitwise_not(glyph)
+        x, y, width, height = cv2.boundingRect(ink)
+        if not height:
+            continue
+        normalized_width = round(42 * width / height)
+        if not 1 <= normalized_width <= 110:
+            continue
+        canvas = np.zeros((50, 110), np.float32)
+        left = (110 - normalized_width) // 2
+        canvas[4:46, left : left + normalized_width] = cv2.resize(
+            ink[y : y + height, x : x + width].astype(np.float32) / 255,
+            (normalized_width, 42),
+            interpolation=cv2.INTER_AREA,
+        )
+        features.append(canvas.ravel())
+        indices.append(index)
+    if not features:
+        return {}
+    matrix, labels, energy = _helvetica_bank()
+    inputs = np.asarray(features, np.float32)
+    power = (inputs * inputs).sum(axis=1)[:, None]
+    denominator = power + energy[None, :]
+    distances = np.maximum(0, denominator - 2 * inputs @ matrix.T) / np.maximum(denominator, 1)
+    by_number = np.stack([distances[:, labels == number].min(axis=1) for number in range(1, 27)], axis=1)
+    return dict(zip(indices, by_number, strict=True))
+
+
+def _helvetica_first_pass(positions: list[tuple[int, int]], work_dir: Path) -> dict[int, CellReading]:
+    accepted = {}
+    for index, distances in _helvetica_distances(positions, work_dir).items():
+        best, runner_up = np.argsort(distances)[:2]
+        if distances[best] <= HELVETICA_MAX_DISTANCE and distances[runner_up] - distances[best] >= HELVETICA_MIN_MARGIN:
+            row, column = positions[index]
+            # Use the benchmark's trusted first-pass score for downstream OCR gates.
+            accepted[index] = CellReading(row=row, column=column, text=str(best + 1), confidence=100)
+    return accepted
+
+
 def _retry_cell(
     reading: CellReading,
     work_dir: Path,
@@ -1655,6 +1712,7 @@ def recognize_photo(
     ocr_pipeline: str = TESSERACT_PIPELINE,
     geometry_debug: bool = False,
     grid_mesh: bool = True,
+    helvetica_first: bool = False,
 ) -> PuzzleObservation:
     """Convert a supported square photographed puzzle into a conservative observation."""
 
@@ -1861,7 +1919,13 @@ def recognize_photo(
             trace.record("classify.crops", classification_stage)
             classification_stage = time.perf_counter()
         positions = [(row, column) for row, column, _ in playable]
-        readings = [attempt for (attempt,) in _ocr_batch(positions, work_dir, (7,))] if positions else []
+        bank_reads = _helvetica_first_pass(positions, work_dir) if helvetica_first else {}
+        if helvetica_first and trace is not None:
+            trace.record("classify.helvetica", classification_stage)
+            classification_stage = time.perf_counter()
+        fallback_positions = [position for index, position in enumerate(positions) if index not in bank_reads]
+        fallback = iter(_ocr_batch(fallback_positions, work_dir, (7,)) if fallback_positions else [])
+        readings = [bank_reads[index] if index in bank_reads else next(fallback)[0] for index in range(len(positions))]
         if trace is not None:
             trace.record("classify.first_ocr", classification_stage)
     cells_by_position = {(row, column): cell for row, column, cell in playable}

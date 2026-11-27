@@ -1,3 +1,7 @@
+### 0.2.10 — 2026-11-27
+
+- Add an opt-in Helvetica-first scan path with Tesseract fallback.
+
 ### 0.2.9 — 2026-11-27
 
 - Report the first OCR pass, retries, and within-scan digit matching separately.

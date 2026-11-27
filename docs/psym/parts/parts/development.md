@@ -182,7 +182,14 @@ recognition, and review payload construction. The `recognition` and
 `classify` metrics include their sub-stages. The scan timing does not
 include the later solve request. Timings are emitted on the response
 without retaining samples or adding log entries. Omit the request header
-to leave timing off. On Linux containers with readable cgroup counters,
+to leave timing off.
+
+The web scanner accepts `X-CDBR-Scan-OCR: helvetica` to try the Helvetica
+number bank before Tesseract. Send `tesseract` to use the original path.
+Set the runtime variable `CDBR_SCAN_OCR=helvetica` to enable the hybrid
+for ordinary browser requests. Unset it or set it to `tesseract` to turn
+it off without publishing a release. The request header overrides the
+runtime default. On Linux containers with readable cgroup counters,
 the same request returns `X-CDBR-Scan-Memory` with starting usage, sampled
 peak, and the finite limit when available, in bytes. The 20 ms samples cover
 scan preparation through review-image preparation and include other work

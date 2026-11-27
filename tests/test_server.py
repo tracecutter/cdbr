@@ -254,8 +254,8 @@ def test_legacy_photo_session_cannot_bypass_human_review():
     assert "/api/scan-jobs" in response.json()["detail"]
 
 
-@pytest.mark.parametrize("timing", [False, True])
-def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatch, timing):
+@pytest.mark.parametrize(("timing", "ocr"), [(False, None), (True, "tesseract"), (True, "helvetica")])
+def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatch, timing, ocr):
     def fake_scan_memory():
         assert timing
         return SimpleNamespace(start_bytes=100, peak_bytes=200, limit_bytes=300, finish=lambda: None)
@@ -283,8 +283,9 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
     )
     monkeypatch.setattr(server_module, "detect_photo_format", lambda _: PhotoFormat.JPEG)
 
-    def fake_recognize(_source, _work_dir, *, trace=None):
+    def fake_recognize(_source, _work_dir, *, trace=None, helvetica_first=False):
         assert (trace is not None) == timing
+        assert helvetica_first == (ocr == "helvetica")
         if trace is not None:
             trace.stage_seconds["decode"] = 0.125
             trace.elapsed_seconds = 0.25
@@ -316,9 +317,12 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
 
     monkeypatch.setattr(server_module, "solve_observation", fake_solve_observation)
 
+    headers = {"X-CDBR-Scan-Timing": "1"} if timing else {}
+    if ocr is not None:
+        headers["X-CDBR-Scan-OCR"] = ocr
     scanned = client.post(
         "/api/scan-jobs",
-        headers={"X-CDBR-Scan-Timing": "1"} if timing else {},
+        headers=headers,
         files={"photo": ("puzzle.jpg", b"pretend jpeg", "image/jpeg")},
     )
 
