@@ -1,0 +1,415 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Reference" href="../03_reference/index.html"><link rel="prev" title="Getting Started" href="../01_getting_started/index.html">
+        <link rel="prefetch" href="../_static/cdbr.png" as="image">
+
+    <link rel="shortcut icon" href="../_static/favicon.ico"><!-- Generated with Sphinx 8.2.3 and Furo 2025.12.19 -->
+        <title>User Guide - cdbr dev</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=4d83e5c0" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">cdbr dev</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../_static/cdbr.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">cdbr dev</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../01_getting_started/index.html">Getting Started</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../03_reference/index.html">Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../04_dev_guide/index.html">Developer Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../05_about/index.html">About</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../_sources/02_user_guide/index.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="user-guide">
+<h1>User Guide<a class="headerlink" href="#user-guide" title="Link to this heading">¶</a></h1>
+<p>Using cdbr effectively.</p>
+<p>Code Break (also called Codeword) puzzles replace every letter in a crossword-like grid with a number from 1 to 26. Equal numbers represent equal letters, different numbers represent different letters, and a small reference grid supplies the starting clues.</p>
+<p>cdbr supports four related workflows:</p>
+<ul class="simple">
+<li><p>recognise and solve a photographed puzzle;</p></li>
+<li><p>preserve the recognised board as deterministic TOML for review or testing;</p></li>
+<li><p>render the solution in handwriting on the source photograph; and</p></li>
+<li><p>construct and independently certify new 15x15 puzzles.</p></li>
+</ul>
+<p>The companion <code class="docutils literal notranslate"><span class="pre">cdbrd</span></code> executable serves the same solving and generation engine through a lightweight local web application. CLI solving does not require the web service to be running.</p>
+<p>OCR, lexical solving, puzzle construction, and presentation are separate stages. A complete solution is reported as unique only when the configured search is exhausted and exactly one solution remains under the active lexicon.</p>
+<section id="ocr-pipeline">
+<h2>OCR Pipeline<a class="headerlink" href="#ocr-pipeline" title="Link to this heading">¶</a></h2>
+<p>The default scan path is shared by the CLI, the web app, and the corpus benchmark. Both the 13×13 Telegraph and the original 15×15 puzzles use the shared-vertex mesh, adaptive number crops, and Tesseract-first recognition.</p>
+<p><strong>1. Decode, locate, and dewarp.</strong> ImageMagick reads the photograph, applies its orientation metadata, and caps the longest side at 1,600 pixels without enlarging smaller images. OpenCV looks for the board outline and uses the internal rules to infer the grid size. If the reference strip is sideways, cdbr tries both quarter turns and looks for the board above the strip. The initial perspective warp preserves a margin around the board. Within that padded image, cdbr traces horizontal and vertical rules, using both dark lines and the edges of solid blocks. Their intersections form a mesh whose vertices are shared by neighbouring cells. The mesh remaps the board onto an evenly spaced 1,500-pixel square before slicing it into cells. This corrects local page curl that a four-corner transform alone leaves behind. The current mesh samples the padded perspective warp of the working image.</p>
+<p><strong>2. Find the number ink.</strong> cdbr first separates blocked and playable cells. It searches a bounded top-left region of each playable cell for digit ink. The adaptive crop suppresses horizontal and vertical rules, retains plausible components including a second digit or a broken leading 1, and fits the crop to the retained ink. It trims thin overhangs attached near the top and inserts a white gap when the ink distribution supports two digits. Tesseract receives the cleaned, enlarged glyphs on a white margin. The review interface shows the rectified source cell so the player can judge what was printed.</p>
+<p><strong>3. Read and cross-check numbers.</strong> Tesseract reads each cleaned cell as a single line (PSM 7) with a digit whitelist. A missing, out-of-range, or low-confidence reading gets retries in modes for a block (6), a word (8), a character (10), and a raw line (13). For wider cells with weak results, a further retry masks a narrow top strip. Values must be in 1–26, and the default trust threshold is 80 on Tesseract’s confidence scale. cdbr compares repeated numbers within the same scan using high-confidence crops as examples. Two close matches that favour another number can flag a confident reading for review or supply a suggestion for a weak reading. The reviewer decides whether to change the board. The older template-bank modes are explicit benchmark options. PaddleOCR was evaluated as an experiment.</p>
+<p><strong>4. Read the starting clues.</strong> The 2×13 reference strip is located and rectified separately. Its row and column identify the code number, and Tesseract looks for the large printed letter with an A–Z whitelist. Ink checks distinguish printed letters and suspicious blanks from clean empty squares. The web review asks the player to confirm the detected clues and inspect suspicious blanks, and enforces distinct letters across the clues.</p>
+<p><strong>5. Review and accept.</strong> The web app opens the rectified board with red outlines around queued cells. <strong>Show scanned numbers</strong> overlays the source numbers so the player can compare them with OCR, including unflagged readings. Selecting a number highlights matching cells. Click a blue match to preview its source crop and click it again to edit. Confirm each queued cell and any additional corrections before choosing <strong>Accept Scan</strong>. The browser requests a retake when it cannot prepare the board or reference strip, or when at least 20 numbers need review and those numbers exceed a quarter of the playable cells. The CLI writes a TOML observation and offers optional interactive review.</p>
+<p><strong>6. Check solvability before Play.</strong> After the web player accepts the scan, the lexical solver checks the reviewed board with an initial 10-second budget. After a timeout, <strong>Keep searching</strong> can start a fresh search with a 30-second budget and then a 120-second budget. When the search exhausts the current dictionary without a solution, <strong>Check the scan?</strong> prompts the player to verify the numbers and starting clues. An interrupted search with no further retry reports that it reached a limit. The player can return to review or choose <strong>Play anyway</strong> in either case. A complete mapping is certified only when the search is exhausted with exactly one solution. In Play, hints and reveals can use the player’s current entries after the entry check. The solver works on the approved numbers and clues.</p>
+<figure class="align-center" id="id1">
+<div class="graphviz"><object data="../_images/graphviz-1d51300e29332573c9b73d2f37185a8777dc8f9a.svg" type="image/svg+xml" class="graphviz">
+<p class="warning">A photograph branches into board-number OCR and reference-clue OCR. The results meet at scan review. Accepting the scan checks for a solution before play.</p></object></div>
+<figcaption>
+<p><span class="caption-text">The web scan starts with the shared recogniser and checks the reviewed board before play.</span><a class="headerlink" href="#id1" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
+<section id="taking-a-scan-photo">
+<h3>Taking a scan photo<a class="headerlink" href="#taking-a-scan-photo" title="Link to this heading">¶</a></h3>
+<p>Frame one puzzle and include every corner of the board and the complete reference
+strip. Flatten the page, hold the camera directly above it, and tap to focus on
+the numbers. Use even light and move the camera or light source to avoid glare
+and hard shadows.</p>
+<p>cdbr can correct moderate perspective distortion and can turn a sideways photo
+when it can locate the reference strip. A small batch of uncertain numbers goes
+to review. If cdbr cannot read the grid, or too many numbers need review, the
+web scanner asks for a fresh photo and shows these capture tips.</p>
+</section>
+</section>
+<section id="puzzle-creation">
+<h2>Puzzle Creation<a class="headerlink" href="#puzzle-creation" title="Link to this heading">¶</a></h2>
+<p>Puzzle construction is available through the existing secondary mode:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cdbr<span class="w"> </span>create<span class="w"> </span>--include<span class="w"> </span>PERFECT<span class="w"> </span>--include<span class="w"> </span>PETERSFIELD<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--clues<span class="w"> </span><span class="m">3</span><span class="w"> </span>--output<span class="w"> </span>puzzle.toml<span class="w"> </span>--image<span class="w"> </span>puzzle.png
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">--include</span> <span class="pre">WORD</span></code> requires a themed answer word and may be repeated. <code class="docutils literal notranslate"><span class="pre">--exclude</span> <span class="pre">WORD</span></code> prevents unwanted filler. The generator fills a 15x15 topology, selects the requested number of reference clues, and independently certifies the result with the solver.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">--best-of</span> <span class="pre">MINUTES</span></code> with <code class="docutils literal notranslate"><span class="pre">--output</span></code> to keep searching and replace the output only when a certified candidate has fewer black cells. <code class="docutils literal notranslate"><span class="pre">--keep-candidates</span> <span class="pre">DIR</span></code> archives every certified candidate for later editorial review. Generation can be computationally expensive; reproducible searches should specify <code class="docutils literal notranslate"><span class="pre">--seed</span></code>.</p>
+<p>Run <code class="docutils literal notranslate"><span class="pre">cdbr</span> <span class="pre">create</span> <span class="pre">--help</span></code> for the complete set of construction limits.</p>
+</section>
+<section id="web-application">
+<h2>Web Application<a class="headerlink" href="#web-application" title="Link to this heading">¶</a></h2>
+<p><strong>Play at</strong> <a class="reference external" href="https://codebreak.foghub.com">codebreak.foghub.com</a><strong>.</strong> Open a puzzle from the collection, scan one from your book, or create your own. The hosted app runs in your browser and needs no installation or account.</p>
+<section id="run-the-web-app-locally">
+<h3>Run the web app locally<a class="headerlink" href="#run-the-web-app-locally" title="Link to this heading">¶</a></h3>
+<p>Start the local web application with:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cdbrd<span class="w"> </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span>
+</pre></div>
+</div>
+<p>Then open <a class="reference external" href="http://127.0.0.1:8000/">http://127.0.0.1:8000/</a>. The web interface can play a corpus puzzle, scan a photograph into the playable board, or create a new puzzle. Uploaded photographs and game sessions are currently held only for the lifetime of the service; no database is required. A successful scan opens a board review. Accepting the scan checks for a complete solution before play, with the option to review again or play anyway if the search cannot finish. During play, select any numbered cell and type a letter to preview that entry everywhere the number occurs. Enter or selecting another number commits it, Escape cancels it, and Backspace clears a player-entered letter. The letter rails above and below the board cross out letters already assigned, with a compact vowel rail repeating the same state. The one-to-one code prevents a letter being entered for two numbers. The original reference clues remain visibly distinct and cannot be changed. Check highlights incorrect player entries throughout both the puzzle and reference grid without revealing replacements. On a narrow screen the puzzle, 2x13 reference grid, and an on-screen QWERTY keyboard form one compact play surface. Two-finger pinch gestures enlarge only the puzzle board, which can then be panned without losing the reference grid. In Play, choose a named puzzle from either collection or use <strong>Pick one</strong> to open a random board. Packaged puzzles start with their printed clues. Click the same reference cell twice to put a hint directly on both grids when a letter is available. Hint and reveal requests can search from checked player entries, and show progress over the board. A tentative hint carries a warning in the game panel.</p>
+<p><code class="docutils literal notranslate"><span class="pre">cdbrd</span> <span class="pre">--reload</span></code> is intended for local development. Container deployments should set <code class="docutils literal notranslate"><span class="pre">PORT</span></code> and run a single service process.</p>
+</section>
+</section>
+<section id="status">
+<h2>Status<a class="headerlink" href="#status" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Python 3.11+</p></li>
+<li><p>British English lexical policy</p></li>
+<li><p>JPEG, PNG, HEIC/HEIF, AVIF, TIFF, and WebP photo input</p></li>
+<li><p>CLI and lightweight web application</p></li>
+<li><p>Experimental OCR and puzzle generation</p></li>
+<li><p>MIT license</p></li>
+</ul>
+<p>OCR quality still depends on the photograph. Perspective, shadows, handwriting, and damaged grid lines can leave cells unresolved. Puzzle generation is bounded search: it retains the best certified candidate found during the chosen time, although the limit can expire without producing a certified candidate.</p>
+</section>
+<section id="links">
+<h2>Links<a class="headerlink" href="#links" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Documentation: <a class="reference external" href="https://tracecutter.github.io/cdbr/">https://tracecutter.github.io/cdbr/</a></p></li>
+<li><p>Source: <a class="reference external" href="https://github.com/tracecutter/cdbr">https://github.com/tracecutter/cdbr</a></p></li>
+<li><p>Issues: <a class="reference external" href="https://github.com/tracecutter/cdbr/issues">https://github.com/tracecutter/cdbr/issues</a></p></li>
+<li><p>Author: <a class="reference external" href="https://github.com/tracecutter">https://github.com/tracecutter</a></p></li>
+</ul>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../03_reference/index.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Reference</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../01_getting_started/index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Getting Started</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, John Fogelin
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">User Guide</a><ul>
+<li><a class="reference internal" href="#ocr-pipeline">OCR Pipeline</a><ul>
+<li><a class="reference internal" href="#taking-a-scan-photo">Taking a scan photo</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#puzzle-creation">Puzzle Creation</a></li>
+<li><a class="reference internal" href="#web-application">Web Application</a><ul>
+<li><a class="reference internal" href="#run-the-web-app-locally">Run the web app locally</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#status">Status</a></li>
+<li><a class="reference internal" href="#links">Links</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=7dc55c04"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
+    </body>
+</html>
