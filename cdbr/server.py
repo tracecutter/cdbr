@@ -814,7 +814,7 @@ async def scan_job_endpoint(
     photo: Annotated[UploadFile, File()],
     response: Response,
     x_cdbr_scan_timing: Annotated[str | None, Header()] = None,
-    x_cdbr_scan_ocr: Annotated[Literal["tesseract", "helvetica"] | None, Header()] = None,
+    x_cdbr_scan_ocr: Annotated[Literal["tesseract", "helvetica", "helvetica-deferred"] | None, Header()] = None,
 ) -> dict[str, object]:
     """Recognise a photograph and pause before solving when cells need review."""
 
@@ -830,11 +830,17 @@ async def scan_job_endpoint(
         await _save_upload(photo, source)
         if detect_photo_format(source) is PhotoFormat.UNKNOWN:
             raise ValueError("Unsupported or unrecognised image format")
-        helvetica_first = (x_cdbr_scan_ocr or os.getenv("CDBR_SCAN_OCR")) == "helvetica"
+        ocr_mode = x_cdbr_scan_ocr or os.getenv("CDBR_SCAN_OCR")
         if trace is not None:
             trace.record("prepare", scan_started)
-        if helvetica_first:
-            observation = recognize_photo(source, work_dir, trace=trace, helvetica_first=True)
+        if ocr_mode in {"helvetica", "helvetica-deferred"}:
+            observation = recognize_photo(
+                source,
+                work_dir,
+                trace=trace,
+                helvetica_first=True,
+                match_deferred_only=ocr_mode == "helvetica-deferred",
+            )
         elif trace is not None:
             observation = recognize_photo(source, work_dir, trace=trace)
         else:

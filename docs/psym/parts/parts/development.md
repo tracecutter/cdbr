@@ -189,7 +189,9 @@ number bank before Tesseract. Send `tesseract` to use the original path.
 Set the runtime variable `CDBR_SCAN_OCR=helvetica` to enable the hybrid
 for ordinary browser requests. Unset it or set it to `tesseract` to turn
 it off without publishing a release. The request header overrides the
-runtime default. On Linux containers with readable cgroup counters,
+runtime default. Use `helvetica-deferred` for within-scan matching only on
+cells deferred by the Helvetica bank. High-confidence reads still serve
+as comparison anchors. On Linux containers with readable cgroup counters,
 the same request returns `X-CDBR-Scan-Memory` with starting usage, sampled
 peak, and the finite limit when available, in bytes. The 20 ms samples cover
 scan preparation through review-image preparation and include other work

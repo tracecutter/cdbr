@@ -254,7 +254,9 @@ def test_legacy_photo_session_cannot_bypass_human_review():
     assert "/api/scan-jobs" in response.json()["detail"]
 
 
-@pytest.mark.parametrize(("timing", "ocr"), [(False, None), (True, "tesseract"), (True, "helvetica")])
+@pytest.mark.parametrize(
+    ("timing", "ocr"), [(False, None), (True, "tesseract"), (True, "helvetica"), (True, "helvetica-deferred")]
+)
 def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatch, timing, ocr):
     def fake_scan_memory():
         assert timing
@@ -283,9 +285,10 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
     )
     monkeypatch.setattr(server_module, "detect_photo_format", lambda _: PhotoFormat.JPEG)
 
-    def fake_recognize(_source, _work_dir, *, trace=None, helvetica_first=False):
+    def fake_recognize(_source, _work_dir, *, trace=None, helvetica_first=False, match_deferred_only=False):
         assert (trace is not None) == timing
-        assert helvetica_first == (ocr == "helvetica")
+        assert helvetica_first == (ocr in {"helvetica", "helvetica-deferred"})
+        assert match_deferred_only == (ocr == "helvetica-deferred")
         if trace is not None:
             trace.stage_seconds["decode"] = 0.125
             trace.elapsed_seconds = 0.25

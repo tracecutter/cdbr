@@ -869,9 +869,14 @@ def _review_six_nine_disagreements(readings: list[CellReading], work_dir: Path) 
 
 
 def _review_with_scan_matches(
-    readings: list[CellReading], cells: dict[tuple[int, int], np.ndarray]
+    readings: list[CellReading],
+    cells: dict[tuple[int, int], np.ndarray],
+    *,
+    queries: list[int] | None = None,
 ) -> list[CellReading]:
     """Use repeated numbers from this photograph as evidence for review."""
+    if queries == []:
+        return readings
     features = (
         np.asarray(
             [_reviewed_number_feature(cells[item.row, item.column]).ravel() for item in readings], dtype=np.float32
@@ -888,22 +893,26 @@ def _review_with_scan_matches(
         return readings
     samples = features[anchors]
     squared = np.sum(features * features, axis=1)
-    distances = (squared[:, None] + squared[anchors] - 2 * features @ samples.T) / features.shape[1]
-    distances[anchors, np.arange(len(anchors))] = np.inf
+    query_indices = np.arange(len(readings)) if queries is None else np.asarray(queries, dtype=np.intp)
+    query_features = features if queries is None else features[query_indices]
+    distances = (squared[query_indices, None] + squared[anchors] - 2 * query_features @ samples.T) / features.shape[1]
+    distances[query_indices[:, None] == anchors] = np.inf
     reviewed = list(readings)
-    for i, item in enumerate(readings):
+    for query_index, i in enumerate(query_indices):
         if not has_ink[i]:
             continue
-        nearest = np.argsort(distances[i])
+        item = readings[i]
+        row_distances = distances[query_index]
+        nearest = np.argsort(row_distances)
         best, corroborating = nearest[:2]
         proposed = readings[anchors[best]].text
         if proposed == item.text or readings[anchors[corroborating]].text != proposed:
             continue
         other = next(
-            (j for j in nearest if readings[anchors[j]].text != proposed and np.isfinite(distances[i, j])), None
+            (j for j in nearest if readings[anchors[j]].text != proposed and np.isfinite(row_distances[j])), None
         )
-        distance = max(0.0, float(distances[i, corroborating]))
-        if other is None or distance > 0.025 or _relative_margin(distance, float(distances[i, other])) < 0.35:
+        distance = max(0.0, float(row_distances[corroborating]))
+        if other is None or distance > 0.025 or _relative_margin(distance, float(row_distances[other])) < 0.35:
             continue
         reviewed[i] = CellReading(
             row=item.row,
@@ -1713,6 +1722,7 @@ def recognize_photo(
     geometry_debug: bool = False,
     grid_mesh: bool = True,
     helvetica_first: bool = False,
+    match_deferred_only: bool = False,
 ) -> PuzzleObservation:
     """Convert a supported square photographed puzzle into a conservative observation."""
 
@@ -1797,6 +1807,7 @@ def recognize_photo(
         trace.record("topology", started)
 
     started = time.perf_counter()
+    bank_reads: dict[int, CellReading] = {}
     if use_templates and digit_templates is not None:
         classification_stage = time.perf_counter()
         if ocr_pipeline == WHOLE_TOKEN_PIPELINE:
@@ -2082,7 +2093,8 @@ def recognize_photo(
             for item in readings
         ]
         match_started = time.perf_counter() if trace is not None else 0.0
-        readings = _review_with_scan_matches(readings, cells_by_position)
+        queries = [index for index in range(len(readings)) if index not in bank_reads] if match_deferred_only else None
+        readings = _review_with_scan_matches(readings, cells_by_position, queries=queries)
         if trace is not None:
             trace.record("classify.scan_matches", match_started)
         if ocr_pipeline == TESSERACT_PIPELINE:

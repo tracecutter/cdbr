@@ -1,3 +1,7 @@
+### 0.2.11 — 2026-11-27
+
+- Add an opt-in Helvetica mode that checks within-scan agreement only for cells the bank deferred.
+
 ### 0.2.10 — 2026-11-27
 
 - Add an opt-in Helvetica-first scan path with Tesseract fallback.

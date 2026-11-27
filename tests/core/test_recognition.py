@@ -476,3 +476,20 @@ def test_puzzle_48_joined_twenty_splits_between_digits(tmp_path: Path) -> None:
 
     for row, column in ((2, 3), (7, 6), (11, 4), (13, 2), (13, 7), (13, 8)):
         assert observation.grid[row - 1][column - 1] == 20
+
+
+def test_scan_matching_uses_accepted_cells_as_anchors_without_querying_them(monkeypatch):
+    readings = [
+        CellReading(row=0, column=index, text=text, confidence=confidence, trusted=trusted)
+        for index, (text, confidence, trusted) in enumerate(
+            [("7", 100, True), ("7", 100, True), ("1", 100, True), ("4", 50, False), ("4", 50, False)]
+        )
+    ]
+    cells = {(0, index): np.full((2, 2), ink, dtype=np.uint8) for index, ink in enumerate((0, 0, 128, 0, 0))}
+    monkeypatch.setattr(recognition, "_reviewed_number_feature", lambda cell: cell)
+
+    reviewed = recognition._review_with_scan_matches(readings, cells, queries=[3])
+
+    assert reviewed[:3] == readings[:3]
+    assert reviewed[3].text == "7"
+    assert reviewed[4] == readings[4]
