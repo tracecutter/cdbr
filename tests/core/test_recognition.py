@@ -177,7 +177,14 @@ def test_clue_ink_measure_ignores_a_clean_cell_but_keeps_handwriting() -> None:
     written = blank.copy()
     cv2.putText(written, "A", (25, 82), cv2.FONT_HERSHEY_SIMPLEX, 1.8, (20, 20, 20), 5, cv2.LINE_AA)
 
-    assert clue_ink_pixels(blank) < 400
+    speckled = blank.copy()
+    for row in range(32, 92, 5):
+        for column in range(10, 90, 5):
+            speckled[row : row + 2, column : column + 2] = 20
+
+    assert clue_ink_pixels(blank) == 0
+    assert np.count_nonzero(_foreground_binary(speckled[30:92, 8:92, 0])) >= 420
+    assert clue_ink_pixels(speckled) == 0
     assert clue_ink_pixels(written) >= 400
 
 

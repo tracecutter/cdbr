@@ -1405,7 +1405,11 @@ def clue_ink_pixels(cell: np.ndarray) -> int:
 
     region = cell[30:92, 8:92]
     gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
-    return int(np.count_nonzero(_foreground_binary(gray)))
+    foreground = _foreground_binary(gray)
+    _, _, components, _ = cv2.connectedComponentsWithStats(foreground)
+    if not any(height >= 20 and 3 <= width <= 70 and area >= 100 for _, _, width, height, area in components[1:]):
+        return 0
+    return int(np.count_nonzero(foreground))
 
 
 def _clue_ocr(source: Path, mode: int) -> str:

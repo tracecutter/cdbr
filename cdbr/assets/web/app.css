@@ -122,6 +122,12 @@ body[data-mode] .creator-workspace { padding: clamp(20px, 2.5vw, 30px); }
 .game-heading, .reference-heading { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 28px; }
 .game-heading h2, .reference-heading h2 { margin: 0; font-size: clamp(1.8rem, 4vw, 3rem); letter-spacing: -.035em; }
 .game-status { margin: 0; color: var(--muted); font-size: .86rem; white-space: nowrap; }
+.game-heading-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.game-heading-actions .game-status { white-space: normal; }
+#back-to-review { min-height: 44px; }
+.scan-number-form { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; font-size: .85rem; }
+.scan-number-form input { width: 5rem; min-height: 36px; font-size: 16px; }
+.scan-number-form button { min-height: 44px; }
 .game-play-area { display: grid; grid-template-columns: minmax(0, 520px) minmax(380px, 430px); align-items: start; justify-content: center; gap: clamp(18px, 2vw, 28px); }
 .puzzle-board-wrap { width: 100%; max-width: 520px; }
 .puzzle-board-stage { position: relative; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; }
@@ -229,6 +235,7 @@ body[data-mode="scanner"] .scanner-heading .eyebrow { margin-bottom: 8px; }
 .scan-quit { align-self: center; margin-top: 4px; }
 .scan-play-area:has(.preview-state.is-working) .scan-actions { opacity: .45; pointer-events: none; }
 .review-board-stage { align-self: start; min-width: 0; }
+.review-zoom { display: none; }
 #review-board strong { font: 750 clamp(.65rem, 1.7vw, 1.15rem)/1 ui-monospace, monospace; }
 .review-photo-toggle { display: flex; gap: 8px; align-items: center; font-size: .9rem; }
 #review-board.has-scan-photo button::before {
@@ -451,6 +458,64 @@ footer .footer-credit { margin-top: .35rem; }
   .reference-grid { grid-template-columns: repeat(13, 1fr); }
   .game-actions { flex-flow: row wrap; }
   .game-links { margin: 0 0 0 auto; }
+}
+
+@media (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
+  body[data-mode="review"] { overflow: hidden; }
+  body[data-mode="review"] :is(.site-header, .desk-toolbar, footer) { display: none; }
+  #review-state {
+    position: fixed;
+    z-index: 4;
+    inset: var(--review-viewport-top, 0px) 0 auto;
+    height: var(--review-viewport-height, 100dvh);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    background: var(--paper);
+  }
+  #review-state .game-heading {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center; gap: 2px 8px; margin: 0;
+  }
+  #review-state .game-heading h2 { font-size: 1.45rem; }
+  #review-state .game-heading .eyebrow { display: none; }
+  #review-count { grid-column: 1; grid-row: 2; font-size: .75rem; }
+  .review-zoom { display: flex; grid-column: 2; grid-row: 1 / span 2; gap: 4px; }
+  .review-zoom button {
+    width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 4px;
+    background: var(--paper-bright); color: var(--ink); font: 700 1.25rem/1 system-ui;
+  }
+  .review-zoom button:disabled { opacity: .45; }
+  #review-state .game-play-area {
+    width: 100%; min-height: 0; align-items: stretch; gap: 8px;
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .review-board-stage { align-self: stretch; min-height: 0; overflow: hidden; }
+  .review-board-viewport { height: 100%; overflow: auto; overscroll-behavior: contain; touch-action: none; }
+  #review-board { width: calc(100% * var(--review-scale, 1)); user-select: none; }
+  #review-board strong { font-size: calc(clamp(.65rem, 2.6vw, 1.15rem) * var(--review-scale, 1)); }
+  #review-board.has-scan-photo strong { inset: auto 12% 12% auto; }
+  .review-side { grid-template-columns: minmax(0, 1fr); width: 100%; gap: 6px; }
+  #review-guidance { font-size: .73rem; }
+  .review-photo-toggle { font-size: .78rem; }
+  .review-reference-section .eyebrow { display: none; }
+  .review-editor { grid-template-columns: 52px minmax(0, 1fr); gap: 8px; padding: 6px 8px; }
+  .review-editor form { gap: 3px; }
+  .review-editor label { font-size: .75rem; }
+  .review-edit-controls { flex-wrap: nowrap; gap: 6px; }
+  .review-editor input { width: 3.1rem; padding: 4px; font-size: 16px; }
+  .review-editor .secondary-button { flex: 1; min-height: 44px; padding: 4px 8px; }
+  .review-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin: 0; }
+  .review-actions button { width: 100%; min-height: 44px; padding: 4px 8px; font-size: .86rem; }
+  #review-error { font-size: .8rem; }
+  #review-state[data-keyboard="true"] #review-guidance,
+  #review-state[data-keyboard="true"] .review-photo-toggle { display: none; }
+}
+
+@media (orientation: landscape) and (pointer: coarse) and (max-height: 500px) {
+  #review-state .game-play-area { grid-template-columns: minmax(0, 1fr) minmax(255px, 40%); grid-template-rows: minmax(0, 1fr); }
+  .review-side { min-height: 0; overflow-y: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

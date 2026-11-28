@@ -118,46 +118,39 @@ a white gap when the ink distribution supports two digits. Tesseract receives
 the cleaned, enlarged glyphs on a white margin. The review interface shows the
 rectified source cell so the player can judge what was printed.
 
-**3. Read and cross-check numbers.** Tesseract reads each cleaned cell as a
-single line (PSM 7) with a digit whitelist. A missing, out-of-range, or
-low-confidence reading gets retries in modes for a block (6), a word (8), a
-character (10), and a raw line (13). For wider cells with weak results, a
-further retry masks a narrow top strip. Values must be in 1–26, and the default
-trust threshold is 80 on Tesseract's confidence scale. cdbr compares repeated
-numbers within the same scan using high-confidence crops as examples. Two
-close matches that favour another number can flag a confident reading for
-review or supply a suggestion for a weak reading. The reviewer decides
-whether to change the board. The older template-bank modes are explicit
-benchmark options. PaddleOCR was evaluated as an experiment.
+**3. Read and cross-check numbers.** The web scanner scores cleaned number
+crops in memory against the Helvetica bank. It accepts matches with a distance
+at most 0.16 and a runner-up margin of at least 0.015. Tesseract reads crops
+the bank defers and selectively retries weak reads. Within-scan comparisons
+use repeated digits as supporting evidence. The CLI defaults to the
+Tesseract-first path, which is also available as the web rollback.
 
-**4. Read the starting clues.** The 2×13 reference strip is located and
-rectified separately. Its row and column identify the code number, and
-Tesseract looks for the large printed letter with an A–Z whitelist. Ink
-checks distinguish printed letters and suspicious blanks from clean empty
-squares. The web review asks the player to confirm the detected clues and
-inspect suspicious blanks, and enforces distinct letters across the clues.
+**4. Read the starting clues.** The 2×13 reference strip is rectified separately.
+The position identifies the code number. Letter-shaped ink selects candidates
+for batched Tesseract A–Z recognition. For reference cells without a reading,
+the web scanner uses both ink coverage and a connected letter-sized mark to
+decide whether to ask for review. Scattered speckles on an empty square are
+ignored.
 
-**5. Review and accept.** The web app opens the rectified board with red
-outlines around queued cells. **Show scanned numbers** overlays the source
-numbers so the player can compare them with OCR, including unflagged readings.
-Selecting a number highlights matching cells. Click a blue match to preview
-its source crop and click it again to edit. Confirm each queued cell and any
-additional corrections before choosing **Accept Scan**. The browser requests
-a retake when it cannot prepare the board or reference strip, or when at least
-20 numbers need review and those numbers exceed a quarter of the playable cells.
-The CLI writes a TOML observation and offers optional interactive review.
+**5. Review or go straight to Play.** If every queued cell has an OCR proposal,
+the web app tries a two-second solve. A certified unique solution opens Play
+directly. Otherwise, the board opens in Review. Red outlines mark queued
+cells, and **Show scanned numbers** overlays the source image for comparison.
+Tap a matching cell to preview the crop and again to edit. On a phone, pinch
+the board to zoom and drag to pan. The cell editor, **Confirm Cell**, and
+**Accept Scan** stay below the board. The browser requests a retake when it
+cannot prepare the board or reference strip, or when at least 20 numbers
+need review and those numbers exceed a quarter of the playable cells. The
+CLI writes a TOML observation and offers optional interactive review.
 
-**6. Check solvability before Play.** After the web player accepts the scan,
-the lexical solver checks the reviewed board with an initial 10-second
-budget. After a timeout, **Keep searching** can start a fresh search with a
-30-second budget and then a 120-second budget. When the search exhausts the
-current dictionary without a solution, **Check the scan?** prompts the player
-to verify the numbers and starting clues. An interrupted search with no
-further retry reports that it reached a limit. The player can return to review
-or choose **Play anyway** in either case. A complete mapping is certified only
-when the search is exhausted with exactly one solution. In Play, hints and
-reveals can use the player's current entries after the entry check. The solver
-works on the approved numbers and clues.
+**6. Check solvability before Play.** After manual **Accept Scan**, the solver
+starts with a 10-second budget. **Keep searching** offers a fresh search with
+30 seconds and then 120 seconds after retryable timeouts. If no complete
+solution is found, players can return to review or choose **Play anyway**.
+In Play, a recognized corpus puzzle keeps its title. Players can enter the
+printed number for other scans. **Back to Review** returns to the accepted
+numbers and starting clues while the scan is in the recent-scan cache.
+Accepting it again starts a fresh Play session.
 
 [[section.create]]
 Puzzle construction is available through the existing secondary mode:
@@ -187,11 +180,12 @@ cdbrd --host 127.0.0.1 --port 8000
 ```
 
 Then open http://127.0.0.1:8000/. The web interface can play a corpus puzzle,
-scan a photograph into the playable board, or create a new puzzle. Uploaded
-photographs and game sessions are currently held only for the lifetime of the
-service; no database is required. A successful scan opens a board review.
-Accepting the scan checks for a complete solution before play, with the option
-to review again or play anyway if the search cannot finish. During play, select
+scan a photograph into the playable board, or create a new puzzle. The server
+discards the full upload after recognition and keeps rectified review images
+in a bounded recent-scan cache. Game sessions are also held in memory.
+Scans with a certified unique solution can open directly in Play. Other
+scans open in Review, where **Accept Scan** checks the reviewed board before
+play. During play, select
 any numbered cell and type a letter to preview that entry everywhere the number
 occurs. Enter or selecting another number
 commits it, Escape cancels it, and Backspace clears a player-entered letter.

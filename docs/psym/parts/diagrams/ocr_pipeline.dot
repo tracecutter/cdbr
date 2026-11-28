@@ -8,11 +8,14 @@ digraph ocr_pipeline {
   locate [label="Locate and orient board\nDetect the 13×13 or 15×15 grid"];
   mesh [label="Padded perspective warp\nTrace rules and remap shared vertices"];
   crops [label="Identify blocked cells\nClean playable number crops"];
-  number [label="Tesseract number OCR\nSingle line, then selective retries"];
+  bank [label="Helvetica bank scores crops in memory\nDistance ≤ 0.16 · runner-up margin ≥ 0.015"];
+  number [label="Tesseract number fallback\nWrite deferred crops · retry weak reads"];
   matches [label="Compare repeats within this scan\nFlag disagreements for review"];
   strip [label="Rectify the 2×13 reference strip"];
-  clues [label="Read clue letters with Tesseract\nUse ink to detect likely blanks"];
+  ink [label="Find letter-shaped ink in reference cells\nSuppress speckled blanks in review"];
+  clues [label="Batch candidate clue letters through Tesseract"];
   observation [label="Scan observation\nBoard, starting clues and review evidence", fillcolor="#ebf2fb", color="#315d87"];
+  auto [label="All review suggestions filled?\nTry a two-second solution search"];
   review [label="Review your scan\nCompare with photo and confirm edits", fillcolor="#fff0eb", color="#ae3c2b"];
   retake [label="Retake photo", fillcolor="#fff0eb", color="#ae3c2b"];
   solve [label="Accept Scan\nTime-bounded solution search", fillcolor="#edf6ee", color="#287a3d"];
@@ -20,17 +23,23 @@ digraph ocr_pipeline {
   play [label="Play\nHints, entry checks and reveal", fillcolor="#edf6ee", color="#287a3d"];
 
   photo -> locate;
-  locate -> mesh -> crops -> number -> matches -> observation;
-  locate -> strip -> clues -> observation;
+  locate -> mesh -> crops -> bank;
+  bank -> number [label="deferred"];
+  bank -> matches [label="accepted"];
+  number -> matches -> observation;
+  locate -> strip -> ink -> clues -> observation;
   { rank=same; mesh; strip; }
-  { rank=same; crops; clues; }
-  observation -> review;
+  { rank=same; crops; ink; }
+  observation -> auto;
+  auto -> review [label="missing proposal or no certification"];
+  auto -> play [label="certified unique solution"];
   observation -> retake [label="quality gate"];
-  { rank=same; review; retake; }
+  { rank=same; auto; retake; }
   review -> solve;
   solve -> play [label="complete mapping"];
   solve -> next_step [label="no complete mapping"];
   next_step -> play [label="Play anyway"];
+  play -> review [label="Back to Review", constraint=false, style=dashed];
   next_step:e -> solve:e [constraint=false, style=dashed];
   next_step:w -> review:w [constraint=false, style=dashed];
 }

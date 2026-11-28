@@ -1,3 +1,10 @@
+### 0.2.13 — 2026-11-28
+
+- Add pinch-to-zoom and pan in mobile scan review, with the cell editor, Confirm Cell, and Accept Scan in reach below the board.
+- Open scans directly in Play when every queued cell has a suggestion and the solver certifies a unique solution within two seconds.
+- Add Back to Review from scanned games and show the puzzle number in Play when known. Let players enter an optional number for other scans.
+- Suppress blank reference-cell prompts caused by scattered ink and document the Helvetica-first OCR pipeline.
+
 ### 0.2.12 — 2026-11-27
 
 - Make Helvetica-first number recognition the web default at the 0.16 distance cutoff. Retain the Tesseract-first rollback setting.

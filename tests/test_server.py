@@ -288,7 +288,10 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
             CellEvidence(row=2, column=1, reading="6", confidence=65.0, trusted=True),
             CellEvidence(row=2, column=2, reading="4", confidence=92.0, trusted=True),
         ),
-        clue_evidence=(ClueEvidence(symbol=1, reading="A", confidence=100.0),),
+        clue_evidence=(
+            ClueEvidence(symbol=1, reading="A", confidence=100.0),
+            ClueEvidence(symbol=3, reading="", confidence=0.0),
+        ),
     )
     puzzle = CodewordPuzzle(grid=((1, 2), (6, 4)), clues={1: "A"}, slots=extract_slots(((1, 2), (6, 4))))
     solved = SimpleNamespace(
@@ -438,6 +441,55 @@ def test_scan_job_enters_play_before_solving_and_solves_on_first_hint(monkeypatc
     assert solved_observations[0].clues == {1: "A", 2: "B", 3: "E"}
 
 
+@pytest.mark.parametrize(
+    ("matches_corpus", "complete", "exhausted", "solutions", "expected"),
+    [
+        (True, True, True, 1, 201),
+        (False, True, True, 1, 201),
+        (True, True, True, 2, 409),
+        (True, True, False, 1, 409),
+        (True, False, True, 0, 409),
+    ],
+)
+def test_auto_accept_requires_a_certified_solution(
+    monkeypatch, tmp_path, matches_corpus, complete, exhausted, solutions, expected
+):
+    observation = PuzzleObservation(
+        source=tmp_path / "upload.jpg",
+        source_format="JPEG",
+        grid=((1, 2),),
+        clues={1: "A"},
+        uncertainties=(),
+    )
+    job = server_module.ScanJob(job_id="auto-test", work_dir=tmp_path, observation=observation, review_clues=())
+    monkeypatch.setattr(server_module, "_scan_jobs", {job.job_id: job})
+    monkeypatch.setattr(
+        server_module, "_packaged_scan_titles", lambda: {("1 2",): "Puzzle 56"} if matches_corpus else {}
+    )
+    monkeypatch.setattr(server_module, "_scan_solution_lexicon", lambda: object())
+
+    def solve(corrected, lexicon, *, deadline):
+        assert corrected.grid == ((1, 2),)
+        assert 0 < deadline - server_module.time.monotonic() <= server_module.SCAN_AUTO_ACCEPT_SECONDS
+        return SimpleNamespace(
+            complete=complete,
+            result=SimpleNamespace(exhausted=exhausted, solutions=[None] * solutions),
+            mapping={1: "A", 2: "B"},
+        )
+
+    monkeypatch.setattr(server_module, "solve_observation", solve)
+    response = client.post(f"/api/scan-jobs/{job.job_id}/complete", json={"auto_accept": True})
+    assert response.status_code == expected
+    if expected == 201:
+        assert response.json()["solution_status"] == "certified"
+        assert response.json()["title"] == ("Puzzle 56" if matches_corpus else "Scanned puzzle")
+        assert response.json()["review_job_id"] == job.job_id
+    review = client.get(f"/api/scan-jobs/{job.job_id}")
+    assert review.status_code == 200
+    assert review.json()["grid"] == [[1, 2]]
+    assert job.work_dir.is_dir()
+
+
 def test_scan_dictionary_loads_once(monkeypatch):
     dictionary = object()
     builds = []
@@ -518,7 +570,9 @@ def test_scan_gate_preserves_review_and_allows_play_anyway(monkeypatch, tmp_path
     opened = client.post(url, json={"check_solution": False})
     assert opened.status_code == 201
     assert opened.json()["solution_status"] == "not_requested"
-    assert not work.exists()
+    assert opened.json()["review_job_id"] == job.job_id
+    assert work.is_dir()
+    assert client.get(f"/api/scan-jobs/{job.job_id}").status_code == 200
 
 
 def test_failed_lazy_solution_keeps_scanned_session_playable(monkeypatch):

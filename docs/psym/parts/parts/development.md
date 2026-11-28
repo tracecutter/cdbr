@@ -55,7 +55,9 @@ to save the corner warp, padding, traced vertex mesh, and final rectified board.
 Keep the source-cell crop and the
 actual cleaned OCR input distinct when comparing reads. Some diagnostic paths
 reuse the cleaned-input filename for the source crop after an untrusted read.
-Use the default Tesseract path when measuring production recognition.
+Use the web scan endpoint when measuring production recognition. The web
+scanner defaults to Helvetica-first, while the standalone recognizer defaults
+to Tesseract-first.
 `--ocr-pipeline legacy`, `--ocr-pipeline whole-token`, and `--no-grid-mesh`
 support explicit comparisons with earlier recognition or geometry paths.
 

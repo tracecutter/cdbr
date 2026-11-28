@@ -521,9 +521,43 @@ async function referenceClick(symbol) {
   renderGame();
 }
 
+const backToReview = document.querySelector('#back-to-review');
+const scanNumberForm = document.querySelector('#scan-number-form');
+const scanNumberInput = document.querySelector('#scan-number');
+let numberedScan;
+
+function renderGameTitle() {
+  const number = game.review_job_id && numberedScan?.jobId === game.review_job_id ? numberedScan.number : undefined;
+  gameTitle.textContent = number ? `Puzzle ${number}` : game.title;
+  scanNumberForm.hidden = !game.review_job_id || game.title !== 'Scanned puzzle' || Boolean(number);
+  backToReview.hidden = !game.review_job_id;
+}
+
+scanNumberForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  numberedScan = { jobId: game.review_job_id, number: scanNumberInput.value };
+  scanNumberInput.value = '';
+  renderGameTitle();
+});
+
+backToReview.addEventListener('click', async () => {
+  const current = game;
+  backToReview.disabled = true;
+  try {
+    const response = await fetch(`/api/scan-jobs/${current.review_job_id}`);
+    if (!response.ok) throw new Error('This scan has expired. Choose Scan another puzzle to review a fresh photo.');
+    const prepared = await response.json();
+    if (game === current && document.body.dataset.mode === 'game') showReview(prepared, current);
+  } catch (error) {
+    if (game === current) gameStatus.textContent = error.message;
+  } finally {
+    backToReview.disabled = false;
+  }
+});
+
 function installGame(prepared) {
   game = prepared;
-  gameTitle.textContent = game.title;
+  renderGameTitle();
   revealed = new Map(Object.entries(game.clues).map(([symbol, letter]) => [Number(symbol), letter]));
   originalHints = new Set(revealed.keys());
   incorrectSymbols = new Set();
@@ -944,6 +978,90 @@ function paintReview() {
   finishReview.disabled = submittingReview || count > 0;
 }
 
+const reviewBoardViewport = document.querySelector('#review-board-viewport');
+const reviewZoomOut = document.querySelector('#review-zoom-out');
+const reviewZoomIn = document.querySelector('#review-zoom-in');
+const mobileReview = window.matchMedia('(max-width: 700px), (pointer: coarse) and (max-height: 500px)');
+let reviewScale = 1;
+let reviewGesture;
+
+function zoomReview(scale, x, y, nextX = x, nextY = y) {
+  const viewport = reviewBoardViewport;
+  const previous = reviewScale;
+  reviewScale = Math.min(4, Math.max(1, scale));
+  const ratio = reviewScale / previous;
+  const left = (viewport.scrollLeft + x) * ratio - nextX;
+  const top = (viewport.scrollTop + y) * ratio - nextY;
+  reviewBoard.style.setProperty('--review-scale', reviewScale);
+  viewport.scrollLeft = left;
+  viewport.scrollTop = top;
+  reviewZoomOut.disabled = reviewScale <= 1;
+  reviewZoomIn.disabled = reviewScale >= 4;
+}
+
+function zoomReviewFromCenter(ratio) {
+  const { clientWidth, clientHeight } = reviewBoardViewport;
+  zoomReview(reviewScale * ratio, clientWidth / 2, clientHeight / 2);
+}
+
+reviewZoomOut.addEventListener('click', () => zoomReviewFromCenter(1 / 1.4));
+reviewZoomIn.addEventListener('click', () => zoomReviewFromCenter(1.4));
+
+function reviewTouchPoint(touches) {
+  const first = touches[0];
+  const second = touches[1];
+  const bounds = reviewBoardViewport.getBoundingClientRect();
+  return second ? {
+    x: (first.clientX + second.clientX) / 2 - bounds.left,
+    y: (first.clientY + second.clientY) / 2 - bounds.top,
+    span: Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY),
+  } : { x: first.clientX - bounds.left, y: first.clientY - bounds.top, span: 0 };
+}
+
+reviewBoardViewport.addEventListener('touchstart', (event) => {
+  if (!mobileReview.matches) return;
+  reviewGesture = reviewTouchPoint(event.touches);
+  if (reviewGesture.span) event.preventDefault();
+}, { passive: false });
+
+reviewBoardViewport.addEventListener('touchmove', (event) => {
+  if (!mobileReview.matches || !reviewGesture) return;
+  const next = reviewTouchPoint(event.touches);
+  const { x, y, span } = reviewGesture;
+  if (!span && !next.span && Math.hypot(x - next.x, y - next.y) < 4) return;
+  event.preventDefault();
+  zoomReview(span && next.span ? reviewScale * next.span / span : reviewScale, x, y, next.x, next.y);
+  reviewGesture = next;
+}, { passive: false });
+
+reviewBoardViewport.addEventListener('touchend', (event) => {
+  reviewGesture = event.touches.length ? reviewTouchPoint(event.touches) : undefined;
+});
+reviewBoardViewport.addEventListener('touchcancel', () => { reviewGesture = undefined; });
+
+function keepReviewCellVisible(item) {
+  if (!mobileReview.matches || item.symbol) return;
+  const viewport = reviewBoardViewport;
+  const bounds = viewport.getBoundingClientRect();
+  const cell = item.button.getBoundingClientRect();
+  if (cell.left < bounds.left) viewport.scrollLeft += cell.left - bounds.left;
+  else if (cell.right > bounds.right) viewport.scrollLeft += cell.right - bounds.right;
+  if (cell.top < bounds.top) viewport.scrollTop += cell.top - bounds.top;
+  else if (cell.bottom > bounds.bottom) viewport.scrollTop += cell.bottom - bounds.bottom;
+}
+
+function syncReviewViewport() {
+  const viewport = window.visualViewport;
+  if (!viewport || viewport.scale !== 1) return;
+  reviewState.style.setProperty('--review-viewport-height', `${viewport.height}px`);
+  reviewState.style.setProperty('--review-viewport-top', `${viewport.offsetTop}px`);
+  reviewState.dataset.keyboard = String(window.innerHeight - viewport.height > 100);
+  if (reviewSelection !== undefined) keepReviewCellVisible(reviewItems.get(reviewSelection));
+}
+
+window.visualViewport?.addEventListener('resize', syncReviewViewport);
+window.visualViewport?.addEventListener('scroll', syncReviewViewport);
+
 function selectReview(key, { preview = false } = {}) {
   reviewPreview = preview ? key : undefined;
   if (!preview) reviewSelection = key;
@@ -960,8 +1078,9 @@ function selectReview(key, { preview = false } = {}) {
   reviewCrop.src = item.image;
   reviewError.hidden = true;
   paintReview();
-  if (!preview) {
-    reviewValue.focus();
+  keepReviewCellVisible(item);
+  if (!preview && (!mobileReview.matches || document.activeElement === reviewValue)) {
+    reviewValue.focus({ preventScroll: true });
     reviewValue.select();
   }
 }
@@ -1000,7 +1119,7 @@ function confirmReview() {
   } else {
     clearReviewSelection();
     paintReview();
-    finishReview.focus();
+    finishReview.focus({ preventScroll: true });
   }
 }
 
@@ -1050,7 +1169,7 @@ function syncReviewPhoto() {
 
 reviewPhoto.addEventListener('change', syncReviewPhoto);
 
-function showReview(prepared) {
+function showReview(prepared, previousGame) {
   scanJob = prepared;
   reviewItems = new Map();
   reviewQueue = new Set();
@@ -1078,7 +1197,9 @@ function showReview(prepared) {
     if (flag) reviewQueue.add(key);
     addReviewItem(key, {
       row, column, label: `Row ${row}, column ${column}`,
-      draft: String((flag ? flag.proposed : number) ?? ''),
+      draft: String((previousGame?.grid[rowIndex][columnIndex] ?? (flag ? flag.proposed : number)) ?? ''),
+      confirmed: previousGame && !flag && previousGame.grid[rowIndex][columnIndex] !== number
+        ? String(previousGame.grid[rowIndex][columnIndex]) : undefined,
       image: `${base}/cells/${key}`,
     }, reviewBoard);
     const cell = reviewItems.get(key).button;
@@ -1091,15 +1212,24 @@ function showReview(prepared) {
     if (flag) reviewQueue.add(key);
     addReviewItem(key, {
       symbol, label: `Reference ${symbol}`,
-      draft: (flag ? flag.proposed : prepared.clues[symbol]) ?? '',
+      draft: (previousGame ? previousGame.clues[symbol] : flag ? flag.proposed : prepared.clues[symbol]) ?? '',
+      confirmed: previousGame && !flag && previousGame.clues[symbol] !== prepared.clues[symbol]
+        ? (previousGame.clues[symbol] ?? '') : undefined,
       image: `${base}/clues/${symbol}`,
     }, reviewReference);
   }
   showMode('review');
+  zoomReview(1, 0, 0);
+  reviewBoardViewport.scrollTo(0, 0);
+  syncReviewViewport();
   const first = reviewQueue.values().next().value;
   if (first !== undefined) selectReview(first);
   else paintReview();
 }
+
+reviewValue.addEventListener('focus', () => {
+  if (mobileReview.matches) reviewValue.select();
+});
 
 reviewValue.addEventListener('input', () => {
   const item = reviewItems.get(reviewSelection);
@@ -1121,6 +1251,34 @@ const scanSolveProgress = document.querySelector('#scan-solve-progress');
 const scanSolveProgressDetail = document.querySelector('#scan-solve-progress-detail');
 const keepSearchingButton = document.querySelector('#keep-searching');
 let nextScanSearchRound;
+
+async function tryAcceptScan(prepared) {
+  if (prepared.review_cells.some((cell) => cell.proposed == null)
+      || prepared.review_clues.some((clue) => !clue.proposed)) return undefined;
+  try {
+    const response = await fetch(`/api/scan-jobs/${prepared.job_id}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cells: prepared.review_cells.map(({ row, column, proposed }) => ({ row, column, value: proposed })),
+        clues: prepared.review_clues.map(({ symbol, proposed }) => ({ symbol, letter: proposed })),
+        auto_accept: true,
+      }),
+    });
+    if (response.ok) return await response.json();
+  } catch (_) {
+    // The same scan is still available for manual review when the check fails.
+  }
+  return undefined;
+}
+
+function openScannedGame(session) {
+  installGame(session);
+  scanJob = undefined;
+  selectedFile = undefined;
+  input.value = '';
+  showMode('game');
+}
 
 async function finishScanReview(checkSolution, searchRound = 0) {
   if (!scanJob || submittingReview || reviewQueue.size) return;
@@ -1183,11 +1341,7 @@ async function finishScanReview(checkSolution, searchRound = 0) {
     if (!response.ok) {
       throw new Error(typeof data.detail === 'string' ? data.detail : 'Check the reviewed cells and try again.');
     }
-    installGame(data);
-    scanJob = undefined;
-    selectedFile = undefined;
-    input.value = '';
-    showMode('game');
+    openScannedGame(data);
   } catch (error) {
     if (scanJob !== job || document.body.dataset.mode !== 'review') return;
     reviewError.textContent = error instanceof Error ? error.message : 'The puzzle could not be opened.';
@@ -1311,9 +1465,14 @@ form.addEventListener('submit', async (event) => {
     }
 
     const prepared = await response.json();
+    const session = await tryAcceptScan(prepared);
     workingState.hidden = true;
     previewState.classList.remove('is-working');
-    showReview(prepared);
+    if (session) {
+      openScannedGame(session);
+    } else {
+      showReview(prepared);
+    }
   } catch (error) {
     workingState.hidden = true;
     previewState.classList.remove('is-working');

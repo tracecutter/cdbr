@@ -65,6 +65,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import replace
+from functools import lru_cache
 import os
 from pathlib import Path
 import secrets
@@ -110,6 +111,7 @@ MAX_SCAN_JOBS = 20
 MIN_RETAKE_REVIEW_CELLS = 20
 MAX_SCAN_REVIEW_FRACTION = 0.25
 SCAN_SOLVE_SECONDS = 10.0
+SCAN_AUTO_ACCEPT_SECONDS = 2.0
 SCAN_SOLVE_RETRY_SECONDS = (30.0, 120.0)
 SCAN_DICTIONARY_LABEL = "British English"
 _scan_lexicon: Lexicon | None = None
@@ -167,6 +169,7 @@ class ScanCorrectionRequest(BaseModel):
     cells: list[CellCorrection] = Field(default_factory=list, max_length=225)
     clues: list[ClueCorrection] = Field(default_factory=list, max_length=26)
     check_solution: bool = False
+    auto_accept: bool = False
     search_round: int = Field(default=0, ge=0, le=len(SCAN_SOLVE_RETRY_SECONDS))
 
 
@@ -859,7 +862,7 @@ async def scan_job_endpoint(
             raise ValueError("Could not prepare cell review images")
         if reference_grid is None:
             raise ValueError("Could not prepare reference-grid review images")
-        clue_symbols = {item.symbol for item in observation.clue_evidence}
+        clue_symbols = {item.symbol for item in observation.clue_evidence if item.reading} | observation.clues.keys()
         review_clues = []
         for symbol in range(1, 27):
             row = 0 if symbol <= 13 else 1
@@ -868,6 +871,9 @@ async def scan_job_endpoint(
             ink_pixels = clue_ink_pixels(cell)
             if symbol in clue_symbols or ink_pixels >= MIN_CLUE_REVIEW_INK_PIXELS:
                 review_clues.append((symbol, ink_pixels))
+        # Back to Review uses the rectified grids, so discard the full photo.
+        source.unlink(missing_ok=True)
+        (work_dir / "normalized.png").unlink(missing_ok=True)
     except (CdbrCoreError, ValueError) as exc:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -954,6 +960,25 @@ def load_scan_dictionary(language: Literal["en-GB"] = "en-GB") -> dict[str, bool
     return {"loaded": True}
 
 
+@lru_cache(maxsize=1)
+def _packaged_scan_titles() -> dict[tuple[str, ...], str]:
+    titles = {}
+    for collection in ("puzzle", "telegraph"):
+        for serial in _packaged_corpus_ids(collection):
+            puzzle_id = str(serial) if collection == "puzzle" else f"telegraph-{serial}"
+            puzzle, _ = _playable_puzzle(puzzle_id)
+            grid = puzzle["grid"]
+            assert isinstance(grid, list)
+            key = tuple(" ".join("##" if cell is None else str(cell) for cell in row) for row in grid)
+            titles[key] = str(puzzle["title"])
+    return titles
+
+
+@app.get("/api/scan-jobs/{job_id}")
+def scan_review_endpoint(job_id: str) -> dict[str, object]:
+    return _scan_public(_scan_job(job_id))
+
+
 @app.post("/api/scan-jobs/{job_id}/complete", status_code=201)
 def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[str, object]:
     """Apply reviewed OCR values and optionally check for a solution before play."""
@@ -992,10 +1017,13 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
         clue_evidence=job.observation.clue_evidence,
     )
 
+    board_key = tuple(" ".join("##" if value == BLOCK else str(value) for value in row) for row in corrected.grid)
+    known_title = _packaged_scan_titles().get(board_key)
     playable_grid = [[None if value == BLOCK else int(value) for value in row] for row in corrected.grid]
     used_symbols = sorted({symbol for row in playable_grid for symbol in row if symbol is not None})
     puzzle: dict[str, object] = {
-        "title": "Scanned puzzle",
+        "title": known_title or "Scanned puzzle",
+        "review_job_id": job_id,
         "grid": playable_grid,
         "clues": corrected.clues,
         "symbols": list(range(1, 27)),
@@ -1003,14 +1031,20 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
         "provenance": "photo",
     }
     solved = None
-    if request.check_solution:
+    if request.auto_accept or request.check_solution:
         budgets = (SCAN_SOLVE_SECONDS, *SCAN_SOLVE_RETRY_SECONDS)
         try:
             lexicon = _scan_solution_lexicon()
-            deadline = time.monotonic() + budgets[request.search_round]
+            deadline = time.monotonic() + (
+                SCAN_AUTO_ACCEPT_SECONDS if request.auto_accept else budgets[request.search_round]
+            )
             solved = solve_observation(corrected, lexicon, deadline=deadline)
         except (CdbrCoreError, ValueError):
             pass
+        if request.auto_accept and (
+            solved is None or not solved.complete or not solved.result.exhausted or len(solved.result.solutions) != 1
+        ):
+            raise HTTPException(status_code=409, detail="Scan still needs review")
         if solved is None or not solved.complete:
             if solved is None:
                 status = "unavailable"
@@ -1035,8 +1069,6 @@ def complete_scan_endpoint(job_id: str, request: ScanCorrectionRequest) -> dict[
         session.solution_status = (
             "certified" if solved.result.exhausted and len(solved.result.solutions) == 1 else "candidate"
         )
-    _scan_jobs.pop(job_id, None)
-    shutil.rmtree(job.work_dir, ignore_errors=True)
     return session.public()
 
 

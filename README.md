@@ -191,11 +191,12 @@ cdbrd --host 127.0.0.1 --port 8000
 ```
 
 Then open http://127.0.0.1:8000/. The web interface can play a corpus puzzle,
-scan a photograph into the playable board, or create a new puzzle. Uploaded
-photographs and game sessions are currently held only for the lifetime of the
-service; no database is required. A successful scan opens a board review.
-Accepting the scan checks for a complete solution before play, with the option
-to review again or play anyway if the search cannot finish. During play, select
+scan a photograph into the playable board, or create a new puzzle. The server
+discards the full upload after recognition and keeps rectified review images
+in a bounded recent-scan cache. Game sessions are also held in memory.
+Scans with a certified unique solution can open directly in Play. Other
+scans open in Review, where **Accept Scan** checks the reviewed board before
+play. During play, select
 any numbered cell and type a letter to preview that entry everywhere the number
 occurs. Enter or selecting another number
 commits it, Escape cancels it, and Backspace clears a player-entered letter.
@@ -294,7 +295,9 @@ to save the corner warp, padding, traced vertex mesh, and final rectified board.
 Keep the source-cell crop and the
 actual cleaned OCR input distinct when comparing reads. Some diagnostic paths
 reuse the cleaned-input filename for the source crop after an untrusted read.
-Use the default Tesseract path when measuring production recognition.
+Use the web scan endpoint when measuring production recognition. The web
+scanner defaults to Helvetica-first, while the standalone recognizer defaults
+to Tesseract-first.
 `--ocr-pipeline legacy`, `--ocr-pipeline whole-token`, and `--no-grid-mesh`
 support explicit comparisons with earlier recognition or geometry paths.
 
@@ -464,6 +467,13 @@ System tests require ImageMagick and Tesseract. The project configuration in
 ---
 
 ## Changelog
+
+### 0.2.13 — 2026-11-28
+
+- Add pinch-to-zoom and pan in mobile scan review, with the cell editor, Confirm Cell, and Accept Scan in reach below the board.
+- Open scans directly in Play when every queued cell has a suggestion and the solver certifies a unique solution within two seconds.
+- Add Back to Review from scanned games and show the puzzle number in Play when known. Let players enter an optional number for other scans.
+- Suppress blank reference-cell prompts caused by scattered ink and document the Helvetica-first OCR pipeline.
 
 ### 0.2.12 — 2026-11-27
 

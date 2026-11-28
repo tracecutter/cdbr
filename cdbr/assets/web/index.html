@@ -170,8 +170,16 @@
           <div>
             <p class="eyebrow">Three letters to begin</p>
             <h2 id="game-title">Loading puzzle…</h2>
+            <form id="scan-number-form" class="scan-number-form" hidden>
+              <label for="scan-number">Puzzle number (optional)</label>
+              <input id="scan-number" type="text" inputmode="numeric" pattern="[0-9]{1,6}" maxlength="6" required>
+              <button class="text-button" type="submit">Set number</button>
+            </form>
           </div>
-          <p class="game-status" id="game-status" aria-live="polite">Preparing puzzle…</p>
+          <div class="game-heading-actions">
+            <p class="game-status" id="game-status" aria-live="polite">Preparing puzzle…</p>
+            <button class="text-button" id="back-to-review" type="button" hidden>Back to Review</button>
+          </div>
         </div>
 
         <div class="game-play-area">
@@ -254,10 +262,16 @@
           <div class="game-heading">
             <div><p class="eyebrow">Scanned puzzle</p><h2 id="review-title">Review your scan</h2></div>
             <p class="game-status" id="review-count" aria-live="polite"></p>
+            <div class="review-zoom" role="group" aria-label="Board zoom">
+              <button type="button" id="review-zoom-out" aria-label="Zoom out" aria-controls="review-board">−</button>
+              <button type="button" id="review-zoom-in" aria-label="Zoom in" aria-controls="review-board">+</button>
+            </div>
           </div>
           <div class="game-play-area">
             <div class="puzzle-board-stage review-board-stage">
-              <div class="puzzle-shell" id="review-board" aria-label="Puzzle number review"></div>
+              <div class="review-board-viewport" id="review-board-viewport">
+                <div class="puzzle-shell" id="review-board" aria-label="Puzzle number review"></div>
+              </div>
               <div class="solver-progress" id="scan-solve-progress" hidden>
                 <div class="progress-track" aria-hidden="true"><span></span></div>
                 <h3>Solving the puzzle…</h3>
